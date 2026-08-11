@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>サメザリオ — SAMEZARIO</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%88%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@600;800;900&family=Plus+Jakarta+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&family=M+PLUS+Rounded+1c:wght@700;800;900&family=Dela+Gothic+One&display=swap" rel="stylesheet">
@@ -11,7 +12,10 @@
 <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
-<div id="app" class="relative h-full dot-bg caustics overflow-hidden">
+<!-- overflow は clip。hidden はスクロールコンテナのままなので、caustics の inset:-20% が
+     作る 180px 分をプログラム的スクロール（フォーカス移動など）で送られると、
+     スクロールバーが無いぶん戻せなくなる。clip はスクロール自体を作らない。 -->
+<div id="app" class="relative h-full dot-bg caustics overflow-clip">
 
   <!-- ================= 共通背景 =================
        全メニュー画面の裏でボット同士の試合をデモ再生し、その上に映写機の質感
@@ -77,7 +81,7 @@
           <div class="px-5 py-2 font-bold text-sm">← タイトルへ戻る</div></button>
         <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard -rotate-1">ロケ地を選択</h2>
         <button class="btn !w-auto primary" id="map-next" disabled><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2 font-bold text-sm">サメ選択 →</div></button>
+          <div id="map-next-label" class="px-5 py-2 font-bold text-sm">サメ選択 →</div></button>
       </div>
 
       <div class="flex-1 min-h-0 grid grid-cols-[1fr_340px] gap-5 pb-2">
@@ -227,8 +231,9 @@
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-danger text-paper ink-2 rounded-full font-mono font-bold hard-sm">!</span>
               <div><b class="font-display">死亡条件</b> — 外壁への衝突、または<b>他のサメの胴体</b>に頭からぶつかること。<b>サイズは関係ありません</b>——最小のサメでも最大のサメを倒せます。<br>
               相手を倒すには、相手を自分の胴体にぶつけさせます。</div></li>
-            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-mint ink-2 rounded-full font-mono font-bold hard-sm">P</span>
-              <div><b class="font-display">一時停止</b> — <kbd class="kbd">Esc</kbd>。</div></li>
+            <!-- マーカーに文字を置くとキー表記（Esc）と紛らわしいのでアイコンにする -->
+            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-mint ink-2 rounded-full hard-sm"><span class="material-symbols-rounded !text-[18px]">pause</span></span>
+              <div><b class="font-display">一時停止</b> — <kbd class="kbd">Esc</kbd>。他の人が居る部屋ではメニューが開くだけで、世界は止まりません。</div></li>
           </ol>
         </div>
         <div class="p-5 pt-0 shrink-0">
