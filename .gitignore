@@ -20,4 +20,4 @@ yarn-error.log*
 *.sw?
 .vscode/
 .idea/
-
+*.docx

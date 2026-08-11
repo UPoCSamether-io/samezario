@@ -24,7 +24,7 @@ const portrait = (d) => `/img/sharks/${d.id}_side.png`;   // 立ち絵（タイ�
 // ---------- セーブデータ ----------
 const SAVE = 'samezario.save';
 const save = Object.assign(
-  { unlocked: ['chofu'], best: 0, shark: SHARKS[0].id, online: false, name: '' },
+  { unlocked: ['chofu'], best: 0, shark: SHARKS[0].id, name: '' },
   JSON.parse(localStorage.getItem(SAVE) || '{}'),
 );
 const persist = () => localStorage.setItem(SAVE, JSON.stringify(save));
@@ -268,25 +268,12 @@ function statBars(d) {
   }).join('');
 }
 
-// ---------- 対戦モード ----------
-// オンラインはロケ地ごとの部屋へ自動で入るだけ。ロビーもマッチング画面も作らない。
+// ---------- 名前 ----------
+// モードの切り替えは無い。常にロケ地の部屋へ入り、空席はボットが埋める。
+// サーバが居なければそのままボットだけの部屋になる（＝これまでのソロ）。
 const nameInput = $('#player-name');
 nameInput.value = save.name;
 const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10) || 'PLAYER';
-
-function setMode(online) {
-  save.online = online; persist();
-  for (const [el, on] of [[$('#mode-solo'), !online], [$('#mode-online'), online]]) {
-    el.style.background = on ? '#f3b553' : 'rgba(244,239,234,.12)';
-    el.style.color = on ? '#2d2d2d' : '';
-  }
-  $('#mode-note').textContent = online
-    ? '同じロケ地の部屋へ自動で入ります（最大8人）。空いた席はボットが埋めます。'
-    : 'ボットだけの部屋で遊びます。通信は使いません。';
-}
-$('#mode-solo').onclick = () => setMode(false);
-$('#mode-online').onclick = () => setMode(true);
-setMode(save.online);
 
 $('#start-btn').onclick = () => play();
 
@@ -378,16 +365,11 @@ const dropNet = () => { net?.close(); net = null; };
 async function play() {
   save.shark = selShark.id; save.name = playerName(); persist();
   dropNet();
-  if (save.online) {
-    $('#start-btn').disabled = true;
-    try {
-      net = await connect({ map: selMap.id, shark: selShark.id, name: save.name });
-    } catch {
-      net = null;
-      alert('対戦サーバに接続できませんでした。ソロで開始します。');
-    }
-    $('#start-btn').disabled = false;
-  }
+  $('#start-btn').disabled = true;
+  // 繋がらなければ黙ってボット部屋。ここで手を止める理由が無い
+  try { net = await connect({ map: selMap.id, shark: selShark.id, name: save.name }); }
+  catch { net = null; }
+  $('#start-btn').disabled = false;
   show('game');
   pausePanel.style.display = 'none';
   $('#hud-online').classList.toggle('hidden', !net);

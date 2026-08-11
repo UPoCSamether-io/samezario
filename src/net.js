@@ -23,7 +23,8 @@ export function connect({ map, shark, name }) {
       close: () => { net.onmsg = null; ws.close(); },
     };
     const fail = () => reject(new Error('サーバに接続できません'));
-    const timer = setTimeout(() => { ws.close(); fail(); }, 6000);
+    // サーバが居ない時はここで待たされる。開始が遅れるだけなので短く
+    const timer = setTimeout(() => { ws.close(); fail(); }, 2500);
     const emit = (m) => (net.onmsg ? net.onmsg(m) : queued.push(m));
 
     ws.onopen = () => net.send({ t: 'join', map, shark, name });

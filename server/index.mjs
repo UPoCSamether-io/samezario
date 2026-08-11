@@ -66,6 +66,7 @@ function wire(ws) {
     }
   });
 
+  ws.on('error', () => ws.close());   // 落ちた線は close へ流す（例外で落とさない）
   ws.on('close', () => {
     const room = ws.room;
     if (!room) return;
