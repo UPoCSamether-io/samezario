@@ -299,3 +299,10 @@
   0%,100% { transform: none } 20% { transform: translate(-6px,3px) }
   40% { transform: translate(5px,-4px) } 60% { transform: translate(-4px,-2px) } 80% { transform: translate(3px,4px) }
 }
+
+/* ゲーム画面の四隅の落ち。旧実装は draw() の createRadialGradient + fillRect で、
+   canvas 全面を毎フレーム塗り直していた（実測 4.8ms/frame）。絵が動かないので CSS に出す。 */
+#vignette {
+  background: radial-gradient(circle farthest-corner at 50% 50%,
+    transparent 44%, rgb(11 32 34 / .35) 100%);
+}
