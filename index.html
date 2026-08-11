@@ -76,11 +76,13 @@
   <!-- ================= ロケ地選択 ================= -->
   <section id="s-map" class="screen">
     <div class="h-full flex flex-col pt-[68px] pb-[68px] px-6">
-      <div class="flex items-center justify-between gap-4 py-3">
-        <button class="btn !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
+      <!-- 左右を同じ幅(1fr)の列にして見出しを真ん中の列へ。flex + justify-between だと
+           右ボタンの文字数（「サメ選択 →」/「このエリアはまだ遊べません」）で見出しがずれる -->
+      <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-4 py-3">
+        <button class="btn !w-auto justify-self-start" data-go="title"><div class="cap clapper-stripes"></div>
           <div class="px-5 py-2 font-bold text-sm">← タイトルへ戻る</div></button>
         <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard -rotate-1">ロケ地を選択</h2>
-        <button class="btn !w-auto primary" id="map-next" disabled><div class="cap clapper-stripes"></div>
+        <button class="btn !w-auto primary justify-self-end" id="map-next" disabled><div class="cap clapper-stripes"></div>
           <div id="map-next-label" class="px-5 py-2 font-bold text-sm">サメ選択 →</div></button>
       </div>
 
