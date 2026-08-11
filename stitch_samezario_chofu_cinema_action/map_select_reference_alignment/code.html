@@ -1,0 +1,363 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Samezario - Map</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,100..900;1,100..900&amp;family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&amp;family=Space+Grotesk:wght@300..700&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "primary-container": "#2a7b7c",
+                "on-surface": "#181c1c",
+                "on-secondary-fixed": "#291800",
+                "surface-tint": "#0d696a",
+                "on-primary-container": "#c8ffff",
+                "secondary": "#805600",
+                "on-primary-fixed-variant": "#004f50",
+                "surface-container-high": "#e6e9e8",
+                "inverse-surface": "#2d3131",
+                "surface-container": "#eceeee",
+                "on-secondary-fixed-variant": "#614000",
+                "outline-variant": "#bec9c8",
+                "outline": "#6f7979",
+                "surface-bright": "#f7faf9",
+                "on-tertiary-fixed-variant": "#484643",
+                "on-primary": "#ffffff",
+                "surface-container-lowest": "#ffffff",
+                "on-tertiary-container": "#f8f3ee",
+                "tertiary": "#595753",
+                "on-background": "#181c1c",
+                "secondary-fixed": "#ffddb0",
+                "on-primary-fixed": "#002020",
+                "primary-fixed": "#a3f0f0",
+                "on-tertiary-fixed": "#1d1b19",
+                "surface-container-low": "#f1f4f3",
+                "error": "#ba1a1a",
+                "secondary-container": "#fdbe5b",
+                "on-secondary-container": "#734d00",
+                "on-surface-variant": "#3f4949",
+                "surface": "#f7faf9",
+                "inverse-primary": "#87d3d4",
+                "on-tertiary": "#ffffff",
+                "error-container": "#ffdad6",
+                "primary-fixed-dim": "#87d3d4",
+                "primary": "#006263",
+                "inverse-on-surface": "#eef1f1",
+                "secondary-fixed-dim": "#fabb59",
+                "tertiary-fixed-dim": "#cac6c1",
+                "surface-dim": "#d8dbda",
+                "on-error-container": "#93000a",
+                "background": "#f7faf9",
+                "on-secondary": "#ffffff",
+                "surface-variant": "#e0e3e2",
+                "tertiary-container": "#726f6b",
+                "surface-container-highest": "#e0e3e2",
+                "on-error": "#ffffff",
+                "tertiary-fixed": "#e6e2dd"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+        },
+        "spacing": {
+                "unit": "8px",
+                "gutter": "16px",
+                "container-margin": "24px",
+                "film-sprocket-size": "12px"
+        },
+        "fontFamily": {
+                "headline-xl": [
+                        "beVietnamPro"
+                ],
+                "headline-lg-mobile": [
+                        "beVietnamPro"
+                ],
+                "body-md": [
+                        "plusJakartaSans"
+                ],
+                "body-lg": [
+                        "plusJakartaSans"
+                ],
+                "headline-lg": [
+                        "beVietnamPro"
+                ],
+                "display-numeral": [
+                        "spaceGrotesk"
+                ],
+                "label-bold": [
+                        "spaceGrotesk"
+                ]
+        },
+        "fontSize": {
+                "headline-xl": [
+                        "48px",
+                        {
+                                "lineHeight": "1.1",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "800"
+                        }
+                ],
+                "headline-lg-mobile": [
+                        "28px",
+                        {
+                                "lineHeight": "1.2",
+                                "fontWeight": "800"
+                        }
+                ],
+                "body-md": [
+                        "16px",
+                        {
+                                "lineHeight": "1.6",
+                                "fontWeight": "400"
+                        }
+                ],
+                "body-lg": [
+                        "18px",
+                        {
+                                "lineHeight": "1.6",
+                                "fontWeight": "500"
+                        }
+                ],
+                "headline-lg": [
+                        "32px",
+                        {
+                                "lineHeight": "1.2",
+                                "fontWeight": "800"
+                        }
+                ],
+                "display-numeral": [
+                        "56px",
+                        {
+                                "lineHeight": "1.0",
+                                "fontWeight": "700"
+                        }
+                ],
+                "label-bold": [
+                        "14px",
+                        {
+                                "lineHeight": "1.0",
+                                "fontWeight": "700"
+                        }
+                ]
+        }
+},
+    },
+  }
+</script>
+<style>
+        .dot-pattern {
+            background-image: radial-gradient(rgba(255,255,255,0.15) 1px, transparent 1px);
+            background-size: 8px 8px;
+        }
+        .brutal-shadow {
+            box-shadow: 4px 4px 0px 0px #181c1c;
+        }
+        .brutal-shadow-lg {
+            box-shadow: 8px 8px 0px 0px #181c1c;
+        }
+        .brutal-shadow-xl {
+            box-shadow: 12px 12px 0px 0px #181c1c;
+        }
+        .brutal-border {
+            border: 3px solid #181c1c;
+        }
+        .clapper-stripes {
+            background-image: repeating-linear-gradient(45deg, #181c1c, #181c1c 20px, #ffffff 20px, #ffffff 40px);
+        }
+        /* Map specific styles */
+        .map-container {
+            position: relative;
+            width: 100%;
+            margin: 0 auto;
+        }
+        .map-overlay {
+            position: absolute;
+            inset: 0;
+            background-color: transparent;
+            z-index: 10;
+        }
+        .map-region {
+            position: absolute;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .region-unlocked {
+            filter: drop-shadow(4px 4px 0px #181c1c);
+        }
+        .region-unlocked:hover {
+            transform: translate(-2px, -2px);
+            filter: drop-shadow(6px 6px 0px #181c1c);
+        }
+        .region-locked {
+            filter: brightness(0.4) grayscale(80%) drop-shadow(2px 2px 0px #181c1c);
+        }
+        
+        /* Modal animation */
+        @keyframes popIn {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .modal-animate {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        
+        .film-sprocket {
+            width: 16px;
+            height: 12px;
+            background-color: #d8dbda;
+            border: 2px solid #e0e3e2;
+            border-radius: 2px;
+            box-shadow: inset 1px 1px 2px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="bg-primary-container dot-pattern text-on-surface font-body-md overflow-x-hidden min-h-screen flex flex-col pt-8 pb-[100px] md:pb-8 relative">
+<!-- Main Content Canvas -->
+<main class="flex-grow p-gutter md:p-container-margin flex flex-col items-center relative">
+<!-- Top Actions & Header -->
+<div class="w-full max-w-6xl flex justify-between items-center mb-12 relative z-20 px-4 md:px-8 gap-4">
+<!-- Left Action -->
+<button class="bg-surface brutal-border brutal-shadow hover:bg-surface-variant active:translate-y-1 active:translate-x-1 active:shadow-none transition-all flex flex-col items-stretch overflow-hidden w-auto self-start">
+<div class="h-6 w-full clapper-stripes border-b-2 border-on-surface"></div>
+<div class="px-6 py-2 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-2xl">arrow_back</span>
+<span class="font-label-bold text-lg">タイトルへ戻る</span>
+</div>
+</button>
+<!-- Center Heading -->
+<div class="flex flex-col items-center justify-center mx-auto w-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+<div class="bg-secondary-container brutal-border brutal-shadow-lg px-12 py-3 transform rotate-1">
+<h1 class="font-headline-lg uppercase tracking-wide text-3xl m-0 text-on-surface text-center">ロケ地を選択</h1>
+</div>
+</div>
+<!-- Right Action Group -->
+<div class="flex items-center gap-4 self-start">
+<!-- Avatar -->
+<div class="w-16 h-16 rounded-full brutal-border brutal-shadow bg-surface overflow-hidden shrink-0">
+<img alt="Selected Shark" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDI4U4ZcJXQ5koPmvhaCLjBqk4YQoajn7w9K729nh78yyFZzXfdbrQLhEQ69W4RDlHCGh4LQ7KAZiJu25ypRie2x7mQnyhtMyNkL2-fQ4vyzTWcnchwZEHiL9G-ZZcUQs34abHdS-AtuREbCMln3_8Vg0g3MTk5cQmcyV6h0JyIZjjbkYQAHSfR1AKZ36vGLMC-W-MqL3l2zATMyaVfu6JoztI3meLc8SjKIyh157w-gcsDf6V_sfk6x4t-xMz26t7itA">
+</div>
+<!-- Button -->
+<button class="bg-surface brutal-border brutal-shadow hover:bg-surface-variant active:translate-y-1 active:translate-x-1 active:shadow-none transition-all flex flex-col items-stretch overflow-hidden w-auto">
+<div class="h-6 w-full clapper-stripes border-b-2 border-on-surface"></div>
+<div class="px-6 py-2 flex items-center justify-center gap-2">
+<span class="font-label-bold text-lg">サメ選択</span>
+<span class="material-symbols-outlined text-2xl">arrow_forward</span>
+</div>
+</button>
+</div>
+</div>
+<!-- Map Area -->
+<div class="w-full max-w-5xl bg-[#fdfbf7] brutal-border brutal-shadow-xl p-6 md:p-12 relative mb-8 flex justify-center items-center transform -rotate-1 min-h-[500px]"><div class="absolute inset-0 opacity-10 pointer-events-none z-0" style="background-image: url(&quot;https://www.transparenttextures.com/patterns/stardust.png&quot;);"></div><div class="absolute top-2 left-2 w-4 h-4 bg-error rounded-full brutal-border shadow-md z-20"></div><div class="absolute top-2 right-2 w-4 h-4 bg-error rounded-full brutal-border shadow-md z-20"></div>
+<!-- Decorative Film Strips -->
+<div class="absolute top-4 left-4 bottom-4 flex flex-col justify-between py-2 z-0">
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+</div>
+<div class="absolute top-4 right-4 bottom-4 flex flex-col justify-between py-2 z-0">
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+<div class="film-sprocket"></div>
+</div>
+<!-- Map Image Container -->
+<div class="map-container relative z-10 w-[85%]">
+<img alt="Map select graphic" class="w-full h-auto object-contain pointer-events-none drop-shadow-md" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA2-Km0YGmlEdJodTHJerrPE2VcIW83Hfjz43vNWek7LFQRuPmTvHkzWzKLK5-r8r2LKv0sPHowsDV-3wEhrV8dvo9WW3hjGKs3YhK9tzFHMplxWQJAT6RQRp6WXRs-bxal0Rdvu8Vb1nXUDCKuow6T0UgV0xdquHTo-5zve9HdEHi_5F-XdFskw0yv8XRXdERMCMxRjSBbEZ5Pf2vsuTlR6luwC-hJaKVFc0VDfPIJW5sBSGMfAfOraOizX1f60vRIwQ">
+<!-- Interactive Overlay for Regions -->
+<div class="map-overlay">
+<!-- Locked Region (West/Yellow) -->
+<div class="absolute top-[55%] left-[22%] w-12 h-12 bg-surface/40 backdrop-blur-sm rounded-lg brutal-border flex items-center justify-center shadow-sm -translate-x-1/2 -translate-y-1/2">
+<span class="material-symbols-outlined text-3xl text-on-surface opacity-80">lock</span>
+</div>
+<!-- Locked Region (Center/Blue) -->
+<div class="absolute top-[40%] left-[52%] w-12 h-12 bg-surface/40 backdrop-blur-sm rounded-lg brutal-border flex items-center justify-center shadow-sm -translate-x-1/2 -translate-y-1/2">
+<span class="material-symbols-outlined text-3xl text-on-surface opacity-80">lock</span>
+</div>
+<!-- Locked Region (East/Green) -->
+<div class="absolute top-[60%] left-[78%] w-12 h-12 bg-surface/40 backdrop-blur-sm rounded-lg brutal-border flex items-center justify-center shadow-sm -translate-x-1/2 -translate-y-1/2">
+<span class="material-symbols-outlined text-3xl text-on-surface opacity-80">lock</span>
+</div>
+<!-- Unlocked Region (South/Red) -->
+<!-- No lock icon for the bottom region as per reference image -->
+</div>
+</div>
+<div class="absolute bottom-0 right-0 w-8 h-8 bg-surface-container-high shadow-[-2px_-2px_4px_rgba(0,0,0,0.1)] z-20" style="clip-path: polygon(100% 0px, 0px 100%, 100% 100%);"></div></div>
+</main>
+<!-- BottomNavBar (Mobile) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-safe h-20 border-t-4 border-on-surface bg-surface shadow-[0px_-4px_0px_0px_#181c1c] rounded-t-xl md:hidden">
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:bg-surface-variant active:scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined">movie</span>
+<span class="font-label-bold text-label-bold mt-1">Cinema</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-secondary text-on-secondary border-2 border-on-surface rounded-lg px-4 py-1 shadow-[2px_2px_0px_0px_#181c1c] active:scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">map</span>
+<span class="font-label-bold text-label-bold mt-1">Map</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:bg-surface-variant active:scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined">menu_book</span>
+<span class="font-label-bold text-label-bold mt-1">Encyclopedia</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:bg-surface-variant active:scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="font-label-bold text-label-bold mt-1">Profile</span>
+</a>
+</nav>
+<script>
+        function openCheckInModal() {
+            document.getElementById('checkInModal').style.display = 'flex';
+        }
+
+        function openLocationDetails(title, status) {
+            document.getElementById('modalLocationTitle').innerText = title;
+            const statusEl = document.getElementById('modalLocationStatus');
+            const reqsEl = document.getElementById('lockedRequirements');
+            
+            if(status === 'unlocked') {
+                statusEl.innerText = 'Now Playing (Unlocked)';
+                statusEl.className = 'font-label-bold text-primary tracking-widest uppercase mt-1';
+                reqsEl.style.display = 'none';
+            } else {
+                statusEl.innerText = 'Coming Soon (Locked)';
+                statusEl.className = 'font-label-bold text-error tracking-widest uppercase mt-1';
+                reqsEl.style.display = 'block';
+            }
+            
+            document.getElementById('locationModal').style.display = 'flex';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        // Close modals on clicking outside
+        window.onclick = function(event) {
+            const checkIn = document.getElementById('checkInModal');
+            const location = document.getElementById('locationModal');
+            if (checkIn && event.target == checkIn) {
+                checkIn.style.display = 'none';
+            }
+            if (location && event.target == location) {
+                location.style.display = 'none';
+            }
+        }
+    </script>
+
+
+</body></html>

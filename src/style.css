@@ -1,0 +1,301 @@
+@import "tailwindcss";
+
+@theme {
+  /* Retro Pop Cinema — DESIGN.md */
+  --color-ink: #2d2d2d;
+  --color-yellow: #f3b553;
+  --color-yellow-dim: #e09b2d;
+  --color-teal: #2a7b7c;
+  --color-teal-deep: #1b5a5b;
+  --color-paper: #f4efea;
+  --color-navy: #213052;
+  --color-navy-deep: #121d33;   /* ネオン看板の地。glow を沈める用の暗さ */
+  --color-mint: #a3f0f0;
+  --color-danger: #ba1a1a;
+
+  --font-display: "Be Vietnam Pro", "M PLUS Rounded 1c", sans-serif;
+  --font-body: "Plus Jakarta Sans", "M PLUS Rounded 1c", sans-serif;
+  --font-mono: "Space Grotesk", monospace;
+
+  --radius-xl: 1rem;
+}
+
+@layer base {
+  html, body, #app { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--font-body);
+    color: var(--color-ink);
+    background: var(--color-teal);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; }
+}
+
+/* ---- Retro-Brutalism primitives ---- */
+@utility ink-2 { border: 2px solid var(--color-ink); }
+@utility ink-3 { border: 3px solid var(--color-ink); }
+@utility ink-4 { border: 4px solid var(--color-ink); }
+
+@utility hard { box-shadow: 4px 4px 0 0 var(--color-ink); }
+@utility hard-lg { box-shadow: 8px 8px 0 0 var(--color-ink); }
+@utility hard-sm { box-shadow: 2px 2px 0 0 var(--color-ink); }
+
+.clapper-stripes {
+  background: repeating-linear-gradient(-45deg,
+    var(--color-ink) 0 10px, var(--color-paper) 10px 20px);
+}
+.dot-bg {
+  background-color: var(--color-teal);
+  background-image: radial-gradient(rgba(244, 239, 234, 0.12) 2px, transparent 2px);
+  background-size: 30px 30px;
+}
+/* ネオン管。発光は「芯が白熱 → 外へ彩度の高い色が広く滲む」という輝度の勾配で
+   見えるので、塗りは白に寄せて色は全部グロー側に持たせる。塗りとグローを同じ色に
+   すると勾配がゼロになり、ただの影付き文字になる。
+   点灯/消灯は層数を揃えてある（数が違うと補間できず、パチパチ切り替わる）。 */
+.neon {
+  --neon-on:
+    0 0 1px #fffdf5, 0 0 6px #ffe6ab, 0 0 28px #ff9f22,
+    0 0 58px rgb(255 138 20 / .8), 0 0 100px rgb(255 130 15 / .34);
+  --neon-off:
+    0 0 1px rgb(255 253 245 / .45), 0 0 5px rgb(255 230 171 / .25), 0 0 9px rgb(255 159 34 / .18),
+    0 0 14px rgb(255 138 20 / .12), 0 0 20px rgb(255 130 15 / .08);
+  color: #fff6de;
+  text-shadow: var(--neon-on);
+  animation: neon 9s infinite;
+}
+/* ネオン管の不規則な明滅。等間隔だと機械仕掛けに見えるので二度落として戻す */
+@keyframes neon {
+  0%, 40%, 43.5%, 45.5%, 100% { text-shadow: var(--neon-on) }
+  41.5%, 44.5% { text-shadow: var(--neon-off); color: #efdcb2 }
+}
+
+/* 映写機の質感。::before = 背面のデモを沈めて文字を読ませる減光（ランプの
+   ゆらぎつき）、::after = フィルムグレイン。どちらも操作を素通りさせる。
+   canvas(z-0) → 減光(z-1) → タイトルとボタン(z-10) → グレイン(z-20) の順。 */
+.projector::before, .projector::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+}
+.projector::before {
+  z-index: 1;
+  background: radial-gradient(ellipse at center, rgb(20 52 54 / .3), rgb(14 32 34 / .74));
+  animation: lamp 7s ease-in-out infinite;
+}
+.projector::after {
+  z-index: 20;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  opacity: .14;
+  animation: grain .6s steps(1) infinite;
+}
+@keyframes lamp {
+  0%, 100% { opacity: 1 } 18% { opacity: .93 } 19.5% { opacity: 1 }
+  62% { opacity: .95 } 63% { opacity: .89 } 64.5% { opacity: 1 }
+}
+@keyframes grain {
+  0%   { background-position: 0 0 }
+  17%  { background-position: -22px 14px }
+  34%  { background-position: 16px -19px }
+  50%  { background-position: -13px -25px }
+  67%  { background-position: 25px 11px }
+  84%  { background-position: -8px 21px }
+}
+/* 刷り物の紙。効果は ::after に載せる — 繊維も焼けも紙の一番上の面にあるものなので、
+   印刷された地図より下に敷くと「枠の飾り」に見えてしまう。 */
+.paper-sheet {
+  background-color: var(--color-paper);
+}
+.paper-sheet::after {
+  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background-image:
+    /* 紙の繊維。周波数を縦横で変えて、漉き目の方向を出す */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.6 .9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23p)' opacity='.3'/%3E%3C/svg%3E"),
+    /* 経年の焼けと、縁が反って落ちる影 */
+    radial-gradient(120% 120% at 50% 42%, transparent 32%, rgb(122 92 50 / .19) 100%);
+  background-size: 160px 160px, auto;
+}
+
+/* ---- ロケ地マップ。エリアの塗りがそのままボタン ----
+   線幅は non-scaling-stroke で画面 px に固定する。地図は枠の高さ次第で 0.5〜0.7 倍に
+   縮むので、viewBox 単位のままだと紙面の他の罫線と太さが合わなくなる。 */
+.map-area {
+  fill-rule: evenodd;
+  stroke: var(--color-ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  transition: filter .15s ease-out;
+}
+.map-area:hover { filter: brightness(1.13) saturate(1.08); }
+/* フォーカスは選択と同義なので #map-ring が兼ねる。既定の枠は bbox の四角が出て邪魔 */
+.map-area:focus { outline: none; }
+/* 未解放。彩度と明度を落として「まだ写っていないコマ」に見せる */
+.map-area.locked { filter: grayscale(.62) brightness(.4); }
+.map-area.locked:hover { filter: grayscale(.62) brightness(.52); }
+
+/* 選択リング。エリアの塗りより上の層に置く（同じ層だと隣のエリアの下に潜る） */
+#map-ring {
+  stroke: var(--color-yellow);
+  stroke-width: 6;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 5px rgb(243 181 83 / .75));
+}
+
+.map-label {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 30px;                /* viewBox 単位。地図と一緒に伸び縮みする */
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: var(--color-paper);
+  stroke: var(--color-ink);
+  stroke-width: 5;
+  paint-order: stroke;            /* 縁取りは文字の下に敷く。上に乗せると細る */
+  user-select: none;
+}
+.map-label.locked { fill: rgb(244 239 234 / .55); stroke-width: 4; }
+.map-lock {
+  font-family: 'Material Symbols Rounded';
+  font-size: 30px;                /* .map-label と同じ viewBox 単位 */
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: rgb(244 239 234 / .55);
+  stroke: var(--color-ink);
+  stroke-width: 4;
+  paint-order: stroke;
+  user-select: none;
+}
+
+/* 押しピン。頭の丸みはハイライトを寄せた放射グラデーションで出す */
+.pin {
+  position: absolute; z-index: 6;
+  width: 1rem; height: 1rem; border-radius: 999px;
+  border: 2px solid var(--color-ink);
+  background: radial-gradient(circle at 34% 28%, #ff9182, var(--color-danger) 62%);
+  box-shadow: 2px 3px 4px rgb(45 45 45 / .38);
+}
+
+.sprockets {
+  background-image: radial-gradient(circle, rgb(45 45 45 / .22) 34%, transparent 36%);
+  background-size: 22px 100%;
+}
+
+/* Pressable clapperboard button */
+.btn {
+  position: relative;
+  display: block;
+  width: 100%;
+  transition: transform .08s ease-out, box-shadow .08s ease-out;
+  border: 3px solid var(--color-ink);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 5px 5px 0 0 var(--color-ink);
+  background: var(--color-paper);
+  cursor: pointer;
+}
+.btn:hover { transform: translate(-1px, -1px); box-shadow: 7px 7px 0 0 var(--color-ink); }
+.btn:active { transform: translate(5px, 5px); box-shadow: 0 0 0 0 var(--color-ink); }
+.btn[disabled] { cursor: not-allowed; filter: grayscale(.7) brightness(.9); opacity: .75; }
+.btn[disabled]:hover { transform: none; box-shadow: 5px 5px 0 0 var(--color-ink); }
+.btn.primary { background: var(--color-yellow); }
+
+/* Clapperboard. The board's striped strip (.cap) is the top of the button;
+   the arm (::before) is a separate stick living OUTSIDE the box, resting on
+   the button's top border — so lifting it exposes the scene behind, never the
+   button's own fill. Stripes lean opposite ways so they interlock when shut.
+   overflow must stay visible for the raised arm; margin-top reserves its room. */
+.btn { overflow: visible; margin-top: 13px; }
+.btn > .cap {
+  height: .625rem;
+  border-bottom: 3px solid var(--color-ink);
+  border-radius: 9px 9px 0 0;            /* button's inner radius: 12px - 3px border */
+  background: repeating-linear-gradient(45deg,
+    var(--color-ink) 0 10px, var(--color-paper) 10px 20px);
+}
+.btn::before {
+  content: "";
+  position: absolute;
+  left: -3px; right: -3px;               /* flush with the button's outer edge */
+  bottom: 100%;                          /* bottom border overlays the button's top border */
+  height: .625rem;
+  border: 3px solid var(--color-ink);
+  border-radius: 9px 9px 0 0;
+  background: repeating-linear-gradient(-45deg,
+    var(--color-ink) 0 10px, var(--color-paper) 10px 20px);
+  transform-origin: 8px bottom;
+  transition: transform .2s cubic-bezier(.2,.9,.3,1.4);
+}
+/* Shallow: the arm spans the whole button, so tip travel is width × sin(θ).
+   2.5° keeps even the widest button (~620px) around a 27px lift; the short
+   auto-width toolbar buttons (~160px) need more angle for the same travel. */
+.btn:hover::before { transform: rotate(-2.5deg); }
+.btn[class*="w-auto"]:hover::before { transform: rotate(-7deg); }
+.btn:active::before { transform: rotate(0deg); transition-duration: .06s; }
+.btn[disabled]::before, .btn[disabled]:hover::before { transform: none; }
+
+/* Google's icon-font CSS is unlayered, so it beats Tailwind's layered
+   utilities — size the icons here instead of with text-* classes. */
+.material-symbols-rounded { font-size: 1.75rem; }
+
+/* Screens
+   重なりは 背景(#backdrop の canvas) → 減光(1) → 画面(10) → グレイン(20)
+   → ゲーム(30) → レターボックス(40)。ゲームだけグレインの上に出して素の絵にする。 */
+.screen { position: absolute; inset: 0; display: none; z-index: 10; }
+.screen.on { display: block; animation: pop .28s cubic-bezier(.2,.9,.3,1.4); }
+@keyframes pop { from { opacity: 0; transform: scale(.97) } to { opacity: 1; transform: none } }
+#s-game { z-index: 30; }
+
+/* Letterbox bars。画面の差し替えを隠す映写機のシャッターも兼ねる（#chrome.shut） */
+.letterbox {
+  position: absolute; left: 0; right: 0; height: 3.5rem; z-index: 40;
+  background: var(--color-ink); pointer-events: none;
+  transition: height .19s cubic-bezier(.4, 0, .6, 1);
+}
+#chrome.shut .letterbox { height: 50%; }
+.letterbox::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: linear-gradient(90deg, rgb(244 239 234 / .18) 0 14px, transparent 14px 34px);
+  background-size: 34px 100%;
+  background-position: center;
+  mask-image: linear-gradient(#000 0 8px, transparent 8px calc(100% - 8px), #000 calc(100% - 8px) 100%);
+}
+
+/* Water caustics shimmer behind menus */
+.caustics::before {
+  content: ""; position: absolute; inset: -20%;
+  background:
+    radial-gradient(closest-side, rgb(163 240 240 / .18), transparent 70%) 20% 30% / 55% 55% no-repeat,
+    radial-gradient(closest-side, rgb(243 181 83 / .14), transparent 70%) 80% 70% / 50% 50% no-repeat;
+  animation: drift 18s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes drift { to { transform: translate3d(4%, -3%, 0) scale(1.08) } }
+
+/* Scrollbars inside panels */
+.thin-scroll::-webkit-scrollbar { width: 10px; }
+.thin-scroll::-webkit-scrollbar-track { background: rgb(0 0 0 / .12); }
+.thin-scroll::-webkit-scrollbar-thumb { background: var(--color-ink); border-radius: 99px; }
+
+.kbd {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 2px solid var(--color-ink);
+  border-radius: 5px;
+  background: var(--color-paper);
+  box-shadow: 2px 2px 0 0 var(--color-ink);
+  font: 700 12px var(--font-mono);
+}
+
+@keyframes spin { to { transform: rotate(360deg) } }
+
+.bob { animation: bob 3.6s ease-in-out infinite; }
+@keyframes bob { 0%,100% { transform: translateY(0) rotate(-1deg) } 50% { transform: translateY(-14px) rotate(1deg) } }
+
+.shake { animation: shake .4s linear; }
+@keyframes shake {
+  0%,100% { transform: none } 20% { transform: translate(-6px,3px) }
+  40% { transform: translate(5px,-4px) } 60% { transform: translate(-4px,-2px) } 80% { transform: translate(3px,4px) }
+}

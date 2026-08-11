@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>サメザリオ — SAMEZARIO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@600;800;900&family=Plus+Jakarta+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&family=M+PLUS+Rounded+1c:wght@700;800;900&family=Dela+Gothic+One&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,700,1,0&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<div id="app" class="relative h-full dot-bg caustics overflow-hidden">
+
+  <!-- ================= 共通背景 =================
+       全メニュー画面の裏でボット同士の試合をデモ再生し、その上に映写機の質感
+       （減光とグレイン）を重ねる。画面を跨いで動き続けるので遷移が途切れない。 -->
+  <div id="backdrop" class="projector absolute inset-0">
+    <canvas id="attract" class="absolute inset-0 w-full h-full"></canvas>
+  </div>
+
+  <!-- ================= レターボックス ================= -->
+  <div id="chrome">
+    <div class="letterbox top-0 border-b-4 border-ink"></div>
+    <div class="letterbox bottom-0 border-t-4 border-ink">
+      <div class="absolute bottom-3 right-6 font-mono text-xs tracking-widest text-paper/60">v0.1.0</div>
+    </div>
+  </div>
+
+  <!-- ================= タイトル ================= -->
+  <section id="s-title" class="screen on">
+    <div class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[68px]">
+      <header class="text-center -rotate-1 relative">
+        <!-- 看板が周囲の水を照らす分の光。文字と同じ琥珀色でないと濁る -->
+        <div class="absolute -inset-12 bg-[#ff9f22]/25 blur-3xl rounded-full"></div>
+        <h1 class="relative neon ink-4 bg-navy-deep px-12 py-5 rounded-2xl hard-lg leading-none tracking-[0.06em]
+                   text-[52px] md:text-[80px]" style="font-family:'Dela Gothic One',sans-serif">サメザリオ</h1>
+        <p class="relative inline-block mt-3 font-mono font-bold tracking-[0.42em] text-mint bg-ink px-4 py-1 rounded border-2 border-paper text-sm md:text-base">SAMEZARIO</p>
+      </header>
+
+      <!-- src / alt は show('title') が直前に使ったサメで差し替える -->
+      <img id="title-shark" src="/img/sharks/cinema_side.png" alt="映画サメ"
+           class="bob w-[250px] md:w-[360px] min-h-0 object-contain -my-1 drop-shadow-[8px_10px_0_rgba(45,45,45,.35)] pointer-events-none">
+
+      <nav class="w-full max-w-[380px] flex flex-col gap-3">
+        <button class="btn primary" data-go="map">
+          <div class="cap clapper-stripes"></div>
+          <div class="py-3 px-6 flex items-center justify-between">
+            <span class="font-display font-extrabold text-2xl">ゲームスタート</span>
+            <span class="material-symbols-rounded">movie</span>
+          </div>
+        </button>
+        <button class="btn" data-go="dex">
+          <div class="cap clapper-stripes"></div>
+          <div class="py-2.5 px-6 flex items-center justify-between">
+            <span class="font-display font-extrabold text-xl">サメ図鑑</span>
+            <span class="material-symbols-rounded">menu_book</span>
+          </div>
+        </button>
+        <button class="btn" data-go="howto">
+          <div class="cap clapper-stripes"></div>
+          <div class="py-2.5 px-6 flex items-center justify-between">
+            <span class="font-display font-extrabold text-xl">遊び方</span>
+            <span class="material-symbols-rounded">sports_esports</span>
+          </div>
+        </button>
+      </nav>
+    </div>
+  </section>
+
+  <!-- ================= ロケ地選択 ================= -->
+  <section id="s-map" class="screen">
+    <div class="h-full flex flex-col pt-[68px] pb-[68px] px-6">
+      <div class="flex items-center justify-between gap-4 py-3">
+        <button class="btn !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
+          <div class="px-5 py-2 font-bold text-sm">← タイトルへ戻る</div></button>
+        <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard -rotate-1">ロケ地を選択</h2>
+        <button class="btn !w-auto primary" id="map-next" disabled><div class="cap clapper-stripes"></div>
+          <div class="px-5 py-2 font-bold text-sm">サメ選択 →</div></button>
+      </div>
+
+      <div class="flex-1 min-h-0 grid grid-cols-[1fr_340px] gap-5 pb-2">
+        <!-- 掲示板 -->
+        <div class="relative paper-sheet ink-4 hard-lg rounded-sm -rotate-[0.6deg] p-4 flex items-center justify-center overflow-hidden">
+          <div class="pin top-2 left-2"></div>
+          <div class="pin top-2 right-2"></div>
+          <div class="pin bottom-2 left-2"></div>
+          <div class="pin bottom-2 right-2"></div>
+          <div id="map-board" class="relative h-full aspect-[1100/963] max-w-full">
+            <!-- エリア図。パスは data.js の MAPS[].path、中身は JS が挿入する。
+                 preserveAspectRatio の既定 (xMidYMid meet) は object-contain と同じ収まり方。 -->
+            <svg id="map-svg" viewBox="0 0 1103 960" class="w-full h-full overflow-visible"
+                 role="group" aria-label="調布市エリアマップ">
+              <g id="map-areas" role="radiogroup" aria-label="ロケ地"></g>
+              <path id="map-ring" fill="none" pointer-events="none"></path>
+              <g id="map-labels" pointer-events="none"></g>
+            </svg>
+
+            <!-- 方位。地図は北が上（深大寺が調布駅の北、飛行場が仙川の西に描かれている） -->
+            <svg viewBox="0 0 64 80" class="absolute right-[3%] top-[3%] w-[10%] pointer-events-none select-none"
+                 fill="none" stroke="#2d2d2d" aria-label="方位: 北が上">
+              <text x="32" y="12" text-anchor="middle" font-family="Space Grotesk, sans-serif"
+                    font-size="15" font-weight="700" fill="#2d2d2d" stroke="none">N</text>
+              <circle cx="32" cy="48" r="25" stroke-width="2"/>
+              <circle cx="32" cy="48" r="19" stroke-width="1" opacity=".4"/>
+              <path d="M32 26 L27 48 L37 48 Z" fill="#2d2d2d" stroke="none"/>   <!-- 北の羽は塗る -->
+              <path d="M32 70 L27 48 L37 48 Z" fill="#f4efea" stroke-width="1.6"/>
+              <path d="M5 48h6M53 48h6" stroke-width="2"/>
+            </svg>
+
+            <!-- 縮尺。実際の調布市に合わせた根拠:
+                   画像 1103x960 のうち市域として塗られた画素 = 453,492 px²
+                   調布市の実面積 21.58 km² を割り当てて 1px = √(21.58/453492) km = 6.898 m
+                   1km = 144.96px = 画像幅の 13.143%  →  2km バー = 26.29%
+                 svg は meet で収めるが、viewBox の縦横比(1.149)が枠(1.142)より横長なので
+                 幅が先に詰まる。つまり表示幅 = #map-board の幅で、% がそのまま使える。
+                 注: このイラストは調布市の正確な輪郭ではない（描かれた形の縦横比 1.13 に対し
+                 実際は約1.8で南北に伸びている）。東西・南北のどちらにも寄せない面積基準。 -->
+            <div class="absolute left-[4%] bottom-[5%] w-[26.29%] pointer-events-none select-none">
+              <div class="flex h-2.5 ink-2 bg-paper">
+                <div class="w-1/2 bg-ink"></div><div class="w-1/2"></div>
+              </div>
+              <div class="relative h-4 font-mono font-bold text-[10px] text-ink/70">
+                <span class="absolute left-0 top-0.5">0</span>
+                <span class="absolute left-1/2 top-0.5 -translate-x-1/2">1</span>
+                <span class="absolute right-0 top-0.5">2km</span>
+              </div>
+            </div>
+
+            <!-- ホットスポットは JS が挿入 -->
+          </div>
+        </div>
+
+        <!-- 情報パネル -->
+        <aside id="map-info" class="bg-navy text-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col">
+          <div class="cap clapper-stripes h-5 border-b-4 border-ink"></div>
+          <div id="map-info-body" class="p-5 flex-1 overflow-auto thin-scroll"></div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= サメ選択 ================= -->
+  <section id="s-shark" class="screen">
+    <div class="h-full flex flex-col pt-[68px] pb-[68px] px-6">
+      <div class="flex items-center justify-between gap-4 py-3">
+        <button class="btn !w-auto" data-go="map"><div class="cap clapper-stripes"></div>
+          <div class="px-5 py-2 font-bold text-sm">← ロケ地</div></button>
+        <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard rotate-1">サメを選ぶ</h2>
+        <button class="btn !w-auto primary" id="start-btn"><div class="cap clapper-stripes"></div>
+          <div class="px-5 py-2 font-extrabold text-sm">ACTION! →</div></button>
+      </div>
+
+      <div class="flex-1 min-h-0 grid grid-cols-[1fr_320px] gap-5 pb-2">
+        <div class="min-h-0 flex flex-col gap-4">
+          <!-- プレビュー -->
+          <div class="relative flex-1 min-h-0 bg-teal-deep ink-4 hard-lg rounded-lg overflow-hidden">
+            <div class="absolute inset-0 opacity-40" style="background-image:radial-gradient(rgba(244,239,234,.25) 2px,transparent 2px);background-size:26px 26px"></div>
+            <canvas id="preview" class="absolute inset-0 w-full h-full"></canvas>
+            <div id="preview-tag" class="absolute top-4 left-4"></div>
+          </div>
+          <!-- ステータス -->
+          <div id="stats" class="grid grid-cols-4 gap-3 shrink-0"></div>
+        </div>
+
+        <div class="min-h-0 flex flex-col gap-2.5">
+          <!-- 対戦モード。オンラインは同じロケ地の部屋へ自動で入る（空きはボットが埋める） -->
+          <div class="bg-navy text-paper ink-3 hard rounded-lg p-3 shrink-0">
+            <div class="font-mono text-[10px] tracking-[0.25em] text-mint mb-2">MODE</div>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="mode-solo" class="ink-2 rounded px-2 py-2 font-display font-extrabold text-sm">ソロ<span class="block font-mono text-[9px] font-normal opacity-70">VS BOT</span></button>
+              <button id="mode-online" class="ink-2 rounded px-2 py-2 font-display font-extrabold text-sm">オンライン<span class="block font-mono text-[9px] font-normal opacity-70">VS PLAYER</span></button>
+            </div>
+            <label class="mt-3 block">
+              <span class="font-mono text-[10px] tracking-[0.25em] text-mint">NAME</span>
+              <input id="player-name" maxlength="10" placeholder="PLAYER"
+                     class="mt-1 w-full bg-paper text-ink ink-2 rounded px-2 py-1.5 font-display font-bold text-sm outline-none focus:bg-yellow">
+            </label>
+            <p id="mode-note" class="mt-2 text-[11px] leading-snug text-paper/70"></p>
+          </div>
+
+          <!-- サメ一覧 -->
+          <div id="shark-list" class="min-h-0 overflow-auto thin-scroll flex flex-col gap-2.5 pr-1"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 図鑑 ================= -->
+  <section id="s-dex" class="screen">
+    <div class="h-full flex flex-col pt-[68px] pb-[68px] px-6">
+      <div class="flex items-center justify-between gap-4 py-3">
+        <button class="btn !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
+          <div class="px-5 py-2 font-bold text-sm">← タイトルへ戻る</div></button>
+        <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard -rotate-1">サメ図鑑</h2>
+        <div class="w-[150px]"></div>
+      </div>
+      <div id="dex-list" class="flex-1 min-h-0 overflow-auto thin-scroll grid gap-4 pb-4 content-start"
+           style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));grid-auto-rows:max-content"></div>
+    </div>
+
+    <!-- カードをクリックしたときの詳細。中身は renderDex が流し込む -->
+    <div id="dex-detail" class="absolute inset-0 bg-navy/85 backdrop-blur-sm hidden place-items-center z-20 px-6 py-[68px]">
+      <div class="relative w-full max-w-[900px] max-h-full bg-paper ink-4 hard-lg rounded-xl overflow-hidden flex flex-col">
+        <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
+        <button id="dex-close" aria-label="閉じる"
+                class="absolute top-9 right-4 z-10 w-10 h-10 grid place-items-center rounded-full bg-yellow ink-2 hard-sm
+                       transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
+          <span class="material-symbols-rounded !text-xl">close</span>
+        </button>
+        <div id="dex-body" class="min-h-0 overflow-auto thin-scroll"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 遊び方 ================= -->
+  <section id="s-howto" class="screen">
+    <div class="h-full flex items-center justify-center px-6 py-[68px]">
+      <div class="w-full max-w-2xl bg-paper ink-4 hard-lg rounded-xl overflow-hidden max-h-full flex flex-col">
+        <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
+        <div class="p-7 overflow-auto thin-scroll">
+          <h2 class="font-display font-extrabold text-3xl mb-5">遊び方</h2>
+          <ol class="space-y-4 text-[15px] leading-relaxed">
+            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">1</span>
+              <div><b class="font-display">移動</b> — マウスカーソルの方向へサメが進みます。頭は常にカーソルを追いかけます。</div></li>
+            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">2</span>
+              <div><b class="font-display">ダッシュ</b> — <kbd class="kbd">左クリック</kbd> / <kbd class="kbd">Space</kbd>。スタミナを消費して加速。使い切ると息切れし、ゲージが少し戻るまで再ダッシュできません。<br>
+              ダッシュ中は<b>航跡</b>が約2.5秒残ります。<b>触れた相手は死にます</b>（自分は平気）。相手を囲って逃げ場を塞ぐのが決め手です。</div></li>
+            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">3</span>
+              <div><b class="font-display">スキル</b> — <kbd class="kbd">E</kbd> / <kbd class="kbd">Shift</kbd>。サメごとの固有スキル（クールダウンあり）。</div></li>
+            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-danger text-paper ink-2 rounded-full font-mono font-bold hard-sm">!</span>
+              <div><b class="font-display">死亡条件</b> — 外壁への衝突、または<b>他のサメの胴体</b>に頭からぶつかること。<b>サイズは関係ありません</b>——最小のサメでも最大のサメを倒せます。<br>
+              相手を倒すには、相手を自分の胴体にぶつけさせます。</div></li>
+            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-mint ink-2 rounded-full font-mono font-bold hard-sm">P</span>
+              <div><b class="font-display">一時停止</b> — <kbd class="kbd">Esc</kbd>。</div></li>
+          </ol>
+        </div>
+        <div class="p-5 pt-0 shrink-0">
+          <button class="btn primary" data-go="title"><div class="cap clapper-stripes"></div>
+            <div class="py-2.5 px-6 font-display font-extrabold text-lg">とじる</div></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ゲーム ================= -->
+  <section id="s-game" class="screen">
+    <canvas id="stage" class="absolute inset-0 w-full h-full cursor-crosshair"></canvas>
+
+    <!-- HUD -->
+    <div class="absolute inset-0 pointer-events-none p-4 md:p-6 flex flex-col justify-between">
+      <div class="flex justify-between items-start gap-4">
+        <!-- サイズゲージ -->
+        <div class="w-[300px]">
+          <div class="flex items-end gap-2 mb-1">
+            <span class="font-mono font-bold text-xs tracking-[0.25em] text-paper/80 bg-ink/70 px-2 py-1 rounded">SIZE</span>
+            <span id="hud-mass" class="font-mono font-bold text-4xl text-yellow leading-none"
+                  style="text-shadow:3px 3px 0 #2d2d2d">0</span>
+            <span id="hud-rank" class="font-mono font-bold text-xs text-paper/90 bg-ink/70 px-2 py-1 rounded ml-auto">#1</span>
+          </div>
+          <div class="h-7 bg-paper ink-4 hard relative overflow-hidden">
+            <div id="hud-bar" class="h-full bg-teal border-r-4 border-ink transition-[width] duration-150" style="width:6%"></div>
+            <div class="absolute inset-x-0 top-0 h-[6px] sprockets opacity-70"></div>
+            <div class="absolute inset-x-0 bottom-0 h-[6px] sprockets opacity-70"></div>
+          </div>
+        </div>
+        <!-- リーダーボード -->
+        <div class="w-[250px] bg-paper ink-4 hard-lg">
+          <div class="clapper-stripes h-4 border-b-4 border-ink"></div>
+          <div id="hud-online" class="hidden border-b-4 border-ink bg-navy text-mint font-mono text-[10px] tracking-[0.2em] px-2.5 py-1"></div>
+          <ul id="hud-board" class="p-2.5 space-y-0.5 text-[13px]"></ul>
+        </div>
+      </div>
+
+      <div class="flex justify-between items-end gap-4">
+        <div class="flex items-end gap-4 pointer-events-auto">
+          <!-- スキル -->
+          <button id="hud-skill" class="w-[104px] h-[104px] bg-yellow ink-4 hard-lg relative overflow-hidden group flex flex-col active:translate-x-1 active:translate-y-1 transition-transform">
+            <div class="h-6 shrink-0 clapper-stripes border-b-4 border-ink origin-bottom-left group-hover:-rotate-12 transition-transform"></div>
+            <div class="flex-1 grid place-content-center place-items-center pt-1">
+              <div id="hud-skill-icon" class="material-symbols-rounded !text-[34px] leading-none"></div>
+              <div id="hud-skill-name" class="font-display font-extrabold text-[11px] mt-0.5 px-1 text-center leading-tight">スキル</div>
+            </div>
+            <div id="hud-cd" class="absolute inset-0 bg-ink/72 grid place-items-center font-mono font-bold text-2xl text-paper opacity-0 transition-opacity">0</div>
+            <span class="absolute -top-2 -right-2 w-8 h-8 bg-paper ink-2 rounded-full grid place-items-center font-mono font-bold text-sm hard-sm">E</span>
+          </button>
+          <!-- ダッシュ（フィルムリール） -->
+          <div id="hud-dash" class="w-[104px] h-[104px] rounded-full ink-4 hard-lg bg-paper relative grid place-items-center">
+            <div id="hud-reel" class="absolute inset-1.5 rounded-full overflow-hidden">
+              <div class="absolute inset-0 rounded-full" style="background:conic-gradient(from 0deg,#2a7b7c 0 25%,#1b5a5b 0 50%,#2a7b7c 0 75%,#1b5a5b 0)"></div>
+              <div class="absolute inset-0 rounded-full"
+                   style="background:radial-gradient(circle at 50% 18%,#f4efea 0 12%,transparent 12%),radial-gradient(circle at 82% 50%,#f4efea 0 12%,transparent 12%),radial-gradient(circle at 50% 82%,#f4efea 0 12%,transparent 12%),radial-gradient(circle at 18% 50%,#f4efea 0 12%,transparent 12%)"></div>
+            </div>
+            <!-- スタミナゲージ。使った分だけリールが暗く欠ける -->
+            <div id="hud-stam" class="absolute inset-1.5 rounded-full pointer-events-none"></div>
+            <div class="relative w-9 h-9 rounded-full bg-yellow ink-3 grid place-items-center font-mono font-bold text-[10px] leading-none text-center">DASH</div>
+            <span class="absolute -bottom-1 -left-1 px-1.5 py-0.5 bg-paper ink-2 rounded-full font-mono font-bold text-[9px] hard-sm">SPACE</span>
+          </div>
+        </div>
+        <!-- ミニマップ -->
+        <div class="bg-paper ink-4 hard-lg p-1.5">
+          <canvas id="mini" width="150" height="150" class="block w-[150px] h-[150px] ink-2"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 一時停止 -->
+    <div id="pause" class="absolute inset-0 bg-navy/80 backdrop-blur-sm hidden place-items-center z-30">
+      <div class="w-[320px] bg-paper ink-4 hard-lg rounded-xl overflow-hidden">
+        <div class="clapper-stripes h-6 border-b-4 border-ink"></div>
+        <div class="p-6 flex flex-col gap-3">
+          <h3 class="font-display font-extrabold text-2xl text-center mb-1">一時停止</h3>
+          <button class="btn primary" id="resume"><div class="cap clapper-stripes"></div>
+            <div class="py-2 font-display font-extrabold">再開する</div></button>
+          <button class="btn" id="quit"><div class="cap clapper-stripes"></div>
+            <div class="py-2 font-display font-extrabold">タイトルへ戻る</div></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= リザルト ================= -->
+  <section id="s-result" class="screen">
+    <div class="h-full grid place-items-center px-6 py-[68px]">
+      <div class="w-full max-w-[620px] max-h-full overflow-auto thin-scroll">
+        <div class="bg-paper ink-4 hard-lg rounded-xl overflow-hidden">
+          <div class="clapper-stripes h-7 border-b-4 border-ink"></div>
+          <div class="p-7">
+            <div class="text-center mb-6">
+              <h2 class="font-display font-black text-5xl -rotate-2 inline-block bg-ink text-yellow px-8 py-2 rounded-lg hard neon">CUT!</h2>
+              <p id="res-sub" class="mt-3 font-bold text-sm text-ink/70"></p>
+            </div>
+            <div class="grid grid-cols-3 gap-3 mb-5" id="res-stats"></div>
+            <div class="bg-navy text-paper ink-3 rounded-lg p-4 mb-6 relative">
+              <span class="absolute -top-3 left-4 bg-yellow text-ink ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">CHOFU TIPS</span>
+              <p id="res-tip" class="text-sm leading-relaxed mt-1"></p>
+            </div>
+            <div class="flex flex-col gap-3">
+              <button class="btn primary" id="retry"><div class="cap clapper-stripes"></div>
+                <div class="py-2.5 font-display font-extrabold text-xl">もう一度撮る</div></button>
+              <div class="grid grid-cols-2 gap-3">
+                <button class="btn" data-go="map"><div class="cap clapper-stripes"></div>
+                  <div class="py-2 font-display font-bold text-sm">ロケ地を変える</div></button>
+                <button class="btn" data-go="title"><div class="cap clapper-stripes"></div>
+                  <div class="py-2 font-display font-bold text-sm">タイトルへ</div></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
