@@ -165,6 +165,8 @@ function selectMap(m) {
   // 選択リングは別レイヤ。隣のエリアの下に潜らせないため、塗りより上に重ねて描く
   $('#map-ring').setAttribute('d', m.path);
   $('#map-next').disabled = !open;
+  // 押せない理由をボタン自身に出す。ラベルが「サメ選択 →」のままだと袋小路に見える
+  $('#map-next-label').textContent = open ? 'サメ選択 →' : 'このエリアはまだ遊べません';
   $('#map-info-body').innerHTML = `
     <div class="font-mono text-[10px] tracking-[0.3em] text-mint mb-1">${esc(m.en)}</div>
     <h3 class="font-display font-extrabold text-2xl mb-1 leading-tight">${esc(m.name)}</h3>
@@ -181,9 +183,9 @@ function selectMap(m) {
       <div class="font-display font-bold text-sm mb-1 flex items-center gap-1.5">
         ${icon('photo_camera', '!text-lg text-yellow')}現地写真で解放
       </div>
-      <p class="text-[12px] leading-relaxed text-paper/70">現地で撮影した写真をアップロードすると解放されます（実装予定：基準画像とのSSIM照合）。</p>
+      <p class="text-[12px] leading-relaxed text-paper/70">現地で撮影した写真をアップロードすると解放されます。<span class="font-mono text-[10px] tracking-widest text-yellow">COMING SOON</span></p>
     </div>`}
-    <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} M㎡ · 実際の地形</div>`;
+    <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · 実際の地形</div>`;
 }
 
 $('#map-next').onclick = () => { if (isUnlocked(selMap)) show('shark'); };
@@ -360,6 +362,7 @@ const hudBoard = $('#hud-board'), hudCd = $('#hud-cd'), hudReel = $('#hud-reel')
 const hudStam = $('#hud-stam');
 
 let net = null;
+let myName = 'YOU';   // リーダーボードに自分の行を足すときに使う
 const dropNet = () => { net?.close(); net = null; };
 
 async function play() {
@@ -375,9 +378,10 @@ async function play() {
   $('#hud-online').classList.toggle('hidden', !net);
   $('#hud-skill-icon').textContent = ICON[selShark.id];
   $('#hud-skill-name').textContent = selShark.skill.name;
+  myName = net ? save.name : 'YOU';
   ctl = startGame({
     canvas: stage, mini, sharkId: selShark.id, map: selMap,
-    net, name: net ? save.name : 'YOU',
+    net, name: myName,
     onHud: paintHud,
     onEnd: showResult,
   });
@@ -390,14 +394,20 @@ function paintHud(h) {
   }
   hudMass.textContent = h.mass.toLocaleString();
   hudRank.textContent = `#${h.rank} / ${h.alive}`;
-  const top = h.board[0]?.mass || 1;
-  hudBar.style.width = clamp(h.mass / top, 0.04, 1) * 100 + '%';
-  if (h.humans) $('#hud-online').textContent = `ONLINE · ${h.humans} PLAYERS`;
-  hudBoard.innerHTML = h.board.map((b, i) => `
-    <li class="flex justify-between items-center gap-2 px-1.5 py-0.5 ${b.me ? 'bg-yellow ink-2 -rotate-1 hard-sm relative z-10' : ''}">
-      <span class="font-bold truncate">${i + 1}. ${b.human && !b.me ? '◆ ' : ''}${esc(b.name)}</span>
+  // トップとの比を線形で取ると、ボットが15秒で500超に届く一方こちらは30スタートなので
+  // バーが下限に張り付いて動かない。対数にして序盤の伸びを見せる
+  const top = Math.max(h.board[0]?.mass || 1, 2);
+  hudBar.style.width = clamp(Math.log(Math.max(h.mass, 1)) / Math.log(top), 0.04, 1) * 100 + '%';
+  if (h.humans) $('#hud-online').textContent = `ONLINE · ${h.humans} PLAYER${h.humans > 1 ? 'S' : ''}`;
+  const row = (b, rank, extra = '') => `
+    <li class="flex justify-between items-center gap-2 px-1.5 py-0.5 ${extra} ${b.me ? 'bg-yellow ink-2 -rotate-1 hard-sm relative z-10' : ''}">
+      <span class="font-bold truncate">${rank}. ${b.human && !b.me ? '◆ ' : ''}${esc(b.name)}</span>
       <span class="font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
-    </li>`).join('');
+    </li>`;
+  // トップ5固定なので、上位に入るまで自分の行が一度も出ない。圏外なら最下段に足す
+  hudBoard.innerHTML = h.board.map((b, i) => row(b, i + 1)).join('')
+    + (h.board.some((b) => b.me) ? ''
+      : row({ name: myName, mass: h.mass, me: true, human: true }, h.rank, 'mt-1.5 border-t-2 border-ink/25 pt-1'));
   hudCd.style.opacity = h.cd > 0 ? '1' : '0';
   hudCd.textContent = Math.ceil(h.cd);
   hudReel.style.animation = h.boosting ? 'spin .35s linear infinite' : 'spin 4s linear infinite';
@@ -419,7 +429,8 @@ function showResult(r) {
   save.best = best; persist();
 
   show('result');
-  $('#res-sub').textContent = `${selMap.name} ／ ${selShark.name}`;
+  $('#res-sub').innerHTML = `${esc(selMap.name)} ／ ${esc(selShark.name)}`
+    + (r.cause ? `<br><span class="text-danger">${esc(r.cause)}に接触</span>` : '');
   $('#res-stats').innerHTML = [
     ['到達サイズ', r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
     ['撃破数', r.kills, 'KILLS'],

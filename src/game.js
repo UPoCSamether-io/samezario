@@ -156,6 +156,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // ---------- net ----------
   // 「今このブラウザが正か」。ホストが抜けると昇格するので、都度読む
   const authority = () => !net || net.host;
+  // 部屋に居る人の数。nid の頭文字でボットと見分ける（ゲスト側は他人が全員 remote）
+  const humans = () => sharks.filter((s) => s.nid[0] !== 'b').length;
   let rosterDirty = true;          // サメの顔ぶれが変わった → 次のスナップショットに名簿を載せる
   let nidSeq = 0, fSeq = 0;
   const fAdd = [], fDel = [];      // 前回のスナップショット以降の餌の増減（差分で送る）
@@ -269,7 +271,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   function setPaused(v) {
     if (dead) return;
     menu = v;
-    paused = v && !net;      // オンラインでは世界を止められない。メニューだけ開く
+    // 他人が居る部屋では世界を止められない（メニューだけ開く）。
+    // 自分がホストで独りなら誰も待たせないので本当に止める
+    paused = v && authority() && humans() <= 1;
     onHud?.({ paused: v });
   }
 
@@ -323,6 +327,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     s.remote = true;
     sharks.push(s);
     sendFull(id);
+    if (paused) setPaused(false);   // 独りだから止めていただけ。人が来たら世界を戻す
   }
 
   // ---------- net: 受ける ----------
@@ -384,6 +389,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       } else {
         s.ex = x - s.x; s.ey = y - s.y;           // ズレは step で少しずつ詰める
       }
+      // ponytail: 死因はスナップショットに乗せていないので、ゲスト側は空のまま
+      // （リザルトでは死因の行を出さない）。要るならフラグに1バイト足す
       if (wasAlive && !s.alive) dieFx(s);
     }
   }
@@ -467,25 +474,26 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     return out;
   }
 
-  function endRun() {
+  function endRun(cause) {
     dead = true;
     setTimeout(() => onEnd({
-      mass: Math.round(player.mass), kills: player.kills, time: elapsed,
+      mass: Math.round(player.mass), kills: player.kills, time: elapsed, cause,
       rank: 1 + sharks.filter((o) => o.alive && o !== player && o.mass > player.mass).length,
     }), 900);
   }
 
   /** 見た目の死。ゲストはホストの宣告をこれだけで映す（餌のばら撒きと復活はホストが持つ） */
-  function dieFx(s) {
+  function dieFx(s, cause) {
     s.alive = false;
     s.wake.length = 0;   // 死んだ本人の航跡が幽霊として残らないように
     cam.shake = s === player ? 26 : 8;
     burst(s.x, s.y, s.def.color, 26, 200);
-    if (s === player && !attract) endRun();
+    if (s === player && !attract) endRun(cause);
   }
 
-  function die(s, killer) {
-    dieFx(s);
+  /** how: 'body' | 'wake'（killer が居るとき）。killer が無ければ外壁 */
+  function die(s, killer, how) {
+    dieFx(s, killer ? `${killer.name} の${how === 'wake' ? '航跡' : '胴体'}` : '外壁');
     // 質量を餌としてばら撒く
     const per = Math.max(4, s.mass / Math.max(6, s.body.length));
     for (const p of s.body) {
@@ -613,19 +621,19 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       const hr = radiusOf(s.mass) * 0.45;
       for (const o of sharks) {
         if (o === s || !o.alive) continue;
-        let hit = false;
+        let hit = null;   // 何に当たったか。死因の表示に使う
         // 胴体（頭から4節は当たらない＝正面衝突では死なない）
         if (Math.hypot(o.x - s.x, o.y - s.y) <= o.reach + hr) {
           for (let i = 4; i < o.body.length; i++) {
             const p = o.body[i];
-            if ((p.x - s.x) ** 2 + (p.y - s.y) ** 2 < (p.r + hr) ** 2) { hit = true; break; }
+            if ((p.x - s.x) ** 2 + (p.y - s.y) ** 2 < (p.r + hr) ** 2) { hit = 'body'; break; }
           }
         }
         // 航跡は本体から離れた場所に残るので、胴体の早期棄却の外で見る
         if (!hit) {
           for (let i = 0; i < o.wake.length; i++) {
             const p = o.wake[i];
-            if ((p.x - s.x) ** 2 + (p.y - s.y) ** 2 < (p.r + hr) ** 2) { hit = true; break; }
+            if ((p.x - s.x) ** 2 + (p.y - s.y) ** 2 < (p.r + hr) ** 2) { hit = 'wake'; break; }
           }
         }
         if (!hit) continue;
@@ -634,7 +642,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
           burst(s.x, s.y, YELLOW, 24, 180);
           if (s === player) cam.shake = 14;
         } else {
-          die(s, o);
+          die(s, o, hit);
         }
         break;
       }
@@ -690,8 +698,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
 
       // 壁：すり抜け中と bot は押し戻し、それ以外は死亡
       const phasing = s.def.id === 'yokai' && s.skill > 0;
+      // 湧き直後の無敵は壁にも効かせる。外周向きに湧くと操作前に死ぬことがあった
       if (!arena.inside(s.x, s.y)) {
-        if (phasing || s.isBot) {
+        if (phasing || s.isBot || s.iframe > 0) {
           s.x = px; s.y = py;                       // 直前の位置へ戻して向きだけ変える
           s.angle = arena.escape(px, py, s.angle, r * 3 + 60) ?? s.angle + Math.PI;
         } else if (authority()) {
@@ -998,8 +1007,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         stam: player.stam, winded: player.winded,
         boost: !player.winded && player.stam > 0,
         boosting: player.boost && !player.winded && player.stam > 0,
-        // nid の頭文字で人とボットを見分ける（ゲスト側は他人が全員 remote で区別が付かないため）
-        humans: net ? sharks.filter((s) => s.nid[0] !== 'b').length : 0,
+        humans: net ? humans() : 0,
         board: board.map((s) => ({
           name: s.name, mass: Math.round(s.mass), me: s === player, human: s.nid[0] !== 'b',
         })),
