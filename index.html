@@ -40,7 +40,7 @@
       </header>
 
       <!-- src / alt は show('title') が直前に使ったサメで差し替える -->
-      <img id="title-shark" src="/img/sharks/cinema_side.png" alt="映画サメ"
+      <img id="title-shark" src="/img/sharks/cinema_side.png" alt="映画サメ" decoding="async"
            class="bob w-[250px] md:w-[360px] min-h-0 object-contain -my-1 drop-shadow-[8px_10px_0_rgba(45,45,45,.35)] pointer-events-none">
 
       <nav class="w-full max-w-[380px] flex flex-col gap-3">
@@ -242,6 +242,10 @@
   <!-- ================= ゲーム ================= -->
   <section id="s-game" class="screen">
     <canvas id="stage" class="absolute inset-0 w-full h-full cursor-crosshair"></canvas>
+
+    <!-- 画面端のビネット。canvas に毎フレーム塗ると全画面ぶんのラジアルグラデーションを
+         毎回評価することになり、それだけで 1フレーム 4.8ms 掛かっていた -->
+    <div id="vignette" class="absolute inset-0 pointer-events-none"></div>
 
     <!-- HUD -->
     <div class="absolute inset-0 pointer-events-none p-4 md:p-6 flex flex-col justify-between">

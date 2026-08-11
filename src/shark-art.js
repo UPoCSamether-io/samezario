@@ -6,33 +6,46 @@ const PAPER = '#f4efea';
 // ---------------------------------------------------------------- スプライト
 // サメごとの原画 /img/sharks/<id>.png を rope（胴体の点列）に沿って短冊状に貼る。
 const BAKE_H = 256;     // 焼き込み解像度（原寸 1686px は重すぎる）
+const PROBE_H = 256;    // 余白を探すときの高さ。原寸(4.26MP)を走査すると1枚 190ms 主スレッドが止まる
 const FAT = 1.12;       // 胴の最大半径 → スプライト高さの倍率。絵ごとに def.fat で上書きできる
 const ASPECT0 = 1.7;    // ロード前の仮の縦横比（実測 1.60〜1.91 の中間）
 
 const SPRITES = new Map(); // id -> {canvas, aspect}。値 null = ロード中
 
-/** 透明な余白を落として BAKE_H に縮小する。絵ごとに余白量も原寸も違うので必須 */
+/**
+ * 透明な余白を落として BAKE_H に縮小する。絵ごとに余白量も原寸も違うので必須。
+ * 余白の探索は PROBE_H まで縮めた版で行い、見つけた枠を原寸へ戻してから切る。
+ * 縮小で薄まった縁を落とさないよう、枠はプローブの1px分ふくらませる。
+ */
 function bake(img) {
+  const ph = Math.min(PROBE_H, img.height);
+  const pw = Math.max(1, Math.round((img.width / img.height) * ph));
   const s = document.createElement('canvas');
-  s.width = img.width; s.height = img.height;
+  s.width = pw; s.height = ph;
   const g = s.getContext('2d', { willReadFrequently: true });
-  g.drawImage(img, 0, 0);
-  const d = g.getImageData(0, 0, s.width, s.height).data;
-  let x0 = s.width, y0 = s.height, x1 = 0, y1 = 0;
-  for (let y = 0; y < s.height; y++) {
-    for (let x = 0; x < s.width; x++) {
-      if (d[(y * s.width + x) * 4 + 3] < 8) continue;
+  g.drawImage(img, 0, 0, pw, ph);
+  const d = g.getImageData(0, 0, pw, ph).data;
+  let x0 = pw, y0 = ph, x1 = -1, y1 = -1;
+  for (let y = 0; y < ph; y++) {
+    for (let x = 0; x < pw; x++) {
+      if (d[(y * pw + x) * 4 + 3] < 8) continue;
       if (x < x0) x0 = x;
       if (x > x1) x1 = x;
       if (y < y0) y0 = y;
       if (y > y1) y1 = y;
     }
   }
-  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  if (x1 < 0) { x0 = y0 = 0; x1 = pw - 1; y1 = ph - 1; }   // 全部透明。切らずにそのまま
+  const kx = img.width / pw, ky = img.height / ph;
+  const sx = Math.max(0, Math.floor((x0 - 1) * kx));
+  const sy = Math.max(0, Math.floor((y0 - 1) * ky));
+  const w = Math.min(img.width, Math.ceil((x1 + 2) * kx)) - sx;
+  const h = Math.min(img.height, Math.ceil((y1 + 2) * ky)) - sy;
+
   const c = document.createElement('canvas');
   c.height = BAKE_H;
   c.width = Math.round((w / h) * BAKE_H);
-  c.getContext('2d').drawImage(img, x0, y0, w, h, 0, 0, c.width, c.height);
+  c.getContext('2d').drawImage(img, sx, sy, w, h, 0, 0, c.width, c.height);
   return { canvas: c, aspect: c.width / c.height };
 }
 
@@ -42,7 +55,9 @@ function spriteOf(def) {
     SPRITES.set(def.id, null);
     const img = new Image();
     img.src = `/img/sharks/${def.id}.png`;
-    img.onload = () => SPRITES.set(def.id, bake(img));
+    // onload 直後に drawImage すると 4.26MP のデコードを主スレッドへ引き込む。
+    // decode() を待てば裏で終わっており、bake は縮小と走査だけになる
+    img.decode().then(() => SPRITES.set(def.id, bake(img)), () => {});
   }
   return SPRITES.get(def.id);
 }

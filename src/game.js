@@ -130,6 +130,14 @@ function stripeTile() {
 export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = false, net = null, name = 'YOU' }) {
   const ctx = canvas.getContext('2d');
   const mctx = mini?.getContext('2d');
+  // 表示サイズは毎フレーム読むと同期レイアウトを踏む（画面遷移中は1フレーム 36ms）。
+  // ResizeObserver なら変わったときだけ、レイアウト済みの値が降ってくる
+  const size = { cw: canvas.clientWidth, ch: canvas.clientHeight };
+  const ro = new ResizeObserver(([e]) => {
+    size.cw = Math.round(e.contentRect.width);
+    size.ch = Math.round(e.contentRect.height);
+  });
+  ro.observe(canvas);
   const W = map.size;              // 実効プレイ面積の平方根。餌の量などの基準
   const arena = makeArena(map);    // 実際の外周はエリアの輪郭
   const def = SHARKS.find((s) => s.id === sharkId) || SHARKS[0];
@@ -803,7 +811,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
 
   function draw(t) {
     const dpr = Math.min(2, devicePixelRatio || 1);
-    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const { cw, ch } = size;
     if (canvas.width !== cw * dpr || canvas.height !== ch * dpr) {
       canvas.width = cw * dpr; canvas.height = ch * dpr;
     }
@@ -914,12 +922,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    // 画面端のビネット
-    const vg = ctx.createRadialGradient(cw / 2, ch / 2, Math.min(cw, ch) * 0.42, cw / 2, ch / 2, Math.max(cw, ch) * 0.78);
-    vg.addColorStop(0, 'rgba(0,0,0,0)');
-    vg.addColorStop(1, 'rgba(11,32,34,.55)');
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, cw, ch);
+    // 画面端のビネットは #vignette（CSS）。ここで塗ると全画面のラジアルグラデーションを
+    // 毎フレーム評価することになり、それだけで 1フレーム 4.8ms 食っていた
 
     if (mctx) drawMini();
   }
@@ -952,8 +956,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // 視界枠
     mctx.strokeStyle = 'rgba(244,239,234,.6)';
     mctx.setLineDash([3 / k, 3 / k]);
-    const vw = canvas.clientWidth / cam.zoom;
-    const vh = canvas.clientHeight / cam.zoom;
+    const vw = size.cw / cam.zoom;
+    const vh = size.ch / cam.zoom;
     mctx.strokeRect(cam.x - vw / 2, cam.y - vh / 2, vw, vh);
     mctx.setLineDash([]);
     mctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1011,6 +1015,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   return {
     stop() {
       running = false; dead = true;
+      ro.disconnect();
       if (net) net.onmsg = null;
       window.removeEventListener('mousemove', onMove);
       canvas.removeEventListener('mousedown', onDown);

@@ -292,7 +292,7 @@ function renderDex() {
     card.innerHTML = `
       <div class="clapper-stripes h-5 border-b-4 border-ink w-full"></div>
       <div class="w-full aspect-square p-3" style="background:${d.color}22">
-        <img src="${portrait(d)}" alt="${esc(d.name)}" loading="lazy"
+        <img src="${portrait(d)}" alt="${esc(d.name)}" loading="lazy" decoding="async"
              class="w-full h-full object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.22)]">
       </div>
       <div class="w-full border-t-4 border-ink px-3 py-2.5">
@@ -311,7 +311,7 @@ function openDex(d) {
     <div class="grid gap-6 p-6 md:p-8 md:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
         <div>
           <div class="rounded-xl ink-3 p-4" style="background:${d.color}22">
-            <img src="${portrait(d)}" alt="${esc(d.name)}"
+            <img src="${portrait(d)}" alt="${esc(d.name)}" decoding="async"
                  class="w-full object-contain drop-shadow-[7px_8px_0_rgba(45,45,45,.22)]">
           </div>
           <div class="grid grid-cols-2 gap-2 mt-4">${statBars(d)}</div>
