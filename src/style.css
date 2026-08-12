@@ -476,6 +476,12 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #title-stage > header p { margin-top: 0.35rem; font-size: 10px; letter-spacing: 0.28em; }
   /* 立ち絵は縦基準で決める。幅基準だと横長画面ほど高さが溢れる */
   #title-stage > #title-shark { width: auto; height: clamp(80px, 34vh, 170px); margin: 0; }
+
+  /* 横画面のサメ選択。名前欄は一度入れたら変えないのに右カラムの半分を占め、
+     肝心の一覧が 83px しか残らない（中身は 370px = 5枚中1枚しか見えない）。
+     説明文を畳んで高さを一覧へ回す。文面は縦や広い画面では従来どおり出る */
+  #s-shark .name-pane { padding: 0.4rem 0.6rem; }
+  #s-shark .name-pane p { display: none; }
 }
 
 /* 図鑑のカード。auto-fill なので列数は幅任せ。下限を 150px まで緩めるのは
