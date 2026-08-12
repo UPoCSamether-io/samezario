@@ -252,10 +252,22 @@ function renderSharks() {
 const isDial = () => matchMedia('(max-height: 500px)').matches;
 const DIAL_COPIES = 3;   // 一周させるための面の数。中央の面を基準にする
 
-// スキル札のタップで効果説明を開閉する。中身は選択のたびに作り直されるので、
-// 個々の札ではなく親に一度だけ張る
-$('#preview-tag').addEventListener('click', (e) => {
-  if (e.target.closest('.tag-skill')) $('#preview-tag').classList.toggle('show-desc');
+// スキル札のタップで効果説明を開閉する。説明は札の上に浮かせる（札自体は
+// 大きくならない）ので、他所を触ったら閉じないと画面に居座ってしまう。
+// 中身は選択のたびに作り直されるため、個々の札ではなく document に一度だけ張る
+document.addEventListener('click', (e) => {
+  const tag = $('#preview-tag');
+  tag.classList.toggle('show-desc', !!e.target.closest('.tag-skill') && !tag.classList.contains('show-desc'));
+});
+
+// カチンコを鳴らす。押すたびに腕が一瞬持ち上がって閉じる。
+// クラスを付け直す前に一度レイアウトを読むのは、連打しても毎回頭から再生させるため
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.btn, #hud-skill');
+  if (!b || b.disabled) return;
+  b.classList.remove('clapping');
+  void b.offsetWidth;
+  b.classList.add('clapping');
 });
 
 /** 中央の面の i 番目を、ダイヤルの中央へ持ってくる */
@@ -334,10 +346,12 @@ function selectShark(d) {
       <div class="flex items-center gap-2 mb-1">
         ${icon(ICON[d.id], '!text-xl text-yellow')}
         <span class="font-display font-extrabold">${esc(d.skill.name)}</span>
-        <span class="ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
+        <span class="kbd-badge ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
       </div>
-      <p class="tag-desc text-[12px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
-      <div class="tag-cd font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
+      <div class="tag-more">
+        <p class="tag-desc text-[12px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
+        <div class="tag-cd font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
+      </div>
     </div>`;
 
   $('#stats').innerHTML = statBars(d);

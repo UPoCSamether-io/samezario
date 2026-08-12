@@ -261,6 +261,22 @@
 .btn:active { transform: translate(5px, 5px); box-shadow: 0 0 0 0 var(--color-ink); }
 .btn:active::before { transform: rotate(0deg); transition-duration: .06s; }
 
+/* 押したらカチンコが一瞬開いて閉じる。hover の持ち上げ（-2.5deg）は触れる端末には
+   無く、:active は閉じるだけなので、どの環境でも「鳴らす」動きはこれだけが担う。
+   アニメーションは通常の宣言より強いので、hover/active の transform には勝つ */
+@keyframes clap-arm {
+  0%   { transform: rotate(0deg); }
+  35%  { transform: rotate(-17deg); }
+  100% { transform: rotate(0deg); }
+}
+.btn.clapping::before { animation: clap-arm .26s cubic-bezier(.2,.9,.3,1.2); }
+/* HUD のスキルは腕が箱の内側にあるので、同じ動きを子の帯に掛ける */
+#hud-skill.clapping > .clapper-stripes { animation: clap-arm .26s cubic-bezier(.2,.9,.3,1.2); }
+@media (prefers-reduced-motion: reduce) {
+  .btn.clapping::before,
+  #hud-skill.clapping > .clapper-stripes { animation: none; }
+}
+
 /* Google's icon-font CSS is unlayered, so it beats Tailwind's layered
    utilities — size the icons here instead of with text-* classes. */
 /* 合字フォントなので、載るまでは中身の "movie" や "menu_book" がそのまま文字で出る。
@@ -391,8 +407,7 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #preview-tag > div { padding: 0.3rem 0.6rem; }
   #preview-tag .tag-en,
   #preview-tag .tag-motif,
-  #preview-tag .tag-desc,
-  #preview-tag .tag-cd { display: none; }
+  #preview-tag .tag-more { display: none; }
   #preview-tag .tag-name { font-size: 0.95rem; }
   #preview-tag .mb-1 { margin-bottom: 0; }
 
@@ -472,8 +487,20 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
     position: absolute; right: 0.5rem; bottom: 0.15rem;
     font-size: 8px; letter-spacing: .08em; color: rgb(163 240 240 / .7);
   }
-  #preview-tag.show-desc .tag-desc,
-  #preview-tag.show-desc .tag-cd { display: block; }
+  /* 説明は札の中に生やすと札が伸びて、隣の立ち絵まで押し下げてしまう。
+     札の上へ浮かせて、札そのものの寸法は開いても閉じても変えない。
+     上に開くのは、札が画面の下寄りに居て下に余白が無いから */
+  #preview-tag.show-desc .tag-more {
+    display: block;
+    position: absolute; left: 0; right: 0; bottom: calc(100% + 0.75rem);
+    z-index: 20;
+    background: var(--color-navy);
+    border: 3px solid var(--color-ink);
+    border-radius: 0.5rem;
+    box-shadow: 4px 4px 0 0 var(--color-ink);
+    padding: 0.5rem 0.7rem;
+    max-height: 40vh; overflow: auto;
+  }
   #preview-tag.show-desc .tag-skill::after { content: 'タップで閉じる'; }
   /* 一周させるので端が無く、スクロールバーは意味を持たない */
   #shark-list { scrollbar-width: none; }
@@ -530,8 +557,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    既定の配置はボタンが左下＝操舵と同じ側にあり、必ず喧嘩する。 */
 @media (pointer: coarse) {
   #hud-pause { display: grid; }
-  /* タッチでは押せないキーの名前を出しても場所を食うだけ */
-  .kbd-badge { display: none; }
+  /* タッチでは押せないキーの名前を出しても場所を食うだけ。
+     遊び方の本文は「— <kbd>E</kbd> / <kbd>Shift</kbd>」ごと .keys で包んであるので、
+     消しても見出しの直後に句点が続いて文が壊れない */
+  .kbd-badge,
+  .keys { display: none; }
 
   /* ミニマップは SIZE ゲージの下へ。左下のままだと、左親指で左下方向へ
      操舵している間ずっと自分の指で完全に隠れる。左下は丸ごと明け渡す。
