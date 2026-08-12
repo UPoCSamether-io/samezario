@@ -343,3 +343,15 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   background: radial-gradient(circle farthest-corner at 50% 50%,
     transparent 44%, rgb(11 32 34 / .35) 100%);
 }
+
+/* サメ選択を1列に畳んだときの並び。
+   DOM 順のまま畳むと一覧が最下段に来て、「一覧をタップ → 上へスクロールして
+   プレビューを確認 → また下へ」の往復が毎回発生する。
+   タップ対象(一覧)をその結果(プレビュー)の直下に置いて往復を消す。
+   決定ボタンはスクロール領域の外のツールバーに居るので、ここでは触らない */
+@media (width < 48rem) {
+  #shark-cols > .preview-pane { order: 1; min-height: 34vh; }
+  #shark-cols > #shark-list   { order: 2; overflow: visible; }
+  #shark-cols > #stats        { order: 3; }
+  #shark-cols > .name-pane    { order: 4; }   /* 一度入れたら変えないので最後 */
+}

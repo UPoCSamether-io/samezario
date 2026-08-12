@@ -43,7 +43,7 @@
 
   <!-- ================= タイトル ================= -->
   <section id="s-title" class="screen on">
-    <div class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[68px]">
+    <div class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[var(--bar-pad)]">
       <header class="text-center -rotate-1 relative">
         <!-- 看板が周囲の水を照らす分の光。文字と同じ琥珀色でないと濁る -->
         <div class="absolute -inset-12 bg-[#ff9f22]/25 blur-3xl rounded-full"></div>
@@ -95,18 +95,18 @@
 
   <!-- ================= ロケ地選択 ================= -->
   <section id="s-map" class="screen">
-    <div class="h-full flex flex-col pt-[68px] pb-[68px] px-6">
+    <div class="h-full flex flex-col py-[var(--bar-pad)] px-6">
       <!-- 左右を同じ幅(1fr)の列にして見出しを真ん中の列へ。flex + justify-between だと
            右ボタンの文字数（「サメ選択 →」/「このエリアはまだ遊べません」）で見出しがずれる -->
-      <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-4 py-3">
+      <div class="grid grid-cols-[1fr_auto_1fr] max-sm:grid-cols-2 items-center gap-4 py-3 max-md:py-2">
         <button class="btn !w-auto justify-self-start" data-go="title"><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2 font-bold text-sm">← タイトルへ戻る</div></button>
-        <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard -rotate-1">ロケ地を選択</h2>
+          <div class="px-5 py-2.5 font-bold text-sm">← タイトルへ戻る</div></button>
+        <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard -rotate-1 max-sm:hidden">ロケ地を選択</h2>
         <button class="btn !w-auto primary justify-self-end" id="map-next" disabled><div class="cap clapper-stripes"></div>
-          <div id="map-next-label" class="px-5 py-2 font-bold text-sm">サメ選択 →</div></button>
+          <div id="map-next-label" class="px-5 py-2.5 font-bold text-sm">サメ選択 →</div></button>
       </div>
 
-      <div class="flex-1 min-h-0 grid grid-cols-[1fr_340px] gap-5 pb-2">
+      <div class="flex-1 min-h-0 grid grid-cols-[1fr_340px] gap-5 max-md:grid-cols-1 max-md:grid-rows-[1fr_auto] max-md:gap-3 pb-2">
         <!-- 掲示板 -->
         <div class="relative paper-sheet ink-4 hard-lg rounded-sm -rotate-[0.6deg] p-4 flex items-center justify-center overflow-hidden">
           <div class="pin top-2 left-2"></div>
@@ -159,7 +159,7 @@
         </div>
 
         <!-- 情報パネル -->
-        <aside id="map-info" class="bg-navy text-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col">
+        <aside id="map-info" class="bg-navy text-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col max-md:max-h-[34vh]">
           <div class="cap clapper-stripes h-5 border-b-4 border-ink"></div>
           <div id="map-info-body" class="p-5 flex-1 overflow-auto thin-scroll"></div>
         </aside>
@@ -169,30 +169,30 @@
 
   <!-- ================= サメ選択 ================= -->
   <section id="s-shark" class="screen">
-    <div class="h-full flex flex-col pt-[68px] pb-[68px] px-6">
+    <div class="h-full flex flex-col py-[var(--bar-pad)] px-6">
       <div class="flex items-center justify-between gap-4 py-3">
         <button class="btn !w-auto" data-go="map"><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2 font-bold text-sm">← ロケ地</div></button>
+          <div class="px-5 py-2.5 font-bold text-sm">← ロケ地</div></button>
         <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard rotate-1">サメを選ぶ</h2>
         <button class="btn !w-auto primary" id="start-btn"><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2 font-extrabold text-sm">ACTION! →</div></button>
+          <div class="px-5 py-2.5 font-extrabold text-sm">ACTION! →</div></button>
       </div>
 
-      <div class="flex-1 min-h-0 grid grid-cols-[1fr_320px] gap-5 pb-2">
-        <div class="min-h-0 flex flex-col gap-4">
+      <div id="shark-cols" class="flex-1 min-h-0 grid grid-cols-[1fr_320px] gap-5 max-md:grid-cols-1 max-md:overflow-auto max-md:thin-scroll max-md:gap-3 pb-2">
+        <div class="min-h-0 flex flex-col gap-4 max-md:contents">
           <!-- プレビュー -->
-          <div class="relative flex-1 min-h-0 bg-teal-deep ink-4 hard-lg rounded-lg overflow-hidden">
+          <div class="preview-pane relative flex-1 min-h-0 bg-teal-deep ink-4 hard-lg rounded-lg overflow-hidden">
             <div class="absolute inset-0 opacity-40" style="background-image:radial-gradient(rgba(244,239,234,.25) 2px,transparent 2px);background-size:26px 26px"></div>
             <canvas id="preview" class="absolute inset-0 w-full h-full"></canvas>
             <div id="preview-tag" class="absolute top-4 left-4"></div>
           </div>
           <!-- ステータス -->
-          <div id="stats" class="grid grid-cols-4 gap-3 shrink-0"></div>
+          <div id="stats" class="grid grid-cols-4 max-sm:grid-cols-2 gap-3 max-sm:gap-2 shrink-0"></div>
         </div>
 
-        <div class="min-h-0 flex flex-col gap-2.5">
+        <div class="min-h-0 flex flex-col gap-2.5 max-md:contents">
           <!-- 名前。同じロケ地の部屋へ自動で入り、空いた席はボットが埋める -->
-          <div class="bg-navy text-paper ink-3 hard rounded-lg p-3 shrink-0">
+          <div class="name-pane bg-navy text-paper ink-3 hard rounded-lg p-3 shrink-0">
             <label class="block">
               <span class="font-mono text-[10px] tracking-[0.25em] text-mint">NAME</span>
               <input id="player-name" maxlength="10" placeholder="PLAYER"
@@ -210,19 +210,19 @@
 
   <!-- ================= 図鑑 ================= -->
   <section id="s-dex" class="screen">
-    <div class="h-full flex flex-col pt-[68px] pb-[68px] px-6">
+    <div class="h-full flex flex-col py-[var(--bar-pad)] px-6">
       <div class="flex items-center justify-between gap-4 py-3">
         <button class="btn !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2 font-bold text-sm">← タイトルへ戻る</div></button>
+          <div class="px-5 py-2.5 font-bold text-sm">← タイトルへ戻る</div></button>
         <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard -rotate-1">サメ図鑑</h2>
         <div class="w-[150px]"></div>
       </div>
-      <div id="dex-list" class="flex-1 min-h-0 overflow-auto thin-scroll grid gap-4 pb-4 content-start"
-           style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));grid-auto-rows:max-content"></div>
+      <div id="dex-list" class="flex-1 min-h-0 overflow-auto thin-scroll grid gap-4 max-sm:gap-2.5 pb-4 content-start"
+           style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));grid-auto-rows:max-content"></div>
     </div>
 
     <!-- カードをクリックしたときの詳細。中身は renderDex が流し込む -->
-    <div id="dex-detail" class="absolute inset-0 bg-navy/85 backdrop-blur-sm hidden place-items-center z-20 px-6 py-[68px]">
+    <div id="dex-detail" class="absolute inset-0 bg-navy/85 backdrop-blur-sm hidden place-items-center z-20 px-6 py-[var(--bar-pad)]">
       <div class="relative w-full max-w-[900px] max-h-full bg-paper ink-4 hard-lg rounded-xl overflow-hidden flex flex-col">
         <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
         <button id="dex-close" aria-label="閉じる"
@@ -237,10 +237,10 @@
 
   <!-- ================= 遊び方 ================= -->
   <section id="s-howto" class="screen">
-    <div class="h-full flex items-center justify-center px-6 py-[68px]">
+    <div class="h-full flex items-center justify-center px-6 py-[var(--bar-pad)]">
       <div class="w-full max-w-2xl bg-paper ink-4 hard-lg rounded-xl overflow-hidden max-h-full flex flex-col">
         <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
-        <div class="p-7 overflow-auto thin-scroll">
+        <div class="p-7 max-sm:p-4 overflow-auto thin-scroll">
           <h2 class="font-display font-extrabold text-3xl mb-5">遊び方</h2>
           <ol class="space-y-4 text-[15px] leading-relaxed">
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">1</span>
@@ -348,30 +348,31 @@
 
   <!-- ================= リザルト ================= -->
   <section id="s-result" class="screen">
-    <div class="h-full grid place-items-center px-6 py-[68px]">
-      <div class="w-full max-w-[620px] max-h-full overflow-auto thin-scroll">
-        <div class="bg-paper ink-4 hard-lg rounded-xl overflow-hidden">
-          <div class="clapper-stripes h-7 border-b-4 border-ink"></div>
-          <div class="p-7">
-            <div class="text-center mb-6">
-              <h2 class="font-display font-black text-5xl -rotate-2 inline-block bg-ink text-yellow px-8 py-2 rounded-lg hard neon">CUT!</h2>
-              <p id="res-sub" class="mt-3 font-bold text-sm text-ink/70"></p>
-            </div>
-            <div class="grid grid-cols-3 gap-3 mb-5" id="res-stats"></div>
-            <div class="bg-navy text-paper ink-3 rounded-lg p-4 mb-6 relative">
-              <span class="absolute -top-3 left-4 bg-yellow text-ink ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">CHOFU TIPS</span>
-              <p id="res-tip" class="text-sm leading-relaxed mt-1"></p>
-            </div>
-            <div class="flex flex-col gap-3">
-              <button class="btn primary" id="retry"><div class="cap clapper-stripes"></div>
-                <div class="py-2.5 font-display font-extrabold text-xl">もう一度撮る</div></button>
-              <div class="grid grid-cols-2 gap-3">
-                <button class="btn" data-go="map"><div class="cap clapper-stripes"></div>
-                  <div class="py-2 font-display font-bold text-sm">ロケ地を変える</div></button>
-                <button class="btn" data-go="title"><div class="cap clapper-stripes"></div>
-                  <div class="py-2 font-display font-bold text-sm">タイトルへ</div></button>
-              </div>
-            </div>
+    <div class="h-full grid place-items-center px-6 py-[var(--bar-pad)]">
+      <!-- 本文だけスクロールさせ、操作列は footer に固定する。
+           高さ 390px の横持ちだと、操作列がスクロールの中に居ると
+           「もう一度撮る」が折り返しの下に落ちて見つからない -->
+      <div class="w-full max-w-[620px] max-h-full bg-paper ink-4 hard-lg rounded-xl overflow-hidden flex flex-col">
+        <div class="clapper-stripes h-7 border-b-4 border-ink shrink-0"></div>
+        <div class="p-7 max-sm:p-4 min-h-0 overflow-auto thin-scroll">
+          <div class="text-center mb-6 max-sm:mb-4">
+            <h2 class="font-display font-black text-5xl max-sm:text-4xl -rotate-2 inline-block bg-ink text-yellow px-8 py-2 rounded-lg hard neon">CUT!</h2>
+            <p id="res-sub" class="mt-3 font-bold text-sm text-ink/70"></p>
+          </div>
+          <div class="grid grid-cols-3 gap-3 mb-5 max-sm:mb-3" id="res-stats"></div>
+          <div class="bg-navy text-paper ink-3 rounded-lg p-4 relative">
+            <span class="absolute -top-3 left-4 bg-yellow text-ink ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">CHOFU TIPS</span>
+            <p id="res-tip" class="text-sm leading-relaxed mt-1"></p>
+          </div>
+        </div>
+        <div class="p-7 pt-4 max-sm:p-4 max-sm:pt-3 shrink-0 flex flex-col gap-3">
+          <button class="btn primary" id="retry"><div class="cap clapper-stripes"></div>
+            <div class="py-2.5 font-display font-extrabold text-xl">もう一度撮る</div></button>
+          <div class="grid grid-cols-2 gap-3">
+            <button class="btn" data-go="map"><div class="cap clapper-stripes"></div>
+              <div class="py-2 font-display font-bold text-sm">ロケ地を変える</div></button>
+            <button class="btn" data-go="title"><div class="cap clapper-stripes"></div>
+              <div class="py-2 font-display font-bold text-sm">タイトルへ</div></button>
           </div>
         </div>
       </div>
