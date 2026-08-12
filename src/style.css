@@ -300,8 +300,17 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 .screen.on { display: block; animation: pop .28s cubic-bezier(.2,.9,.3,1.4); }
 @keyframes pop { from { opacity: 0; transform: scale(.97) } to { opacity: 1; transform: none } }
 /* touch-action:none で、操舵のドラッグがページのスクロールやピンチズーム、
-   ダブルタップズームに化けるのを止める */
-#s-game { z-index: 30; touch-action: none; }
+   ダブルタップズームに化けるのを止める。
+   長押しは別枠で、touch-action も pointerdown の preventDefault も効かない。
+   DASH を押しっぱなしにすると "DASH" や "SPACE" の文字が選択されて
+   コピーのポップアップが出るので、ゲーム画面ごと選択の対象から外す */
+#s-game {
+  z-index: 30;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
 
 /* Letterbox bars。画面の差し替えを隠す映写機のシャッターも兼ねる（#chrome.shut） */
 .letterbox {

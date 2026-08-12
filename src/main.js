@@ -115,7 +115,12 @@ function tickPreviews(t) {
     const dpr = Math.min(2, devicePixelRatio || 1);
     const w = c.clientWidth, h = c.clientHeight;
     if (!w || !h) continue;
-    if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+    // 高さも見ること。幅だけ比べていると、幅が変わらず高さだけ変わったとき
+    // （立ち絵の枠は横幅が親いっぱいで、縦だけレイアウトで動く）バッキングストアが
+    // 古い高さのまま残る。CSS 側の箱に合わせて引き伸ばされてサメが潰れ、
+    // さらに clearRect が w×h ぶんしか消さないので、はみ出した部分に前の絵が
+    // 焼き付いて消えなくなる（実機で「タスクを終了するまで直らない」状態）
+    if (c.width !== w * dpr || c.height !== h * dpr) { c.width = w * dpr; c.height = h * dpr; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     const len = Math.min(w * 0.86, h * 1.9, 420) * p.scale;
@@ -269,12 +274,15 @@ document.addEventListener('click', (e) => {
 
 // カチンコを鳴らす。押すたびに腕が一瞬持ち上がって閉じる。
 // クラスを付け直す前に一度レイアウトを読むのは、連打しても毎回頭から再生させるため
-document.addEventListener('click', (e) => {
-  const b = e.target.closest('.btn, #hud-skill');
+function clap(b) {
   if (!b || b.disabled) return;
   b.classList.remove('clapping');
   void b.offsetWidth;
   b.classList.add('clapping');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.btn, #hud-skill');
+  clap(b);
 });
 
 /** 中央の面の i 番目を、ダイヤルの中央へ持ってくる */
@@ -536,8 +544,21 @@ function paintHud(h) {
 
 $('#resume').onclick = () => ctl?.resume();
 $('#quit').onclick = () => { dropNet(); show('title'); };
-$('#hud-skill').onclick = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
 $('#retry').onclick = () => play();
+
+// ゲーム中の HUD は click ではなく pointerdown で拾う。
+// 操舵の指が画面に付いている間は指が2本になり、iOS はマルチタッチ中の
+// タップに click を合成しないので、click 頼みだと「動かしながらスキル」が
+// まったく効かなかった。ついでに押した瞬間に出るぶん反応も早くなる。
+// preventDefault は長押しの選択・コピーのポップアップ止め（CSS 側とセット）で、
+// click が消えるぶんカチンコはここから直接鳴らす
+const hudKey = (el, key, sound) => el.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (sound) clap(el);
+  window.dispatchEvent(new KeyboardEvent('keydown', { key }));
+});
+hudKey($('#hud-skill'), 'e', true);
+hudKey($('#hud-pause'), 'Escape', false);
 
 // DASH。game.js にボタンの存在を教えず、Space の経路をそのまま再利用する
 // （スキルが上でやっているのと同じ手）。game.js 側に状態が増えない。
@@ -548,8 +569,6 @@ const dashKey = (type) => window.dispatchEvent(new KeyboardEvent(type, { key: ' 
 hudDash.addEventListener('pointerdown', (e) => { e.preventDefault(); dashKey('keydown'); });
 hudDash.addEventListener('pointerup', () => dashKey('keyup'));
 hudDash.addEventListener('pointercancel', () => dashKey('keyup'));
-
-$('#hud-pause').onclick = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
 function showResult(r) {
   dropNet();                       // 死んだら部屋を出る（ホストなら次の人へ委譲される）
