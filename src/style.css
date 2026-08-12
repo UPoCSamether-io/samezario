@@ -212,7 +212,6 @@
   background: var(--color-paper);
   cursor: pointer;
 }
-.btn:active { transform: translate(5px, 5px); box-shadow: 0 0 0 0 var(--color-ink); }
 .btn[disabled] { cursor: not-allowed; filter: grayscale(.7) brightness(.9); opacity: .75; }
 .btn.primary { background: var(--color-yellow); }
 
@@ -245,7 +244,6 @@
 /* Shallow: the arm spans the whole button, so tip travel is width × sin(θ).
    2.5° keeps even the widest button (~620px) around a 27px lift; the short
    auto-width toolbar buttons (~160px) need more angle for the same travel. */
-.btn:active::before { transform: rotate(0deg); transition-duration: .06s; }
 .btn[disabled]::before { transform: none; }
 
 /* タッチ端末は最後に触った要素へ hover が張り付き、押したボタンが浮いたまま
@@ -257,6 +255,11 @@
   .btn[class*="w-auto"]:hover::before { transform: rotate(-7deg); }
   .btn[disabled]:hover::before { transform: none; }
 }
+
+/* :hover と :active は同じ詳細度（0,2,0）なので、どちらが勝つかは出現順で決まる。
+   :active を押下状態で有効にするには :hover ルールより後に書く必要がある。 */
+.btn:active { transform: translate(5px, 5px); box-shadow: 0 0 0 0 var(--color-ink); }
+.btn:active::before { transform: rotate(0deg); transition-duration: .06s; }
 
 /* Google's icon-font CSS is unlayered, so it beats Tailwind's layered
    utilities — size the icons here instead of with text-* classes. */
