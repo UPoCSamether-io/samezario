@@ -348,10 +348,14 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    DOM 順のまま畳むと一覧が最下段に来て、「一覧をタップ → 上へスクロールして
    プレビューを確認 → また下へ」の往復が毎回発生する。
    タップ対象(一覧)をその結果(プレビュー)の直下に置いて往復を消す。
-   決定ボタンはスクロール領域の外のツールバーに居るので、ここでは触らない */
+   決定ボタンはスクロール領域の外のツールバーに居るので、ここでは触らない。
+
+   `>` (子結合子) は使えない。display: contents は箱の生成を消すだけで
+   DOM ツリーは変えないので、この4要素は grid item にはなっても
+   #shark-cols の DOM 上の子にはならない。子孫結合子でないと当たらない */
 @media (width < 48rem) {
-  #shark-cols > .preview-pane { order: 1; min-height: 34vh; }
-  #shark-cols > #shark-list   { order: 2; overflow: visible; }
-  #shark-cols > #stats        { order: 3; }
-  #shark-cols > .name-pane    { order: 4; }   /* 一度入れたら変えないので最後 */
+  #shark-cols .preview-pane { order: 1; min-height: 34vh; }
+  #shark-cols #shark-list   { order: 2; overflow: visible; }
+  #shark-cols #stats        { order: 3; }
+  #shark-cols .name-pane    { order: 4; }   /* 一度入れたら変えないので最後 */
 }
