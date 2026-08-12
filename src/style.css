@@ -417,8 +417,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #hud-actions > *:active { opacity: 1; }
 }
 
-/* スマホ横。104px は縦の 27% を食うので落とす（44px の倍近くは残る） */
-@media (max-height: 500px) {
+/* スマホ横。104px は縦の 27% を食うので落とす（44px の倍近くは残る）。
+   coarse でゲートするのは、#hud-skill/#hud-dash が id セレクタで Tailwind の
+   w-[104px] (クラス) を特異度で必ず上回るため。ゲートしないと縦の短いマウス
+   ウィンドウでもボタンが縮み、デスクトップ据え置きの約束を破る */
+@media (pointer: coarse) and (max-height: 500px) {
   #hud-skill, #hud-dash { width: 84px; height: 84px; }
   #hud-actions > #hud-skill { margin-bottom: 2.5rem; }
 }
