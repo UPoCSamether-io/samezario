@@ -218,20 +218,27 @@ function renderSharks() {
     mainPreview = mountPreview($('#preview'), selShark);
     const list = $('#shark-list');
     list.innerHTML = '';
-    for (const d of SHARKS) {
-      const b = document.createElement('button');
-      b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
-        'transition-transform hover:-translate-x-1 active:translate-y-0.5';
-      b.innerHTML = `
-        <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper" style="background:${d.color}">
-          ${icon(ICON[d.id], '!text-[22px]')}
-        </span>
-        <span class="min-w-0">
-          <span class="tile-name block font-display font-extrabold text-base leading-tight">${esc(d.name)}</span>
-          <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${esc(d.tag)}</span>
-        </span>`;
-      b.onclick = () => selectShark(d);
-      list.appendChild(b);
+    // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ
+    // 黙って戻す（下の recenter）。1面だけだと端で必ず止まってしまう。
+    // ダイヤル以外では 0面と2面を CSS が隠すので、見た目は今までどおり5体
+    for (let copy = 0; copy < DIAL_COPIES; copy++) {
+      SHARKS.forEach((d, i) => {
+        const b = document.createElement('button');
+        b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
+          'transition-transform hover:-translate-x-1 active:translate-y-0.5';
+        b.dataset.i = i;
+        b.dataset.copy = copy;
+        b.innerHTML = `
+          <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper" style="background:${d.color}">
+            ${icon(ICON[d.id], '!text-[22px]')}
+          </span>
+          <span class="min-w-0">
+            <span class="tile-name block font-display font-extrabold text-base leading-tight">${esc(d.name)}</span>
+            <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${esc(d.tag)}</span>
+          </span>`;
+        b.onclick = () => selectShark(d);
+        list.appendChild(b);
+      });
     }
     mountDial(list);
   }
@@ -241,11 +248,49 @@ function renderSharks() {
 }
 
 // スマホ横画面のサメ選択はダイヤル。中央で止まったサメがそのまま選ばれる。
-const isDial = () => matchMedia('(pointer: coarse) and (max-height: 500px)').matches;
+// 条件は CSS のダイヤルブロックと一字一句そろえること（ずれると片方だけ効く）
+const isDial = () => matchMedia('(max-height: 500px)').matches;
+const DIAL_COPIES = 3;   // 一周させるための面の数。中央の面を基準にする
 
+// スキル札のタップで効果説明を開閉する。中身は選択のたびに作り直されるので、
+// 個々の札ではなく親に一度だけ張る
+$('#preview-tag').addEventListener('click', (e) => {
+  if (e.target.closest('.tag-skill')) $('#preview-tag').classList.toggle('show-desc');
+});
+
+/** 中央の面の i 番目を、ダイヤルの中央へ持ってくる */
 function centerTile(list, i, behavior = 'smooth') {
-  const el = list.children[i];
+  const el = list.children[SHARKS.length + i];
   if (el) el.scrollIntoView({ block: 'center', behavior });
+}
+
+/** いま中央に一番近いタイル */
+function centeredTile(list) {
+  const mid = list.getBoundingClientRect().top + list.clientHeight / 2;
+  let best = null, bestGap = Infinity;
+  for (const el of list.children) {
+    const r = el.getBoundingClientRect();
+    if (!r.height) continue;                       // 隠してある面は数えない
+    const gap = Math.abs(r.top + r.height / 2 - mid);
+    if (gap < bestGap) { bestGap = gap; best = el; }
+  }
+  return best;
+}
+
+/**
+ * 端まで来たら中央の面へ黙って引き戻す。面の高さちょうどだけ動かすので
+ * スナップ位置も選択も変わらず、利用者からは無限に回っているように見える。
+ * scroll-behavior を一時的に切るのは、この移動をアニメーションさせないため
+ */
+function recenter(list) {
+  const copy = list.scrollHeight / DIAL_COPIES;
+  const t = list.scrollTop;
+  const to = t < copy * 0.5 ? t + copy : t >= copy * 1.5 ? t - copy : null;
+  if (to === null) return;
+  const prev = list.style.scrollBehavior;
+  list.style.scrollBehavior = 'auto';
+  list.scrollTop = to;
+  list.style.scrollBehavior = prev;
 }
 
 function mountDial(list) {
@@ -256,14 +301,11 @@ function mountDial(list) {
     if (!isDial()) return;
     clearTimeout(idle);
     idle = setTimeout(() => {
-      const mid = list.getBoundingClientRect().top + list.clientHeight / 2;
-      let best = -1, bestGap = Infinity;
-      [...list.children].forEach((el, i) => {
-        const r = el.getBoundingClientRect();
-        const gap = Math.abs(r.top + r.height / 2 - mid);
-        if (gap < bestGap) { bestGap = gap; best = i; }
-      });
-      if (best >= 0 && SHARKS[best] !== selShark) selectShark(SHARKS[best]);
+      const el = centeredTile(list);
+      if (!el) return;
+      const d = SHARKS[+el.dataset.i];
+      if (d && d !== selShark) selectShark(d);
+      recenter(list);
     }, 140);
   }, { passive: true });
 }
@@ -271,8 +313,9 @@ function mountDial(list) {
 function selectShark(d) {
   selShark = d;
   if (mainPreview) mainPreview.def = d;
-  $$('.shark-tile').forEach((n, i) => {
-    const on = SHARKS[i] === d;
+  // 面を3つ持っているので、位置ではなく data-i で当てる
+  $$('.shark-tile').forEach((n) => {
+    const on = SHARKS[+n.dataset.i] === d;
     n.style.background = on ? '#f3b553' : '';
     n.style.boxShadow = on ? '6px 6px 0 0 #2d2d2d' : '';
     n.style.transform = on ? 'translateX(-6px)' : '';
@@ -287,7 +330,7 @@ function selectShark(d) {
       <div class="tag-name font-display font-extrabold text-2xl leading-tight">${esc(d.name)}</div>
       <div class="tag-motif text-[11px] text-ink/60">${esc(d.motif)}</div>
     </div>
-    <div class="flex-1 min-w-0 bg-navy text-paper ink-3 hard rounded-lg px-4 py-3 rotate-1">
+    <div class="tag-skill flex-1 min-w-0 bg-navy text-paper ink-3 hard rounded-lg px-4 py-3 rotate-1">
       <div class="flex items-center gap-2 mb-1">
         ${icon(ICON[d.id], '!text-xl text-yellow')}
         <span class="font-display font-extrabold">${esc(d.skill.name)}</span>

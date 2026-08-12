@@ -372,6 +372,13 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #shark-cols .name-pane    { order: 5; }   /* 一度入れたら変えないので最後 */
 }
 
+/* サメ選択の一覧は、ダイヤルを一周させるために同じ5体を3面ぶん持っている。
+   ダイヤルでない環境では複製が並んで見えるので、中央の面だけ出す。
+   このブロックが下のダイヤル側より前に居るのは意図的 —
+   特異度が同じなので、順序が入れ替わると隠す側が勝って一周できなくなる */
+#shark-list .shark-tile[data-copy="0"],
+#shark-list .shark-tile[data-copy="2"] { display: none; }
+
 /* 横画面では右カラムの固定幅（340/320px）が 667px の画面の半分を食う。
    縦に並べ替える余地が無いぶん、横の配分で詰める */
 @media (max-height: 500px) {
@@ -390,9 +397,13 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #preview-tag .mb-1 { margin-bottom: 0; }
 
   /* 縮尺は棒とラベルが固定 px なので、地図が小さいほど相対的に肥大して
-     エリアの上に乗る（実測 667x375 で縮尺の 18% が図形上、1920 では 0%）。
-     高さ 180px の地図では数字も読めないので、短い画面では出さない */
-  #map-scale { display: none; }
+     エリアの上に乗っていた（実測 667x375 で縮尺の 18% が図形上、1920 では 0%）。
+     消すのではなく、地図の枠の外（掲示板の余白）へ降ろして重なりを断つ。
+     幅は今までどおり板に対する % なので、縮尺の意味はずれない */
+  #map-scale { top: calc(100% + 1px); bottom: auto; }
+  #map-scale > div:first-child { height: 0.35rem; }
+  #map-scale > div:last-child { height: 0.7rem; font-size: 8px; }
+  #map-scale > div:last-child span { top: 0; }
 
   /* ---- サメ選択のダイヤル ----
      一覧をそのまま縮めると 1.8枚しか見えず、選ぶのにスクロールが要る。
@@ -437,8 +448,39 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   /* ステータスは左カラムの固定分。詰めたぶんがそのまま立ち絵の高さになる */
   #stats > div { padding: 0.25rem 0.5rem; }
   #stats > div > div:first-child { margin-bottom: 0.15rem; }
-  #shark-list::before,
-  #shark-list::after { content: ''; flex: 0 0 50%; margin-block: calc(var(--tile) / -2); }
+
+  /* ---- 図鑑の詳細 ----
+     2カラムになるのが md 以上なので、667 では画像が幅いっぱい（約600px）に
+     育ってスクロールが増えていた。短い画面でも2カラムにし、画像に上限を掛ける */
+  #dex-body > div {
+    grid-template-columns: minmax(0, 34%) minmax(0, 1fr);
+    gap: 0.9rem; padding: 0.75rem 1rem;
+  }
+  #dex-body img { max-height: 34vh; margin-inline: auto; }
+  /* 画像を詰めても右カラムのテキストが 493px 残る（表示領域 279px）。
+     行間と箱の余白がデスクトップ寸法のままなので、そこだけ寝かせる */
+  #dex-body p { margin-top: 0.6rem; line-height: 1.65; }
+  #dex-body .p-4 { padding: 0.6rem 0.75rem; }
+  #dex-body .mt-4 { margin-top: 0.6rem; }
+
+  /* ---- スキルの詳細をタップで開く ----
+     横画面では効果説明と CD を畳んでいる。読みたいときだけ開けるように、
+     スキル札そのものを押せるようにする（開閉は .show-desc で持つ） */
+  #preview-tag .tag-skill { cursor: pointer; position: relative; }
+  #preview-tag .tag-skill::after {
+    content: 'タップで詳細';
+    position: absolute; right: 0.5rem; bottom: 0.15rem;
+    font-size: 8px; letter-spacing: .08em; color: rgb(163 240 240 / .7);
+  }
+  #preview-tag.show-desc .tag-desc,
+  #preview-tag.show-desc .tag-cd { display: block; }
+  #preview-tag.show-desc .tag-skill::after { content: 'タップで閉じる'; }
+  /* 一周させるので端が無く、スクロールバーは意味を持たない */
+  #shark-list { scrollbar-width: none; }
+  #shark-list::-webkit-scrollbar { display: none; }
+  /* 複製した面もダイヤルでは出す（既定では下の方で隠してある） */
+  #shark-list .shark-tile[data-copy="0"],
+  #shark-list .shark-tile[data-copy="2"] { display: flex; }
   #shark-list .shark-tile {
     scroll-snap-align: center;
     flex: 0 0 auto;
@@ -536,6 +578,7 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 /* ロケ地のツールバー。ボタンの文言は解放状況で入れ替わるので、折り返すと
    ボタンが伸びてツールバーごと地図を押し下げる。行数を1に固定して高さを保つ */
 #map-next-label { white-space: nowrap; }
+
 
 /* ---- 横画面のタイトル ----
    縦積み（タイトル→立ち絵→ボタン3つ）は 419px 要るので、横持ちの 390px には
