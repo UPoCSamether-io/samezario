@@ -375,8 +375,12 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   }
 }
 
-/* 狭い画面。固定幅のままだと 300+250+ミニマップ150 が横に溢れる */
-@media (width < 40rem) {
+/* 横持ちスマホ。固定幅のままだと 300+250+ミニマップ150 が画面幅の半分を食う。
+   幅ではなく coarse+高さで見るのは、横持ちスマホが「幅広・縦短」だから。
+   667/844/932 はどれも 640px を超えるので、幅条件では一度も発動しない
+   （発動するのは縦持ちだけで、そこは回転ガードでゲーム自体が止まっている）。
+   実測 844x390: このルール無しだと leaderboard 250x181 + minimap 150x150 で幅の 50% */
+@media (pointer: coarse) and (max-height: 500px) {
   #hud-size { width: 46vw; min-width: 150px; }
   #hud-board { font-size: 11px; }
   #hud-board li:nth-child(n+4) { display: none; }   /* 上位3名だけ */
@@ -431,4 +435,15 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    「案内は出ているのに世界は動いている」または「横なのに止まる」になる */
 @media (orientation: portrait) and (pointer: coarse) {
   #rotate-hint { display: grid; }
+}
+
+/* 図鑑のカード。auto-fill なので列数は幅任せ。下限を 150px まで緩めるのは
+   狭い画面だけにする — カードは5枚しかないので、広い画面で下限を下げても
+   空トラックが増えてカードが縮むだけだった（実測 1920 で 220px → 156px） */
+#dex-list {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-auto-rows: max-content;
+}
+@media (width < 40rem) {
+  #dex-list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
