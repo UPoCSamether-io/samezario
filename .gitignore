@@ -21,3 +21,6 @@ yarn-error.log*
 .vscode/
 .idea/
 *.docx
+
+# Info & Private Knowledge
+docs/private/
