@@ -14,7 +14,10 @@
      Material Symbols は軸指定の形が違い、他と1リクエストに混ぜると空の CSS が返るので別のまま -->
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@600;800;900&family=M+PLUS+Rounded+1c:wght@800&family=Plus+Jakarta+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&text=%E3%82%B5%E3%83%A1%E3%82%B6%E3%83%AA%E3%82%AA&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,700,1,0&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<!-- アイコンだけ display=block。合字フォントに swap を使うと、読み込むまで
+     フォールバックで合字名（movie / menu_book …）がそのまま文字で出る。
+     block は載るまで不可視にするので、ラベル横の飾りとしては空白のほうが自然 -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,700,1,0&display=block" rel="stylesheet" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
@@ -49,9 +52,20 @@
         <p class="relative inline-block mt-3 font-mono font-bold tracking-[0.42em] text-mint bg-ink px-4 py-1 rounded border-2 border-paper text-sm md:text-base">SAMEZARIO</p>
       </header>
 
-      <!-- src / alt は show('title') が直前に使ったサメで差し替える -->
-      <img id="title-shark" src="/img/sharks/cinema_side.webp" alt="映画サメ" decoding="async"
+      <!-- src / alt は show('title') が直前に使ったサメで差し替える。
+           ただし main.js は defer なので初回描画には間に合わず、src を直書きすると
+           そのサメが 250ms ほど映ってから差し替わる。下の同期スクリプトで先に確定させる -->
+      <img id="title-shark" alt="" decoding="async"
            class="bob w-[250px] md:w-[360px] min-h-0 object-contain -my-1 drop-shadow-[8px_10px_0_rgba(45,45,45,.35)] pointer-events-none">
+      <script>
+        // パース中に同期で走るので、この img が初めて描かれる時にはもう正しいサメになっている。
+        // alt は main.js の paintTitleShark が名前を入れ直す。'cinema' は data.js の SHARKS[0]
+        try {
+          var s = JSON.parse(localStorage.getItem('samezario.save') || '{}').shark;
+        } catch (e) { }
+        document.getElementById('title-shark').src =
+          '/img/sharks/' + (s || 'cinema') + '_side.webp';
+      </script>
 
       <nav class="w-full max-w-[380px] flex flex-col gap-3">
         <button class="btn primary" data-go="map">
