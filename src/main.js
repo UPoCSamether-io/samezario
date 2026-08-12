@@ -141,6 +141,18 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 const svgEl = (tag, attrs) => Object.entries(attrs)
   .reduce((n, [k, v]) => (n.setAttribute(k, v), n), document.createElementNS(SVGNS, tag));
 
+/**
+ * 未解放エリアの色。CSS の grayscale(.62) brightness(.4) と同じ計算を色で行う。
+ * filter でやっていたが、WebKit は SVG 要素にショートハンドの filter 関数を
+ * 効かせないので iPhone では未解放エリアが明るいまま出ていた。
+ */
+function dimmed(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const luma = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  return `rgb(${c.map((v) => Math.round((v * 0.38 + luma * 0.62) * 0.4)).join(' ')})`;
+}
+
 function renderMaps() {
   const areas = $('#map-areas'), labels = $('#map-labels');
   areas.innerHTML = labels.innerHTML = '';
@@ -148,7 +160,7 @@ function renderMaps() {
     const open = isUnlocked(m);
     const p = svgEl('path', {
       class: 'map-area' + (open ? '' : ' locked'),
-      d: m.path, fill: m.color, tabindex: '0', role: 'radio',
+      d: m.path, fill: open ? m.color : dimmed(m.color), tabindex: '0', role: 'radio',
       'aria-label': `${m.name}${open ? '' : '（未解放）'}`,
     });
     // フォーカス＝選択。Tab で回すと情報パネルが追いかけるので、

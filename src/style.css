@@ -144,11 +144,13 @@
 }
 /* フォーカスは選択と同義なので #map-ring が兼ねる。既定の枠は bbox の四角が出て邪魔 */
 .map-area:focus { outline: none; }
-/* 未解放。彩度と明度を落として「まだ写っていないコマ」に見せる */
-.map-area.locked { filter: grayscale(.62) brightness(.4); }
+/* 未解放の暗さは fill そのものに焼き込む（main.js の dimmed）。
+   WebKit は SVG 要素に filter のショートハンド関数を効かせず、iPhone では
+   未解放エリアが明るいまま出ていた。filter は「効けば嬉しい」装飾（hover）
+   だけに使い、解放済みかどうかの区別のような意味のある差は色で持たせる */
 @media (hover: hover) {
   .map-area:hover { filter: brightness(1.13) saturate(1.08); }
-  .map-area.locked:hover { filter: grayscale(.62) brightness(.52); }
+  .map-area.locked:hover { filter: brightness(1.6); }
 }
 
 /* 選択リング。エリアの塗りより上の層に置く（同じ層だと隣のエリアの下に潜る） */
@@ -175,7 +177,7 @@
 .map-label.locked { fill: rgb(244 239 234 / .55); stroke-width: 4; }
 .map-lock {
   font-family: 'Material Symbols Rounded';
-  font-size: 30px;                /* .map-label と同じ viewBox 単位 */
+  font-size: 40px;                /* viewBox 単位。地図と一緒に伸び縮みする */
   text-anchor: middle;
   dominant-baseline: middle;
   fill: rgb(244 239 234 / .55);
@@ -430,6 +432,13 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #map-scale > div:first-child { height: 0.35rem; }
   #map-scale > div:last-child { height: 0.7rem; font-size: 8px; }
   #map-scale > div:last-child span { top: 0; }
+
+  /* エリア名は地図が小さいと図形からはみ出して読めない。名前は右の掲示板に
+     大きく出ているので地図からは落とし、代わりに鍵だけを大きく残す。
+     鍵の y はラベルの真下（+34）に置いてあるので、ラベルを消したぶん
+     図形の中心へ戻す。translate は viewBox 単位で効く */
+  .map-label { display: none; }
+  .map-lock { font-size: 84px; transform: translateY(-34px); }
 
   /* ---- サメ選択のダイヤル ----
      一覧をそのまま縮めると 1.8枚しか見えず、選ぶのにスクロールが要る。

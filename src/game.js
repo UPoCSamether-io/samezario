@@ -166,6 +166,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   const humans = () => sharks.filter((s) => s.nid[0] !== 'b').length;
   let rosterDirty = true;          // サメの顔ぶれが変わった → 次のスナップショットに名簿を載せる
   let nidSeq = 0, fSeq = 0;
+  // ホストから盤面が一度でも届いたか。届かないまま SOLO_WAIT 過ぎたら独りに切り替える
+  let gotBoard = false, soloTimer = null;
+  const SOLO_WAIT = 3000;
   const fAdd = [], fDel = [];      // 前回のスナップショット以降の餌の増減（差分で送る）
 
   // ---------- entities ----------
@@ -232,13 +235,43 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // attract ではカメラが追う主役もボット。死んだら別の個体に付け替える（下の die 参照）
   let player = makeShark(def, attract, attract ? pick(BOT_NAMES) : name, net?.id);
   sharks.push(player);
+  /** 空いた席をボットで埋める。何度呼んでも合計 BOT_COUNT+1 匹を超えない */
+  function fillBots() {
+    const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
+    for (let i = 0; sharks.length < BOT_COUNT + 1; i++) {
+      sharks.push(makeShark(pick(SHARKS), true, names[i % names.length]));
+    }
+  }
+
+  /**
+   * 通信が当てにならなくなったら独りの海として続ける。
+   * 盤面が空のまま来ることがある（下の見張り参照）ので、ボットと餌もここで補う。
+   * 補わないと「サメも餌も居ない海」になり、ゲームとして成立しない
+   */
+  function goSolo() {
+    net = null;
+    for (const o of sharks) {
+      if (o === player) continue;
+      o.remote = false;
+      o.isBot = true;
+    }
+    fillBots();
+    if (!food.length) spawnFood(Math.round((W * W) / 14000));
+  }
+
   // ゲストの盤面はホストから丸ごと届く（'full'）。自分でボットも餌も湧かせない
   if (authority()) {
-    const usedNames = [...BOT_NAMES].sort(() => Math.random() - 0.5);
-    for (let i = 0; i < BOT_COUNT; i++) {
-      sharks.push(makeShark(pick(SHARKS), true, usedNames[i % usedNames.length]));
-    }
+    fillBots();
     spawnFood(Math.round((W * W) / 14000));
+  } else {
+    // ただし 'full' が来ない事故がある。ホストのタブが裏に回ると rAF が止まり、
+    // 'peer' を処理できないので誰も盤面を送ってくれない（相手が端末を伏せただけで起きる）。
+    // 待ち続けるとボットも餌も居ない空の海で泳ぐことになるので、諦めて独りに切り替える
+    soloTimer = setTimeout(() => {
+      if (!running || gotBoard || authority()) return;
+      net?.close();
+      goSolo();
+    }, SOLO_WAIT);
   }
 
   // ---------- input ----------
@@ -368,6 +401,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
 
   // ---------- net: 受ける ----------
   function applySnap(m) {
+    gotBoard = true;
     const full = m.t === 'full';
     if (m.r) {
       const keep = new Set(m.r.map((e) => e[0]));
@@ -463,12 +497,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         if (!authority()) applySnap(m);
         break;
       case 'down':                                 // 回線が切れた。盤面を止めずボット部屋として続ける
-        net = null;
-        for (const o of sharks) {
-          if (o === player) continue;
-          o.remote = false;
-          o.isBot = true;
-        }
+        goSolo();
         break;
     }
   }
@@ -1070,6 +1099,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     stop() {
       running = false; dead = true;
       ro.disconnect();
+      clearTimeout(soloTimer);
       if (net) net.onmsg = null;
       window.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerdown', onDown);
