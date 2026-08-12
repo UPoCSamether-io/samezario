@@ -20,8 +20,22 @@
   --radius-xl: 1rem;
 }
 
+/* 上下のレターボックス。帯の高さと、それを避ける画面側の余白を1か所から配る。
+   以前は .letterbox の 3.5rem と各画面の py-[68px] が別々に書かれていて、
+   片方だけ変えると帯に文字が潜る状態だった。
+   スマホ横（高さ 390px 級）では 56px×2 が縦の 29% を食うので薄くする */
+:root {
+  --bar: 3.5rem;
+  --bar-pad: calc(var(--bar) + 12px);
+}
+@media (max-height: 500px) {
+  :root { --bar: 1.25rem; }
+}
+
 @layer base {
-  html, body, #app { height: 100%; }
+  /* 100dvh。モバイルはアドレスバーの伸縮で 100vh がビューポートより高くなり、
+     overflow:hidden と噛み合って下端が永久に見えなくなる */
+  html, body, #app { height: 100dvh; }
   body {
     margin: 0;
     font-family: var(--font-body);
@@ -128,12 +142,14 @@
   cursor: pointer;
   transition: filter .15s ease-out;
 }
-.map-area:hover { filter: brightness(1.13) saturate(1.08); }
 /* フォーカスは選択と同義なので #map-ring が兼ねる。既定の枠は bbox の四角が出て邪魔 */
 .map-area:focus { outline: none; }
 /* 未解放。彩度と明度を落として「まだ写っていないコマ」に見せる */
 .map-area.locked { filter: grayscale(.62) brightness(.4); }
-.map-area.locked:hover { filter: grayscale(.62) brightness(.52); }
+@media (hover: hover) {
+  .map-area:hover { filter: brightness(1.13) saturate(1.08); }
+  .map-area.locked:hover { filter: grayscale(.62) brightness(.52); }
+}
 
 /* 選択リング。エリアの塗りより上の層に置く（同じ層だと隣のエリアの下に潜る） */
 #map-ring {
@@ -196,10 +212,8 @@
   background: var(--color-paper);
   cursor: pointer;
 }
-.btn:hover { transform: translate(-1px, -1px); box-shadow: 7px 7px 0 0 var(--color-ink); }
 .btn:active { transform: translate(5px, 5px); box-shadow: 0 0 0 0 var(--color-ink); }
 .btn[disabled] { cursor: not-allowed; filter: grayscale(.7) brightness(.9); opacity: .75; }
-.btn[disabled]:hover { transform: none; box-shadow: 5px 5px 0 0 var(--color-ink); }
 .btn.primary { background: var(--color-yellow); }
 
 /* Clapperboard. The board's striped strip (.cap) is the top of the button;
@@ -231,10 +245,18 @@
 /* Shallow: the arm spans the whole button, so tip travel is width × sin(θ).
    2.5° keeps even the widest button (~620px) around a 27px lift; the short
    auto-width toolbar buttons (~160px) need more angle for the same travel. */
-.btn:hover::before { transform: rotate(-2.5deg); }
-.btn[class*="w-auto"]:hover::before { transform: rotate(-7deg); }
 .btn:active::before { transform: rotate(0deg); transition-duration: .06s; }
-.btn[disabled]::before, .btn[disabled]:hover::before { transform: none; }
+.btn[disabled]::before { transform: none; }
+
+/* タッチ端末は最後に触った要素へ hover が張り付き、押したボタンが浮いたまま
+   戻らない。hover を持つ環境にだけ出す */
+@media (hover: hover) {
+  .btn:hover { transform: translate(-1px, -1px); box-shadow: 7px 7px 0 0 var(--color-ink); }
+  .btn[disabled]:hover { transform: none; box-shadow: 5px 5px 0 0 var(--color-ink); }
+  .btn:hover::before { transform: rotate(-2.5deg); }
+  .btn[class*="w-auto"]:hover::before { transform: rotate(-7deg); }
+  .btn[disabled]:hover::before { transform: none; }
+}
 
 /* Google's icon-font CSS is unlayered, so it beats Tailwind's layered
    utilities — size the icons here instead of with text-* classes. */
@@ -256,11 +278,13 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 .screen { position: absolute; inset: 0; display: none; z-index: 10; }
 .screen.on { display: block; animation: pop .28s cubic-bezier(.2,.9,.3,1.4); }
 @keyframes pop { from { opacity: 0; transform: scale(.97) } to { opacity: 1; transform: none } }
-#s-game { z-index: 30; }
+/* touch-action:none で、操舵のドラッグがページのスクロールやピンチズーム、
+   ダブルタップズームに化けるのを止める */
+#s-game { z-index: 30; touch-action: none; }
 
 /* Letterbox bars。画面の差し替えを隠す映写機のシャッターも兼ねる（#chrome.shut） */
 .letterbox {
-  position: absolute; left: 0; right: 0; height: 3.5rem; z-index: 40;
+  position: absolute; left: 0; right: 0; height: var(--bar); z-index: 40;
   background: var(--color-ink); pointer-events: none;
   transition: height .19s cubic-bezier(.4, 0, .6, 1);
 }
