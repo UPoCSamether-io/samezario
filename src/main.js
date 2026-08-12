@@ -9,6 +9,12 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtTime = (s) => `${(s / 60) | 0}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
+// アイコンは合字なので、フォントが載るまで隠しておく（style.css の .material-symbols-rounded）。
+// 判定用の文字は合字を組む素の ASCII でないと unicode-range から外れて即 resolve してしまう。
+// 失敗しても finally で必ず出す。出ないアイコンより、崩れたアイコンのほうがまだ操作できる
+document.fonts.load("1.75rem 'Material Symbols Rounded'", 'movie')
+  .finally(() => document.documentElement.classList.add('icons-ready'));
+
 // スキルアイコン。絵文字はOSごとに絵柄と彩度が変わって版画調の絵作りから浮くので、
 // タイトル画面と同じ Material Symbols Rounded（FILL=1 / wght=700 の塗りつぶし）で統一する。
 const ICON = {
@@ -19,7 +25,7 @@ const ICON = {
   airport: 'rotate_right',   // 旋回飛行
 };
 const icon = (name, cls) => `<span class="material-symbols-rounded ${cls}" aria-hidden="true">${name}</span>`;
-const portrait = (d) => `/img/sharks/${d.id}_side.png`;   // 立ち絵（タイトルと図鑑で使う）
+const portrait = (d) => `/img/sharks/${d.id}_side.webp`;   // 立ち絵（タイトルと図鑑で使う）
 
 // ---------- セーブデータ ----------
 const SAVE = 'samezario.save';

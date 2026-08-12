@@ -238,7 +238,17 @@
 
 /* Google's icon-font CSS is unlayered, so it beats Tailwind's layered
    utilities — size the icons here instead of with text-* classes. */
-.material-symbols-rounded { font-size: 1.75rem; }
+/* 合字フォントなので、載るまでは中身の "movie" や "menu_book" がそのまま文字で出る。
+   display=block の不可視期間は3秒しかなく、実測ではアイコン woff2 の到着が 5.4 秒
+   （CSS 自体を遅延させているぶん鎖が長い）なので時間で待つと間に合わない。
+   フォントが確定するまで隠し、幅は 1 グリフ分に固定して合字名をはみ出させない。
+   JS が転けても .finally で必ず見える状態に戻す（最悪クリップされた1文字が出るだけ）。 */
+.material-symbols-rounded {
+  font-size: 1.75rem;
+  display: inline-block; width: 1em; overflow: hidden;
+  visibility: hidden;
+}
+html.icons-ready .material-symbols-rounded { visibility: visible; }
 
 /* Screens
    重なりは 背景(#backdrop の canvas) → 減光(1) → 画面(10) → グレイン(20)

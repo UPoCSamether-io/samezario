@@ -4,8 +4,9 @@ const INK = '#2d2d2d';
 const PAPER = '#f4efea';
 
 // ---------------------------------------------------------------- スプライト
-// サメごとの原画 /img/sharks/<id>.png を rope（胴体の点列）に沿って短冊状に貼る。
-const BAKE_H = 256;     // 焼き込み解像度（原寸 1686px は重すぎる）
+// サメごとの原画 /img/sharks/<id>.webp を rope（胴体の点列）に沿って短冊状に貼る。
+// 配信するのは art/sharks の原寸 2528x1686 を scripts/build-sprites.py で 512px へ落とした版。
+const BAKE_H = 256;     // 焼き込み解像度（配信元の 512px からさらに半分に落とす）
 const PROBE_H = 256;    // 余白を探すときの高さ。原寸(4.26MP)を走査すると1枚 190ms 主スレッドが止まる
 const FAT = 1.12;       // 胴の最大半径 → スプライト高さの倍率。絵ごとに def.fat で上書きできる
 const ASPECT0 = 1.7;    // ロード前の仮の縦横比（実測 1.60〜1.91 の中間）
@@ -54,7 +55,7 @@ function spriteOf(def) {
   if (!SPRITES.has(def.id)) {
     SPRITES.set(def.id, null);
     const img = new Image();
-    img.src = `/img/sharks/${def.id}.png`;
+    img.src = `/img/sharks/${def.id}.webp`;
     // onload 直後に drawImage すると 4.26MP のデコードを主スレッドへ引き込む。
     // decode() を待てば裏で終わっており、bake は縮小と走査だけになる
     img.decode().then(() => SPRITES.set(def.id, bake(img)), () => {});
