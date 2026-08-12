@@ -13,7 +13,11 @@ const CAP = 8;                 // 1部屋の人数上限。残りはボットが
 const rooms = new Map();       // roomId("chofu#1") -> { members:Set<ws>, host:ws }
 let seq = 0;
 
-const send = (ws, m) => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
+const send = (ws, m) => {
+  // 100秒分も滞留しているならその線は読まれていない。溜め続けるとヒープが持たない
+  if (ws.bufferedAmount > 1 << 20) return ws.terminate();
+  if (ws.readyState === 1) ws.send(JSON.stringify(m));
+};
 const clean = (s) => String(s ?? '').replace(/[\p{C}]/gu, '').trim().slice(0, 10) || 'PLAYER';
 
 /** 同じマップで空きのある部屋へ。無ければ作る */
@@ -35,7 +39,9 @@ function joinRoom(ws, map) {
 }
 
 function wire(ws) {
+  ws.seen = Date.now();
   ws.on('message', (raw) => {
+    ws.seen = Date.now();
     let m;
     try { m = JSON.parse(raw); } catch { return; }
     if (!m || typeof m.t !== 'string') return;
@@ -83,11 +89,27 @@ function wire(ws) {
 
 /** 既存の http サーバ（vite dev / 本番）に /ws だけ相乗りさせる */
 export function attach(server) {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 1 << 20 });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: 1 << 20,
+    // スナップショットは同じ形の数字が並ぶので、繰り越し辞書がよく効く（実測 0.4 倍）。
+    // Render の帯域が月5GBしかないので、CPU を少し払って通信量を買う
+    perMessageDeflate: { zlibDeflateOptions: { level: 3 }, threshold: 256 },
+  });
   server.on('upgrade', (req, socket, head) => {
     if (new URL(req.url, 'http://x').pathname !== '/ws') return;   // vite の HMR は素通し
     wss.handleUpgrade(req, socket, head, wire);
   });
+
+  // FIN の来ない線（回線断・スリープ）は readyState 1 のまま永久に残る。放っておくと
+  // ホストが死んでも委譲が走らず部屋が丸ごと凍り、ゲストなら送信分がヒープに溜まり続ける。
+  // ここでは ping を撃たず「無言」だけを見る —— 生きている側は必ず 15Hz 以上で何か送ってくるので、
+  // 黙った線は落ちたか、裏に回って rAF が止まったか。どちらも部屋から外すのが正しい。
+  const dead = Number(process.env.WS_DEAD_MS) || 30_000;
+  const sweep = setInterval(() => {
+    for (const ws of wss.clients) if (Date.now() - ws.seen > dead) ws.terminate();
+  }, Math.min(10_000, dead));
+  sweep.unref();   // これが起きているだけでプロセスが終わらなくなるのを防ぐ
   return wss;
 }
 

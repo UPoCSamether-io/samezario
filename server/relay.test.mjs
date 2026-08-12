@@ -8,7 +8,7 @@ import { attach } from './index.mjs';
 const http = createServer();
 attach(http);
 await new Promise((r) => http.listen(0, r));
-const url = `ws://localhost:${http.address().port}/ws`;
+let url = `ws://localhost:${http.address().port}/ws`;
 
 /** 接続して join し、hello を待つ。以降のメッセージは inbox に溜める */
 function client(name, map = 'chofu') {
@@ -76,4 +76,29 @@ assert.deepEqual(take(b), [], '部屋をまたいで漏れない');
 
 b.ws.close(); c.ws.close(); d.ws.close();
 http.close();
+
+// 9. 黙った線は切られ、ホストなら委譲が走る。
+//    ここだけ寿命を 300ms に縮めた別サーバでやる（上のクライアントは settle 中ずっと黙っているので巻き込まれる）
+process.env.WS_DEAD_MS = '300';
+const http2 = createServer();
+attach(http2);
+await new Promise((r) => http2.listen(0, r));
+url = `ws://localhost:${http2.address().port}/ws`;
+
+const g = client('G'), h = client('H');
+await settle();
+assert.equal(g.hello.host, true, 'G がホスト');
+take(g); take(h);
+
+// G は黙ったまま（＝FIN の来ない落ち方）。H だけ喋り続ける
+const beat = setInterval(() => h.ws.send(JSON.stringify({ t: 'in', a: 0, b: 0 })), 50);
+await new Promise((r) => setTimeout(r, 900));
+clearInterval(beat);
+
+const hMsgs = take(h);
+assert.ok(hMsgs.some((m) => m.t === 'host'), '黙ったホストは切られ、H が昇格');
+assert.ok(hMsgs.some((m) => m.t === 'bye' && m.id === g.hello.id));
+assert.equal(g.ws.readyState, 3, 'G の線は閉じられている');
+
+h.ws.close(); http2.close();
 console.log('relay ok');
