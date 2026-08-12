@@ -371,26 +371,36 @@ let net = null;
 let myName = 'YOU';   // リーダーボードに自分の行を足すときに使う
 const dropNet = () => { net?.close(); net = null; };
 
+// 二重起動よけ。play() は connect() を最大 2.5 秒待つので、その間に
+// もう一度押されると startGame が二重に走り、前の回のリスナと rAF ループが
+// 取り残されたまま回り続ける。#start-btn の disabled だけでは #retry を塞げない
+let starting = false;
 async function play() {
-  save.shark = selShark.id; save.name = playerName(); persist();
-  dropNet();
-  $('#start-btn').disabled = true;
-  // 繋がらなければ黙ってボット部屋。ここで手を止める理由が無い
-  try { net = await connect({ map: selMap.id, shark: selShark.id, name: save.name }); }
-  catch { net = null; }
-  $('#start-btn').disabled = false;
-  show('game');
-  pausePanel.style.display = 'none';
-  $('#hud-online').classList.toggle('hidden', !net);
-  $('#hud-skill-icon').textContent = ICON[selShark.id];
-  $('#hud-skill-name').textContent = selShark.skill.name;
-  myName = net ? save.name : 'YOU';
-  ctl = startGame({
-    canvas: stage, mini, sharkId: selShark.id, map: selMap,
-    net, name: myName,
-    onHud: paintHud,
-    onEnd: showResult,
-  });
+  if (starting) return;
+  starting = true;
+  try {
+    save.shark = selShark.id; save.name = playerName(); persist();
+    dropNet();
+    $('#start-btn').disabled = true;
+    // 繋がらなければ黙ってボット部屋。ここで手を止める理由が無い
+    try { net = await connect({ map: selMap.id, shark: selShark.id, name: save.name }); }
+    catch { net = null; }
+    $('#start-btn').disabled = false;
+    show('game');
+    pausePanel.style.display = 'none';
+    $('#hud-online').classList.toggle('hidden', !net);
+    $('#hud-skill-icon').textContent = ICON[selShark.id];
+    $('#hud-skill-name').textContent = selShark.skill.name;
+    myName = net ? save.name : 'YOU';
+    ctl = startGame({
+      canvas: stage, mini, sharkId: selShark.id, map: selMap,
+      net, name: myName,
+      onHud: paintHud,
+      onEnd: showResult,
+    });
+  } finally {
+    starting = false;
+  }
 }
 
 function paintHud(h) {

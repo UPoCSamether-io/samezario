@@ -241,13 +241,13 @@
   transform-origin: 8px bottom;
   transition: transform .2s cubic-bezier(.2,.9,.3,1.4);
 }
-/* Shallow: the arm spans the whole button, so tip travel is width × sin(θ).
-   2.5° keeps even the widest button (~620px) around a 27px lift; the short
-   auto-width toolbar buttons (~160px) need more angle for the same travel. */
 .btn[disabled]::before { transform: none; }
 
 /* タッチ端末は最後に触った要素へ hover が張り付き、押したボタンが浮いたまま
    戻らない。hover を持つ環境にだけ出す */
+/* Shallow: the arm spans the whole button, so tip travel is width × sin(θ).
+   2.5° keeps even the widest button (~620px) around a 27px lift; the short
+   auto-width toolbar buttons (~160px) need more angle for the same travel. */
 @media (hover: hover) {
   .btn:hover { transform: translate(-1px, -1px); box-shadow: 7px 7px 0 0 var(--color-ink); }
   .btn[disabled]:hover { transform: none; box-shadow: 5px 5px 0 0 var(--color-ink); }
@@ -383,8 +383,16 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 @media (pointer: coarse) and (max-height: 500px) {
   #hud-size { width: 46vw; min-width: 150px; }
   #hud-board { font-size: 11px; }
-  #hud-board li:nth-child(n+4) { display: none; }   /* 上位3名だけ */
+  /* 上位3名だけ。圏外のとき末尾に足される自分の行も一緒に消えるが、順位は #hud-rank に出る */
+  #hud-board li:nth-child(n+4) { display: none; }
   #mini { width: 96px; height: 96px; }
+
+  /* 横持ちスマホは幅が 768px を超えるので上の 1.5rem を拾ってしまう。
+     狭い画面が欲しいのではなく「coarse かつ縦が短い」ときに詰めたい */
+  #hud {
+    padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+             max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  }
 }
 
 /* ---- タッチ端末の HUD 組み替え ----
