@@ -157,7 +157,7 @@
                  幅が先に詰まる。つまり表示幅 = #map-board の幅で、% がそのまま使える。
                  注: このイラストは調布市の正確な輪郭ではない（描かれた形の縦横比 1.13 に対し
                  実際は約1.8で南北に伸びている）。東西・南北のどちらにも寄せない面積基準。 -->
-            <div class="absolute left-[4%] bottom-[5%] w-[26.29%] pointer-events-none select-none">
+            <div id="map-scale" class="absolute left-[4%] bottom-[5%] w-[26.29%] pointer-events-none select-none">
               <div class="flex h-2.5 ink-2 bg-paper">
                 <div class="w-1/2 bg-ink"></div><div class="w-1/2"></div>
               </div>
@@ -199,8 +199,9 @@
           <div class="preview-pane relative flex-1 min-h-0 bg-teal-deep ink-4 hard-lg rounded-lg overflow-hidden">
             <div class="absolute inset-0 opacity-40" style="background-image:radial-gradient(rgba(244,239,234,.25) 2px,transparent 2px);background-size:26px 26px"></div>
             <canvas id="preview" class="absolute inset-0 w-full h-full"></canvas>
-            <div id="preview-tag" class="absolute top-4 left-4"></div>
           </div>
+          <!-- 名前とスキル。canvas の上に重ねると立ち絵が隠れるので外に出す -->
+          <div id="preview-tag" class="shrink-0 flex items-stretch gap-3"></div>
           <!-- ステータス -->
           <div id="stats" class="grid grid-cols-4 max-sm:grid-cols-2 gap-3 max-sm:gap-2 shrink-0"></div>
         </div>

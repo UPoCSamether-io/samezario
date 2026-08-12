@@ -171,8 +171,11 @@ function selectMap(m) {
   // 選択リングは別レイヤ。隣のエリアの下に潜らせないため、塗りより上に重ねて描く
   $('#map-ring').setAttribute('d', m.path);
   $('#map-next').disabled = !open;
-  // 押せない理由をボタン自身に出す。ラベルが「サメ選択 →」のままだと袋小路に見える
-  $('#map-next-label').textContent = open ? 'サメ選択 →' : 'このエリアはまだ遊べません';
+  // 押せない理由をボタン自身に出す。ラベルが「サメ選択 →」のままだと袋小路に見える。
+  // 長い文言は折り返してボタンが伸び、ツールバーごと下の地図を押し下げていた
+  // （実測 667x375 で3行・56→76px・地図が 20px 縮んでずれる）。
+  // 短くしたうえで style.css 側で nowrap にし、行数を常に1に固定する
+  $('#map-next-label').textContent = open ? 'サメ選択 →' : 'まだ遊べません';
   $('#map-info-body').innerHTML = `
     <div class="font-mono text-[10px] tracking-[0.3em] text-mint mb-1">${esc(m.en)}</div>
     <h3 class="font-display font-extrabold text-2xl mb-1 leading-tight">${esc(m.name)}</h3>
@@ -220,18 +223,49 @@ function renderSharks() {
       b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
         'transition-transform hover:-translate-x-1 active:translate-y-0.5';
       b.innerHTML = `
-        <span class="w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper" style="background:${d.color}">
+        <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper" style="background:${d.color}">
           ${icon(ICON[d.id], '!text-[22px]')}
         </span>
         <span class="min-w-0">
-          <span class="block font-display font-extrabold text-base leading-tight">${esc(d.name)}</span>
-          <span class="block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${esc(d.tag)}</span>
+          <span class="tile-name block font-display font-extrabold text-base leading-tight">${esc(d.name)}</span>
+          <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${esc(d.tag)}</span>
         </span>`;
       b.onclick = () => selectShark(d);
       list.appendChild(b);
     }
+    mountDial(list);
   }
   selectShark(selShark);
+  // ダイヤルでは選択中が中央に居ないと辻褄が合わないので、開くたびに寄せ直す
+  if (isDial()) centerTile($('#shark-list'), SHARKS.indexOf(selShark), 'auto');
+}
+
+// スマホ横画面のサメ選択はダイヤル。中央で止まったサメがそのまま選ばれる。
+const isDial = () => matchMedia('(pointer: coarse) and (max-height: 500px)').matches;
+
+function centerTile(list, i, behavior = 'smooth') {
+  const el = list.children[i];
+  if (el) el.scrollIntoView({ block: 'center', behavior });
+}
+
+function mountDial(list) {
+  // scrollend はまだ全ブラウザに無いので、止まったことは時間で見る。
+  // スナップのアニメーション中に拾うと1つ手前で確定してしまうため少し待つ
+  let idle;
+  list.addEventListener('scroll', () => {
+    if (!isDial()) return;
+    clearTimeout(idle);
+    idle = setTimeout(() => {
+      const mid = list.getBoundingClientRect().top + list.clientHeight / 2;
+      let best = -1, bestGap = Infinity;
+      [...list.children].forEach((el, i) => {
+        const r = el.getBoundingClientRect();
+        const gap = Math.abs(r.top + r.height / 2 - mid);
+        if (gap < bestGap) { bestGap = gap; best = i; }
+      });
+      if (best >= 0 && SHARKS[best] !== selShark) selectShark(SHARKS[best]);
+    }, 140);
+  }, { passive: true });
 }
 
 function selectShark(d) {
@@ -242,15 +276,18 @@ function selectShark(d) {
     n.style.background = on ? '#f3b553' : '';
     n.style.boxShadow = on ? '6px 6px 0 0 #2d2d2d' : '';
     n.style.transform = on ? 'translateX(-6px)' : '';
+    // ダイヤル表示の「選択中」はクラスで持つ。inline の transform とは別物で、
+    // 未選択側を引っ込める見せ方は style.css が受け持つ
+    n.classList.toggle('is-sel', on);
   });
 
   $('#preview-tag').innerHTML = `
-    <div class="bg-paper ink-3 hard rounded-lg px-4 py-2 -rotate-1">
+    <div class="shrink-0 bg-paper ink-3 hard rounded-lg px-4 py-2 -rotate-1">
       <div class="tag-en font-mono text-[10px] tracking-[0.3em] text-ink/55">${esc(d.en)}</div>
       <div class="tag-name font-display font-extrabold text-2xl leading-tight">${esc(d.name)}</div>
       <div class="tag-motif text-[11px] text-ink/60">${esc(d.motif)}</div>
     </div>
-    <div class="mt-3 max-w-[300px] bg-navy text-paper ink-3 hard rounded-lg px-4 py-3 rotate-1">
+    <div class="flex-1 min-w-0 bg-navy text-paper ink-3 hard rounded-lg px-4 py-3 rotate-1">
       <div class="flex items-center gap-2 mb-1">
         ${icon(ICON[d.id], '!text-xl text-yellow')}
         <span class="font-display font-extrabold">${esc(d.skill.name)}</span>
@@ -298,12 +335,12 @@ function renderDex() {
     card.className = 'bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col text-left ' +
       'transition-transform hover:-translate-y-1 active:translate-y-0.5';
     card.innerHTML = `
-      <div class="clapper-stripes h-5 border-b-4 border-ink w-full"></div>
-      <div class="w-full aspect-square p-3" style="background:${d.color}22">
+      <div class="dex-cap clapper-stripes h-5 border-b-4 border-ink w-full"></div>
+      <div class="dex-thumb w-full aspect-square p-3" style="background:${d.color}22">
         <img src="${portrait(d)}" alt="${esc(d.name)}" loading="lazy" decoding="async"
              class="w-full h-full object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.22)]">
       </div>
-      <div class="w-full border-t-4 border-ink px-3 py-2.5">
+      <div class="dex-name w-full border-t-4 border-ink px-3 py-2.5">
         <h3 class="font-display font-extrabold text-lg leading-tight">${esc(d.name)}</h3>
       </div>`;
     card.onclick = () => openDex(d);
