@@ -767,7 +767,13 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
 
     // カメラ
     const pr = radiusOf(player.mass);
-    const wantZoom = clamp(64 / (44 + pr), 0.34, 1.05);
+    // 画面が狭いほど引いて、見えるワールド幅を 1280px 相当に揃える。
+    // 見える幅 = cw / (base * fit) = cw / (base * cw/1280) = 1280/base で画面幅が消える。
+    // これが無いとスマホと PC で視界がダブルスコア違い、同じ部屋に混ざったとき
+    // そのまま不利になる。0.62 で下げ止めるのは、これ以上引くと自分の頭が
+    // 小さくなりすぎて見えなくなるため（実機で詰める調整つまみ）
+    const fit = clamp(size.cw / 1280, 0.62, 1);
+    const wantZoom = clamp(64 / (44 + pr), 0.34, 1.05) * fit;
     cam.zoom += (wantZoom - cam.zoom) * Math.min(1, dt * 2.2);
     if (player.alive) {
       cam.x += (player.x - cam.x) * Math.min(1, dt * 9);
