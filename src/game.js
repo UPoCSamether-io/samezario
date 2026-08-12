@@ -300,7 +300,13 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // これは blur や Esc とまったく同じ既存の挙動で、ここだけ特別扱いはしない
   const portraitMQ = matchMedia('(orientation: portrait) and (pointer: coarse)');
   const onPortrait = (e) => { if (e.matches) setPaused(true); };
-  if (!attract) portraitMQ.addEventListener('change', onPortrait);
+  if (!attract) {
+    portraitMQ.addEventListener('change', onPortrait);
+    // change は「状態が変わった瞬間」にしか飛ばない。メニューは縦でも遊べるので、
+    // 縦のまま ACTION! を押すと案内だけ出て世界は動き続ける（実測: 1.5秒で mass 38→55）。
+    // 開始時の状態を自分で一度読む必要がある
+    if (portraitMQ.matches) setPaused(true);
+  }
 
   // ---------- skills ----------
   function useSkill(s) {
