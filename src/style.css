@@ -435,10 +435,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 
   /* エリア名は地図が小さいと図形からはみ出して読めない。名前は右の掲示板に
      大きく出ているので地図からは落とし、代わりに鍵だけを大きく残す。
-     鍵の y はラベルの真下（+34）に置いてあるので、ラベルを消したぶん
-     図形の中心へ戻す。translate は viewBox 単位で効く */
+     鍵は重心の下（main.js の LOCK_DY）に置いてあるので、名前を消したぶん
+     重心そのものへ戻す。y 属性を直接動かす — SVG 要素への CSS transform は
+     ブラウザによって transform-box の解釈が割れるので、位置合わせには使わない */
   .map-label { display: none; }
-  .map-lock { font-size: 84px; transform: translateY(-34px); }
+  .map-lock { font-size: 84px; }
 
   /* ---- サメ選択のダイヤル ----
      一覧をそのまま縮めると 1.8枚しか見えず、選ぶのにスクロールが要る。

@@ -153,6 +153,40 @@ function dimmed(hex) {
   return `rgb(${c.map((v) => Math.round((v * 0.38 + luma * 0.62) * 0.4)).join(' ')})`;
 }
 
+/**
+ * エリアの重心（面積加重）。輪郭を等間隔に拾って多角形として計算する。
+ * data.js の label は「文字を置くために手で決めた点」で図形の中心ではない。
+ * 名前を出している間は文字の据わりが良ければ済むが、小さい画面で名前を消して
+ * 鍵だけ残すと中心から外れているのがそのまま見える（実測: 多摩川で x に 73、
+ * y に 58 単位。図形の幅の2割近く）。名前も鍵もここを基準に置き直す
+ */
+function centroidOf(pathEl) {
+  const n = 256, len = pathEl.getTotalLength();
+  let a2 = 0, cx = 0, cy = 0, prev = pathEl.getPointAtLength(0);
+  for (let i = 1; i <= n; i++) {
+    const p = pathEl.getPointAtLength((i / n) * len);
+    const f = prev.x * p.y - p.x * prev.y;
+    a2 += f; cx += (prev.x + p.x) * f; cy += (prev.y + p.y) * f;
+    prev = p;
+  }
+  // 面積が 0（＝退化した輪郭）のときだけ bbox の中心へ逃がす
+  if (!a2) { const b = pathEl.getBBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }
+  return { x: cx / (3 * a2), y: cy / (3 * a2) };
+}
+
+// 名前と鍵は重心を挟んで上下に置く。名前が消える画面では鍵を重心そのものへ寄せる
+const LABEL_DY = -22, LOCK_DY = 26;
+// 条件は style.css の .map-label を消すブロックと一字一句そろえること
+const compactMap = matchMedia('(max-height: 500px)');
+
+/** 鍵の高さを決める。名前が出ているときはその下、消えているときは重心の上 */
+function placeLocks() {
+  $$('.map-lock').forEach((lk) => {
+    lk.setAttribute('y', +lk.dataset.cy + (compactMap.matches ? 0 : LOCK_DY));
+  });
+}
+compactMap.addEventListener('change', placeLocks);
+
 function renderMaps() {
   const areas = $('#map-areas'), labels = $('#map-labels');
   areas.innerHTML = labels.innerHTML = '';
@@ -168,23 +202,24 @@ function renderMaps() {
     p.onclick = p.onfocus = () => selectMap(m);
     areas.appendChild(p);
 
+    const cen = centroidOf(p);
+
     const t = svgEl('text', {
       class: 'map-label' + (open ? '' : ' locked'),
-      x: (m.label.x / 100) * 1103, y: (m.label.y / 100) * 960,
+      x: cen.x, y: cen.y + LABEL_DY,
     });
     t.textContent = m.name.replace(/エリア$/, '');
     labels.appendChild(t);
 
     // 未解放マークの南京錠。ラベルは text-anchor:middle で幅が読めないので、横ではなく真下に置く
     if (!open) {
-      const lock = svgEl('text', {
-        class: 'map-lock',
-        x: (m.label.x / 100) * 1103, y: (m.label.y / 100) * 960 + 34,
-      });
+      const lock = svgEl('text', { class: 'map-lock', x: cen.x });
+      lock.dataset.cy = cen.y;      // y は placeLocks が画面に合わせて決める
       lock.textContent = 'lock';
       labels.appendChild(lock);
     }
   }
+  placeLocks();
   selectMap(MAPS.find(isUnlocked) || MAPS[0]);
 }
 
