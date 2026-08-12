@@ -45,27 +45,34 @@ let ctl = null;
 // 上下のレターボックスを中央まで閉じ、その裏で画面を差し替えて開く。
 // 差し替えの瞬間が見えないので、明るさも構図も違う画面同士が繋がる。
 const SHUT = 190;   // 帯が閉じきるまで(ms)。style.css の .letterbox の transition と揃える
+// カチンコが閉じきってから帯を閉じ始める。同時に走らせると、押したボタンは
+// 70ms で下の帯に飲み込まれ、肝心の「閉じる」が毎回帯の裏で起きていた（実測）。
+// style.css の clap-arm は 170ms だが、イージングの都合で腕が閉じて見えるのは
+// その 6 割ほどなので、待つのはここまでで足りる
+const CLAP = 110;
 let shutting = false;
 
 function show(name) {
   if (shutting || name === cur) return;
   shutting = true;
-  if (ctl && name !== 'game') { ctl.stop(); ctl = null; }
-  chrome.style.display = '';        // ゲーム中は隠してあるので、閉じる前に出し直す
-  chrome.classList.add('shut');
   setTimeout(() => {
-    screens[cur]?.classList.remove('on');
-    screens[name]?.classList.add('on');
-    cur = name;
-    if (name === 'shark') renderSharks();
-    if (name === 'dex') renderDex();
-    if (name === 'title') paintTitleShark();
-    if (name === 'game') stopAttract(); else startAttract();
-    chrome.classList.remove('shut');
-    shutting = false;
-    // ゲームは全画面。帯が開ききってから消す（閉じたまま消すとハードカットになる）
-    if (name === 'game') setTimeout(() => { chrome.style.display = 'none'; }, SHUT + 30);
-  }, SHUT);
+    if (ctl && name !== 'game') { ctl.stop(); ctl = null; }
+    chrome.style.display = '';      // ゲーム中は隠してあるので、閉じる前に出し直す
+    chrome.classList.add('shut');
+    setTimeout(() => {
+      screens[cur]?.classList.remove('on');
+      screens[name]?.classList.add('on');
+      cur = name;
+      if (name === 'shark') renderSharks();
+      if (name === 'dex') renderDex();
+      if (name === 'title') paintTitleShark();
+      if (name === 'game') stopAttract(); else startAttract();
+      chrome.classList.remove('shut');
+      shutting = false;
+      // ゲームは全画面。帯が開ききってから消す（閉じたまま消すとハードカットになる）
+      if (name === 'game') setTimeout(() => { chrome.style.display = 'none'; }, SHUT + 30);
+    }, SHUT);
+  }, CLAP);
 }
 
 // ---------- タイトルの立ち絵 ----------

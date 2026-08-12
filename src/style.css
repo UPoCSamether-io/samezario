@@ -266,12 +266,14 @@
    アニメーションは通常の宣言より強いので、hover/active の transform には勝つ */
 @keyframes clap-arm {
   0%   { transform: rotate(0deg); }
-  35%  { transform: rotate(-17deg); }
+  35%  { transform: rotate(-11deg); }
   100% { transform: rotate(0deg); }
 }
-.btn.clapping::before { animation: clap-arm .26s cubic-bezier(.2,.9,.3,1.2); }
+/* 170ms は main.js の CLAP と対。閉じきる時刻がずれると、画面を差し替える帯が
+   腕より先に来て、閉じる瞬間が裏で起きてしまう。片方だけ変えないこと */
+.btn.clapping::before { animation: clap-arm .17s cubic-bezier(.2,.9,.3,1.2); }
 /* HUD のスキルは腕が箱の内側にあるので、同じ動きを子の帯に掛ける */
-#hud-skill.clapping > .clapper-stripes { animation: clap-arm .26s cubic-bezier(.2,.9,.3,1.2); }
+#hud-skill.clapping > .clapper-stripes { animation: clap-arm .17s cubic-bezier(.2,.9,.3,1.2); }
 @media (prefers-reduced-motion: reduce) {
   .btn.clapping::before,
   #hud-skill.clapping > .clapper-stripes { animation: none; }
