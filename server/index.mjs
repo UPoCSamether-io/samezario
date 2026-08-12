@@ -102,6 +102,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const dist = fileURLToPath(new URL('../dist', import.meta.url));
   const http = createServer(async (req, res) => {
     const p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    if (p === '/health') { res.writeHead(200, { 'content-type': 'text/plain' }).end('OK'); return; }
     if (p.includes('..')) { res.writeHead(403).end(); return; }
     const file = join(dist, p === '/' ? 'index.html' : p);
     try {

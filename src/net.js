@@ -1,5 +1,6 @@
 // 対戦サーバとの線。JSON を投げて受けるだけで、中身の意味は game.js が知っている。
-const URL_ = location.origin.replace(/^http/, 'ws') + '/ws';
+const BASE_URL = import.meta.env.VITE_WS_URL || location.origin;
+const URL_ = BASE_URL.replace(/^http/, 'ws') + '/ws';
 
 /**
  * 部屋に入る。resolve は hello（自分の id とホストかどうか）が返った時点。
