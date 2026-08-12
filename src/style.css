@@ -261,6 +261,24 @@
 .btn:active { transform: translate(5px, 5px); box-shadow: 0 0 0 0 var(--color-ink); }
 .btn:active::before { transform: rotate(0deg); transition-duration: .06s; }
 
+/* 押したらカチンコが一瞬開いて閉じる。hover の持ち上げ（-2.5deg）は触れる端末には
+   無く、:active は閉じるだけなので、どの環境でも「鳴らす」動きはこれだけが担う。
+   アニメーションは通常の宣言より強いので、hover/active の transform には勝つ */
+@keyframes clap-arm {
+  0%   { transform: rotate(0deg); }
+  35%  { transform: rotate(-11deg); }
+  100% { transform: rotate(0deg); }
+}
+/* 170ms は main.js の CLAP と対。閉じきる時刻がずれると、画面を差し替える帯が
+   腕より先に来て、閉じる瞬間が裏で起きてしまう。片方だけ変えないこと */
+.btn.clapping::before { animation: clap-arm .17s cubic-bezier(.2,.9,.3,1.2); }
+/* HUD のスキルは腕が箱の内側にあるので、同じ動きを子の帯に掛ける */
+#hud-skill.clapping > .clapper-stripes { animation: clap-arm .17s cubic-bezier(.2,.9,.3,1.2); }
+@media (prefers-reduced-motion: reduce) {
+  .btn.clapping::before,
+  #hud-skill.clapping > .clapper-stripes { animation: none; }
+}
+
 /* Google's icon-font CSS is unlayered, so it beats Tailwind's layered
    utilities — size the icons here instead of with text-* classes. */
 /* 合字フォントなので、載るまでは中身の "movie" や "menu_book" がそのまま文字で出る。
@@ -352,12 +370,153 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 
    `>` (子結合子) は使えない。display: contents は箱の生成を消すだけで
    DOM ツリーは変えないので、この4要素は grid item にはなっても
-   #shark-cols の DOM 上の子にはならない。子孫結合子でないと当たらない */
-@media (width < 48rem) {
+   #shark-cols の DOM 上の子にはならない。子孫結合子でないと当たらない。
+
+   畳む条件が「狭い」ではなく「狭く、かつ縦が十分ある」なのは、横持ちスマホが
+   幅も縦も足りないから。幅だけで畳むと各段が帯に潰れ、実測 667x375 では
+   地図が高さ 75px になって縮尺と方位記号が地図に重なり、サメの立ち絵も
+   プレビューのタグに隠れていた。縦持ちはタッチ端末では回転ガードで塞いだので、
+   ここに来るのは縦長のデスクトップウィンドウだけになる */
+@media (width < 48rem) and (min-height: 501px) {
+  #map-cols { grid-template-columns: 1fr; grid-template-rows: 1fr auto; gap: 0.75rem; }
+  #map-info { max-height: 34vh; }
+
+  #shark-cols { grid-template-columns: 1fr; gap: 0.75rem; overflow: auto; }
+  #shark-cols > .shark-col  { display: contents; }
   #shark-cols .preview-pane { order: 1; min-height: 34vh; }
-  #shark-cols #shark-list   { order: 2; overflow: visible; }
-  #shark-cols #stats        { order: 3; }
-  #shark-cols .name-pane    { order: 4; }   /* 一度入れたら変えないので最後 */
+  #shark-cols #preview-tag  { order: 2; }   /* 立ち絵の説明なので直下に置く */
+  #shark-cols #shark-list   { order: 3; overflow: visible; }
+  #shark-cols #stats        { order: 4; }
+  #shark-cols .name-pane    { order: 5; }   /* 一度入れたら変えないので最後 */
+}
+
+/* サメ選択の一覧は、ダイヤルを一周させるために同じ5体を3面ぶん持っている。
+   ダイヤルでない環境では複製が並んで見えるので、中央の面だけ出す。
+   このブロックが下のダイヤル側より前に居るのは意図的 —
+   特異度が同じなので、順序が入れ替わると隠す側が勝って一周できなくなる */
+#shark-list .shark-tile[data-copy="0"],
+#shark-list .shark-tile[data-copy="2"] { display: none; }
+
+/* 横画面では右カラムの固定幅（340/320px）が 667px の画面の半分を食う。
+   縦に並べ替える余地が無いぶん、横の配分で詰める */
+@media (max-height: 500px) {
+  #map-cols   { grid-template-columns: 1fr minmax(170px, 34%); gap: 0.75rem; }
+  #shark-cols { grid-template-columns: 1fr minmax(160px, 32%); gap: 0.75rem; }
+
+  /* タグは canvas の外に出したので重なりはもう無い。短い画面では
+     立ち絵に高さを回したいので、一覧とステータスで読める情報を畳む */
+  #preview-tag { gap: 0.4rem; }
+  #preview-tag > div { padding: 0.3rem 0.6rem; }
+  #preview-tag .tag-en,
+  #preview-tag .tag-motif,
+  #preview-tag .tag-more { display: none; }
+  #preview-tag .tag-name { font-size: 0.95rem; }
+  #preview-tag .mb-1 { margin-bottom: 0; }
+
+  /* 縮尺は棒とラベルが固定 px なので、地図が小さいほど相対的に肥大して
+     エリアの上に乗っていた（実測 667x375 で縮尺の 18% が図形上、1920 では 0%）。
+     消すのではなく、地図の枠の外（掲示板の余白）へ降ろして重なりを断つ。
+     幅は今までどおり板に対する % なので、縮尺の意味はずれない */
+  #map-scale { top: calc(100% + 1px); bottom: auto; }
+  #map-scale > div:first-child { height: 0.35rem; }
+  #map-scale > div:last-child { height: 0.7rem; font-size: 8px; }
+  #map-scale > div:last-child span { top: 0; }
+
+  /* ---- サメ選択のダイヤル ----
+     一覧をそのまま縮めると 1.8枚しか見えず、選ぶのにスクロールが要る。
+     スナップ付きの縦ダイヤルにして、中央に来た1体がそのまま選ばれる形にする
+     （中央判定と選択は main.js 側）。
+     前後の擬似要素は「1件目と最後を中央まで送るための余白」。縦の flex では
+     flex-basis の % がコンテナの高さに解決されるので、半分ぶんの余白を作って
+     タイルの半分だけ margin で戻す */
+  #shark-list {
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+    display: flex; flex-direction: column;
+    --tile: 44px;
+  }
+  /* 隣の候補が見えないとダイヤルにならないので、1件を 44px まで詰めて
+     3件ぶん覗くようにする。英名とタグはプレビュー側で読める */
+  #shark-list .shark-tile { padding: 0.3rem 0.55rem; gap: 0.5rem; }
+  #shark-list .tile-icon { width: 1.65rem; height: 1.65rem; }
+  #shark-list .tile-icon .material-symbols-rounded { font-size: 1rem; }
+  #shark-list .tile-name { font-size: 0.8rem; }
+  #shark-list .tile-sub { display: none; }
+
+  /* ---- 図鑑のカード ----
+     縦組みは画像が正方形なので 1枚 363px になり、表示領域 218px より高い
+     （実測 667x375 で 0.6枚しか見えず、5.2画面ぶんスクロールが要る）。
+     横長に組み替えると 1枚 80px 前後になり、5体が一度に収まる */
+  #dex-list > button { flex-direction: row; align-items: stretch; }
+  #dex-list .dex-cap { display: none; }          /* 上辺の帯は横組みだと成立しない */
+  #dex-list .dex-thumb { width: 4.5rem; flex: 0 0 auto; padding: 0.35rem; }
+  #dex-list .dex-name {
+    border-top: 0; border-left: 4px solid var(--color-ink);
+    display: flex; align-items: center; padding: 0.25rem 0.6rem;
+  }
+  #dex-list .dex-name h3 { font-size: 0.95rem; }
+
+  /* 名前欄はラベルと入力を1行に寝かせる。縦積みのままだと右カラムの上を
+     83px 占め、ダイヤルが2件ぶんしか覗けない */
+  #s-shark .name-pane label { display: flex; align-items: center; gap: 0.5rem; }
+  #s-shark .name-pane label > span { flex: 0 0 auto; }
+  #s-shark .name-pane input { margin-top: 0; }
+
+  /* ステータスは左カラムの固定分。詰めたぶんがそのまま立ち絵の高さになる */
+  #stats > div { padding: 0.25rem 0.5rem; }
+  #stats > div > div:first-child { margin-bottom: 0.15rem; }
+
+  /* ---- 図鑑の詳細 ----
+     2カラムになるのが md 以上なので、667 では画像が幅いっぱい（約600px）に
+     育ってスクロールが増えていた。短い画面でも2カラムにし、画像に上限を掛ける */
+  #dex-body > div {
+    grid-template-columns: minmax(0, 34%) minmax(0, 1fr);
+    gap: 0.9rem; padding: 0.75rem 1rem;
+  }
+  #dex-body img { max-height: 34vh; margin-inline: auto; }
+  /* 画像を詰めても右カラムのテキストが 493px 残る（表示領域 279px）。
+     行間と箱の余白がデスクトップ寸法のままなので、そこだけ寝かせる */
+  #dex-body p { margin-top: 0.6rem; line-height: 1.65; }
+  #dex-body .p-4 { padding: 0.6rem 0.75rem; }
+  #dex-body .mt-4 { margin-top: 0.6rem; }
+
+  /* ---- スキルの詳細をタップで開く ----
+     横画面では効果説明と CD を畳んでいる。読みたいときだけ開けるように、
+     スキル札そのものを押せるようにする（開閉は .show-desc で持つ） */
+  #preview-tag .tag-skill { cursor: pointer; position: relative; }
+  #preview-tag .tag-skill::after {
+    content: 'タップで詳細';
+    position: absolute; right: 0.5rem; bottom: 0.15rem;
+    font-size: 8px; letter-spacing: .08em; color: rgb(163 240 240 / .7);
+  }
+  /* 説明は札の中に生やすと札が伸びて、隣の立ち絵まで押し下げてしまう。
+     札の上へ浮かせて、札そのものの寸法は開いても閉じても変えない。
+     上に開くのは、札が画面の下寄りに居て下に余白が無いから */
+  #preview-tag.show-desc .tag-more {
+    display: block;
+    position: absolute; left: 0; right: 0; bottom: calc(100% + 0.75rem);
+    z-index: 20;
+    background: var(--color-navy);
+    border: 3px solid var(--color-ink);
+    border-radius: 0.5rem;
+    box-shadow: 4px 4px 0 0 var(--color-ink);
+    padding: 0.5rem 0.7rem;
+    max-height: 40vh; overflow: auto;
+  }
+  #preview-tag.show-desc .tag-skill::after { content: 'タップで閉じる'; }
+  /* 一周させるので端が無く、スクロールバーは意味を持たない */
+  #shark-list { scrollbar-width: none; }
+  #shark-list::-webkit-scrollbar { display: none; }
+  /* 複製した面もダイヤルでは出す（既定では下の方で隠してある） */
+  #shark-list .shark-tile[data-copy="0"],
+  #shark-list .shark-tile[data-copy="2"] { display: flex; }
+  #shark-list .shark-tile {
+    scroll-snap-align: center;
+    flex: 0 0 auto;
+    transition: transform .15s ease-out, opacity .15s ease-out;
+  }
+  /* 中央から外れた候補は少し引っ込める。ダイヤルらしさは選択中との差で出す */
+  #shark-list .shark-tile:not(.is-sel) { opacity: .55; transform: scale(.92); }
 }
 
 /* ---- ゲーム HUD ----
@@ -400,8 +559,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    既定の配置はボタンが左下＝操舵と同じ側にあり、必ず喧嘩する。 */
 @media (pointer: coarse) {
   #hud-pause { display: grid; }
-  /* タッチでは押せないキーの名前を出しても場所を食うだけ */
-  .kbd-badge { display: none; }
+  /* タッチでは押せないキーの名前を出しても場所を食うだけ。
+     遊び方の本文は「— <kbd>E</kbd> / <kbd>Shift</kbd>」ごと .keys で包んであるので、
+     消しても見出しの直後に句点が続いて文が壊れない */
+  .kbd-badge,
+  .keys { display: none; }
 
   /* ミニマップは SIZE ゲージの下へ。左下のままだと、左親指で左下方向へ
      操舵している間ずっと自分の指で完全に隠れる。左下は丸ごと明け渡す。
@@ -445,6 +607,50 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #rotate-hint { display: grid; }
 }
 
+/* ロケ地のツールバー。ボタンの文言は解放状況で入れ替わるので、折り返すと
+   ボタンが伸びてツールバーごと地図を押し下げる。行数を1に固定して高さを保つ */
+#map-next-label { white-space: nowrap; }
+
+
+/* ---- 横画面のタイトル ----
+   縦積み（タイトル→立ち絵→ボタン3つ）は 419px 要るので、横持ちの 390px には
+   到底入らない。スクロールコンテナも無いので上下が切れて到達不能になっていた。
+   横では左にブランド・右に操作の2カラムへ組み替える。左右に余っている幅を
+   使うだけで縦の要求が半分以下になる。
+   coarse で絞らないのは、縦の短いウィンドウならマウスでも同じ得をするため */
+@media (max-height: 500px) {
+  /* 左にブランド（ロゴを上、立ち絵を下）、右に操作。grid なのは、flex 行だと
+     header・立ち絵・nav が横一列の3カラムになってしまうため。
+     ロゴと立ち絵を同じ列の別の行に置きたいので行と列を明示する */
+  #title-stage {
+    display: grid;
+    grid-template-columns: 1fr min(44vw, 360px);
+    grid-template-rows: auto auto;
+    align-items: center;
+    justify-items: center;
+    gap: 0.5rem clamp(1rem, 4vw, 3rem);
+  }
+  #title-stage > header       { grid-area: 1 / 1; }
+  #title-stage > #title-shark { grid-area: 2 / 1; }
+  #title-stage > nav          { grid-area: 1 / 2 / span 2 / auto; width: 100%; gap: 0.5rem; }
+
+  /* 縮めた列でロゴが1文字ずつ折り返さないよう、改行を禁じてから字を詰める */
+  #title-stage > header h1 {
+    white-space: nowrap;
+    font-size: clamp(28px, 5.2vw, 44px);
+    padding: 0.4rem 1.2rem;
+  }
+  #title-stage > header p { margin-top: 0.35rem; font-size: 10px; letter-spacing: 0.28em; }
+  /* 立ち絵は縦基準で決める。幅基準だと横長画面ほど高さが溢れる */
+  #title-stage > #title-shark { width: auto; height: clamp(80px, 34vh, 170px); margin: 0; }
+
+  /* 横画面のサメ選択。名前欄は一度入れたら変えないのに右カラムの半分を占め、
+     肝心の一覧が 83px しか残らない（中身は 370px = 5枚中1枚しか見えない）。
+     説明文を畳んで高さを一覧へ回す。文面は縦や広い画面では従来どおり出る */
+  #s-shark .name-pane { padding: 0.4rem 0.6rem; }
+  #s-shark .name-pane p { display: none; }
+}
+
 /* 図鑑のカード。auto-fill なので列数は幅任せ。下限を 150px まで緩めるのは
    狭い画面だけにする — カードは5枚しかないので、広い画面で下限を下げても
    空トラックが増えてカードが縮むだけだった（実測 1920 で 220px → 156px） */
@@ -454,4 +660,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 }
 @media (width < 40rem) {
   #dex-list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}
+/* 横画面はカードを横長に組み替えてあるぶん、下限も下げて列を増やせる。
+   3列にすると 5体が2行に収まりスクロールが要らなくなる。
+   このブロックが上の基本ルールより後ろに居るのは意図的 — どちらも
+   id 特異度なので、順序でしか勝てない */
+@media (max-height: 500px) {
+  #dex-list { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 }

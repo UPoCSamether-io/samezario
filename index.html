@@ -33,6 +33,19 @@
     <canvas id="attract" class="absolute inset-0 w-full h-full"></canvas>
   </div>
 
+  <!-- ================= 縦持ちガード =================
+       全画面に被せる。ゲームだけでなくタイトルからブロックするのは、メニューが
+       横向き前提の組みになったため（縦だと収まらない）。表示条件は CSS が持ち、
+       game.js の自動ポーズが同じ条件式を使う。
+       z-50 = レターボックス(40)より上。#app 直下に置いて .screen の display に依存させない -->
+  <div id="rotate-hint" class="absolute inset-0 z-50 bg-navy-deep/95 hidden place-items-center px-8 text-center">
+    <div>
+      <span class="material-symbols-rounded !text-6xl text-yellow block mb-4">screen_rotation</span>
+      <p class="font-display font-extrabold text-xl text-paper">端末を横にしてください</p>
+      <p class="mt-2 text-sm text-paper/70">横向き専用のゲームです。<br>端末を回すとそのまま続けられます。</p>
+    </div>
+  </div>
+
   <!-- ================= レターボックス ================= -->
   <div id="chrome">
     <div class="letterbox top-0 border-b-4 border-ink"></div>
@@ -43,7 +56,7 @@
 
   <!-- ================= タイトル ================= -->
   <section id="s-title" class="screen on">
-    <div class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[var(--bar-pad)]">
+    <div id="title-stage" class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[var(--bar-pad)]">
       <header class="text-center -rotate-1 relative">
         <!-- 看板が周囲の水を照らす分の光。文字と同じ琥珀色でないと濁る -->
         <div class="absolute -inset-12 bg-[#ff9f22]/25 blur-3xl rounded-full"></div>
@@ -106,7 +119,8 @@
           <div id="map-next-label" class="px-5 py-2.5 font-bold text-sm">サメ選択 →</div></button>
       </div>
 
-      <div class="flex-1 min-h-0 grid grid-cols-[1fr_340px] gap-5 max-md:grid-cols-1 max-md:grid-rows-[1fr_auto] max-md:gap-3 pb-2">
+      <!-- 畳むかどうかは style.css が決める。幅だけで畳むと横持ちスマホが潰れる -->
+      <div id="map-cols" class="flex-1 min-h-0 grid grid-cols-[1fr_340px] gap-5 pb-2">
         <!-- 掲示板 -->
         <div class="relative paper-sheet ink-4 hard-lg rounded-sm -rotate-[0.6deg] p-4 flex items-center justify-center overflow-hidden">
           <div class="pin top-2 left-2"></div>
@@ -143,7 +157,7 @@
                  幅が先に詰まる。つまり表示幅 = #map-board の幅で、% がそのまま使える。
                  注: このイラストは調布市の正確な輪郭ではない（描かれた形の縦横比 1.13 に対し
                  実際は約1.8で南北に伸びている）。東西・南北のどちらにも寄せない面積基準。 -->
-            <div class="absolute left-[4%] bottom-[5%] w-[26.29%] pointer-events-none select-none">
+            <div id="map-scale" class="absolute left-[4%] bottom-[5%] w-[26.29%] pointer-events-none select-none">
               <div class="flex h-2.5 ink-2 bg-paper">
                 <div class="w-1/2 bg-ink"></div><div class="w-1/2"></div>
               </div>
@@ -159,7 +173,7 @@
         </div>
 
         <!-- 情報パネル -->
-        <aside id="map-info" class="bg-navy text-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col max-md:max-h-[34vh]">
+        <aside id="map-info" class="bg-navy text-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col">
           <div class="cap clapper-stripes h-5 border-b-4 border-ink"></div>
           <div id="map-info-body" class="p-5 flex-1 overflow-auto thin-scroll"></div>
         </aside>
@@ -178,19 +192,21 @@
           <div class="px-5 py-2.5 font-extrabold text-sm">ACTION! →</div></button>
       </div>
 
-      <div id="shark-cols" class="flex-1 min-h-0 grid grid-cols-[1fr_320px] gap-5 max-md:grid-cols-1 max-md:overflow-auto max-md:thin-scroll max-md:gap-3 pb-2">
-        <div class="min-h-0 flex flex-col gap-4 max-md:contents">
+      <!-- 畳むかどうかは style.css が決める。幅だけで畳むと横持ちスマホが潰れる -->
+      <div id="shark-cols" class="flex-1 min-h-0 grid grid-cols-[1fr_320px] gap-5 thin-scroll pb-2">
+        <div class="shark-col min-h-0 flex flex-col gap-4">
           <!-- プレビュー -->
           <div class="preview-pane relative flex-1 min-h-0 bg-teal-deep ink-4 hard-lg rounded-lg overflow-hidden">
             <div class="absolute inset-0 opacity-40" style="background-image:radial-gradient(rgba(244,239,234,.25) 2px,transparent 2px);background-size:26px 26px"></div>
             <canvas id="preview" class="absolute inset-0 w-full h-full"></canvas>
-            <div id="preview-tag" class="absolute top-4 left-4"></div>
           </div>
+          <!-- 名前とスキル。canvas の上に重ねると立ち絵が隠れるので外に出す -->
+          <div id="preview-tag" class="shrink-0 flex items-stretch gap-3"></div>
           <!-- ステータス -->
           <div id="stats" class="grid grid-cols-4 max-sm:grid-cols-2 gap-3 max-sm:gap-2 shrink-0"></div>
         </div>
 
-        <div class="min-h-0 flex flex-col gap-2.5 max-md:contents">
+        <div class="shark-col min-h-0 flex flex-col gap-2.5">
           <!-- 名前。同じロケ地の部屋へ自動で入り、空いた席はボットが埋める -->
           <div class="name-pane bg-navy text-paper ink-3 hard rounded-lg p-3 shrink-0">
             <label class="block">
@@ -245,16 +261,16 @@
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">1</span>
               <div><b class="font-display">移動</b> — マウスカーソルの方向へサメが進みます。頭は常にカーソルを追いかけます。</div></li>
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">2</span>
-              <div><b class="font-display">ダッシュ</b> — <kbd class="kbd">左クリック</kbd> / <kbd class="kbd">Space</kbd>。スタミナを消費して加速。使い切ると息切れし、ゲージが少し戻るまで再ダッシュできません。<br>
+              <div><b class="font-display">ダッシュ</b><span class="keys"> — <kbd class="kbd">左クリック</kbd> / <kbd class="kbd">Space</kbd></span>。スタミナを消費して加速。使い切ると息切れし、ゲージが少し戻るまで再ダッシュできません。<br>
               ダッシュ中は<b>航跡</b>が約2.5秒残ります。<b>触れた相手は死にます</b>（自分は平気）。相手を囲って逃げ場を塞ぐのが決め手です。</div></li>
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">3</span>
-              <div><b class="font-display">スキル</b> — <kbd class="kbd">E</kbd> / <kbd class="kbd">Shift</kbd>。サメごとの固有スキル（クールダウンあり）。</div></li>
+              <div><b class="font-display">スキル</b><span class="keys"> — <kbd class="kbd">E</kbd> / <kbd class="kbd">Shift</kbd></span>。サメごとの固有スキル（クールダウンあり）。</div></li>
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-danger text-paper ink-2 rounded-full font-mono font-bold hard-sm">!</span>
               <div><b class="font-display">死亡条件</b> — 外壁への衝突、または<b>他のサメの胴体</b>に頭からぶつかること。<b>サイズは関係ありません</b>——最小のサメでも最大のサメを倒せます。<br>
               相手を倒すには、相手を自分の胴体にぶつけさせます。</div></li>
             <!-- マーカーに文字を置くとキー表記（Esc）と紛らわしいのでアイコンにする -->
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-mint ink-2 rounded-full hard-sm"><span class="material-symbols-rounded !text-[18px]">pause</span></span>
-              <div><b class="font-display">一時停止</b> — <kbd class="kbd">Esc</kbd>。他の人が居る部屋ではメニューが開くだけで、世界は止まりません。</div></li>
+              <div><b class="font-display">一時停止</b><span class="keys"> — <kbd class="kbd">Esc</kbd></span>。他の人が居る部屋ではメニューが開くだけで、世界は止まりません。</div></li>
           </ol>
         </div>
         <div class="p-5 pt-0 shrink-0">
@@ -267,14 +283,6 @@
 
   <!-- ================= ゲーム ================= -->
   <section id="s-game" class="screen">
-    <!-- 縦持ちガード。表示・非表示は CSS が持つ（game.js の自動ポーズと同じ条件式） -->
-    <div id="rotate-hint" class="absolute inset-0 z-40 bg-navy-deep/95 hidden place-items-center px-8 text-center">
-      <div>
-        <span class="material-symbols-rounded !text-6xl text-yellow block mb-4">screen_rotation</span>
-        <p class="font-display font-extrabold text-xl text-paper">端末を横にしてください</p>
-        <p class="mt-2 text-sm text-paper/70">左右の視界が要る画面です。<br>横向きにすると続きから再開できます。</p>
-      </div>
-    </div>
     <canvas id="stage" class="absolute inset-0 w-full h-full cursor-crosshair"></canvas>
 
     <!-- 画面端のビネット。canvas に毎フレーム塗ると全画面ぶんのラジアルグラデーションを

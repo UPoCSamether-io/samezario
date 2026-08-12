@@ -45,27 +45,34 @@ let ctl = null;
 // 上下のレターボックスを中央まで閉じ、その裏で画面を差し替えて開く。
 // 差し替えの瞬間が見えないので、明るさも構図も違う画面同士が繋がる。
 const SHUT = 190;   // 帯が閉じきるまで(ms)。style.css の .letterbox の transition と揃える
+// カチンコが閉じきってから帯を閉じ始める。同時に走らせると、押したボタンは
+// 70ms で下の帯に飲み込まれ、肝心の「閉じる」が毎回帯の裏で起きていた（実測）。
+// style.css の clap-arm は 170ms だが、イージングの都合で腕が閉じて見えるのは
+// その 6 割ほどなので、待つのはここまでで足りる
+const CLAP = 110;
 let shutting = false;
 
 function show(name) {
   if (shutting || name === cur) return;
   shutting = true;
-  if (ctl && name !== 'game') { ctl.stop(); ctl = null; }
-  chrome.style.display = '';        // ゲーム中は隠してあるので、閉じる前に出し直す
-  chrome.classList.add('shut');
   setTimeout(() => {
-    screens[cur]?.classList.remove('on');
-    screens[name]?.classList.add('on');
-    cur = name;
-    if (name === 'shark') renderSharks();
-    if (name === 'dex') renderDex();
-    if (name === 'title') paintTitleShark();
-    if (name === 'game') stopAttract(); else startAttract();
-    chrome.classList.remove('shut');
-    shutting = false;
-    // ゲームは全画面。帯が開ききってから消す（閉じたまま消すとハードカットになる）
-    if (name === 'game') setTimeout(() => { chrome.style.display = 'none'; }, SHUT + 30);
-  }, SHUT);
+    if (ctl && name !== 'game') { ctl.stop(); ctl = null; }
+    chrome.style.display = '';      // ゲーム中は隠してあるので、閉じる前に出し直す
+    chrome.classList.add('shut');
+    setTimeout(() => {
+      screens[cur]?.classList.remove('on');
+      screens[name]?.classList.add('on');
+      cur = name;
+      if (name === 'shark') renderSharks();
+      if (name === 'dex') renderDex();
+      if (name === 'title') paintTitleShark();
+      if (name === 'game') stopAttract(); else startAttract();
+      chrome.classList.remove('shut');
+      shutting = false;
+      // ゲームは全画面。帯が開ききってから消す（閉じたまま消すとハードカットになる）
+      if (name === 'game') setTimeout(() => { chrome.style.display = 'none'; }, SHUT + 30);
+    }, SHUT);
+  }, CLAP);
 }
 
 // ---------- タイトルの立ち絵 ----------
@@ -171,8 +178,11 @@ function selectMap(m) {
   // 選択リングは別レイヤ。隣のエリアの下に潜らせないため、塗りより上に重ねて描く
   $('#map-ring').setAttribute('d', m.path);
   $('#map-next').disabled = !open;
-  // 押せない理由をボタン自身に出す。ラベルが「サメ選択 →」のままだと袋小路に見える
-  $('#map-next-label').textContent = open ? 'サメ選択 →' : 'このエリアはまだ遊べません';
+  // 押せない理由をボタン自身に出す。ラベルが「サメ選択 →」のままだと袋小路に見える。
+  // 長い文言は折り返してボタンが伸び、ツールバーごと下の地図を押し下げていた
+  // （実測 667x375 で3行・56→76px・地図が 20px 縮んでずれる）。
+  // 短くしたうえで style.css 側で nowrap にし、行数を常に1に固定する
+  $('#map-next-label').textContent = open ? 'サメ選択 →' : 'まだ遊べません';
   $('#map-info-body').innerHTML = `
     <div class="font-mono text-[10px] tracking-[0.3em] text-mint mb-1">${esc(m.en)}</div>
     <h3 class="font-display font-extrabold text-2xl mb-1 leading-tight">${esc(m.name)}</h3>
@@ -215,49 +225,140 @@ function renderSharks() {
     mainPreview = mountPreview($('#preview'), selShark);
     const list = $('#shark-list');
     list.innerHTML = '';
-    for (const d of SHARKS) {
-      const b = document.createElement('button');
-      b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
-        'transition-transform hover:-translate-x-1 active:translate-y-0.5';
-      b.innerHTML = `
-        <span class="w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper" style="background:${d.color}">
-          ${icon(ICON[d.id], '!text-[22px]')}
-        </span>
-        <span class="min-w-0">
-          <span class="block font-display font-extrabold text-base leading-tight">${esc(d.name)}</span>
-          <span class="block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${esc(d.tag)}</span>
-        </span>`;
-      b.onclick = () => selectShark(d);
-      list.appendChild(b);
+    // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ
+    // 黙って戻す（下の recenter）。1面だけだと端で必ず止まってしまう。
+    // ダイヤル以外では 0面と2面を CSS が隠すので、見た目は今までどおり5体
+    for (let copy = 0; copy < DIAL_COPIES; copy++) {
+      SHARKS.forEach((d, i) => {
+        const b = document.createElement('button');
+        b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
+          'transition-transform hover:-translate-x-1 active:translate-y-0.5';
+        b.dataset.i = i;
+        b.dataset.copy = copy;
+        b.innerHTML = `
+          <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper" style="background:${d.color}">
+            ${icon(ICON[d.id], '!text-[22px]')}
+          </span>
+          <span class="min-w-0">
+            <span class="tile-name block font-display font-extrabold text-base leading-tight">${esc(d.name)}</span>
+            <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${esc(d.tag)}</span>
+          </span>`;
+        b.onclick = () => selectShark(d);
+        list.appendChild(b);
+      });
     }
+    mountDial(list);
   }
   selectShark(selShark);
+  // ダイヤルでは選択中が中央に居ないと辻褄が合わないので、開くたびに寄せ直す
+  if (isDial()) centerTile($('#shark-list'), SHARKS.indexOf(selShark), 'auto');
+}
+
+// スマホ横画面のサメ選択はダイヤル。中央で止まったサメがそのまま選ばれる。
+// 条件は CSS のダイヤルブロックと一字一句そろえること（ずれると片方だけ効く）
+const isDial = () => matchMedia('(max-height: 500px)').matches;
+const DIAL_COPIES = 3;   // 一周させるための面の数。中央の面を基準にする
+
+// スキル札のタップで効果説明を開閉する。説明は札の上に浮かせる（札自体は
+// 大きくならない）ので、他所を触ったら閉じないと画面に居座ってしまう。
+// 中身は選択のたびに作り直されるため、個々の札ではなく document に一度だけ張る
+document.addEventListener('click', (e) => {
+  const tag = $('#preview-tag');
+  tag.classList.toggle('show-desc', !!e.target.closest('.tag-skill') && !tag.classList.contains('show-desc'));
+});
+
+// カチンコを鳴らす。押すたびに腕が一瞬持ち上がって閉じる。
+// クラスを付け直す前に一度レイアウトを読むのは、連打しても毎回頭から再生させるため
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.btn, #hud-skill');
+  if (!b || b.disabled) return;
+  b.classList.remove('clapping');
+  void b.offsetWidth;
+  b.classList.add('clapping');
+});
+
+/** 中央の面の i 番目を、ダイヤルの中央へ持ってくる */
+function centerTile(list, i, behavior = 'smooth') {
+  const el = list.children[SHARKS.length + i];
+  if (el) el.scrollIntoView({ block: 'center', behavior });
+}
+
+/** いま中央に一番近いタイル */
+function centeredTile(list) {
+  const mid = list.getBoundingClientRect().top + list.clientHeight / 2;
+  let best = null, bestGap = Infinity;
+  for (const el of list.children) {
+    const r = el.getBoundingClientRect();
+    if (!r.height) continue;                       // 隠してある面は数えない
+    const gap = Math.abs(r.top + r.height / 2 - mid);
+    if (gap < bestGap) { bestGap = gap; best = el; }
+  }
+  return best;
+}
+
+/**
+ * 端まで来たら中央の面へ黙って引き戻す。面の高さちょうどだけ動かすので
+ * スナップ位置も選択も変わらず、利用者からは無限に回っているように見える。
+ * scroll-behavior を一時的に切るのは、この移動をアニメーションさせないため
+ */
+function recenter(list) {
+  const copy = list.scrollHeight / DIAL_COPIES;
+  const t = list.scrollTop;
+  const to = t < copy * 0.5 ? t + copy : t >= copy * 1.5 ? t - copy : null;
+  if (to === null) return;
+  const prev = list.style.scrollBehavior;
+  list.style.scrollBehavior = 'auto';
+  list.scrollTop = to;
+  list.style.scrollBehavior = prev;
+}
+
+function mountDial(list) {
+  // scrollend はまだ全ブラウザに無いので、止まったことは時間で見る。
+  // スナップのアニメーション中に拾うと1つ手前で確定してしまうため少し待つ
+  let idle;
+  list.addEventListener('scroll', () => {
+    if (!isDial()) return;
+    clearTimeout(idle);
+    idle = setTimeout(() => {
+      const el = centeredTile(list);
+      if (!el) return;
+      const d = SHARKS[+el.dataset.i];
+      if (d && d !== selShark) selectShark(d);
+      recenter(list);
+    }, 140);
+  }, { passive: true });
 }
 
 function selectShark(d) {
   selShark = d;
   if (mainPreview) mainPreview.def = d;
-  $$('.shark-tile').forEach((n, i) => {
-    const on = SHARKS[i] === d;
+  // 面を3つ持っているので、位置ではなく data-i で当てる
+  $$('.shark-tile').forEach((n) => {
+    const on = SHARKS[+n.dataset.i] === d;
     n.style.background = on ? '#f3b553' : '';
     n.style.boxShadow = on ? '6px 6px 0 0 #2d2d2d' : '';
     n.style.transform = on ? 'translateX(-6px)' : '';
+    // ダイヤル表示の「選択中」はクラスで持つ。inline の transform とは別物で、
+    // 未選択側を引っ込める見せ方は style.css が受け持つ
+    n.classList.toggle('is-sel', on);
   });
 
   $('#preview-tag').innerHTML = `
-    <div class="bg-paper ink-3 hard rounded-lg px-4 py-2 -rotate-1">
-      <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${esc(d.en)}</div>
-      <div class="font-display font-extrabold text-2xl leading-tight">${esc(d.name)}</div>
-      <div class="text-[11px] text-ink/60">${esc(d.motif)}</div>
+    <div class="shrink-0 bg-paper ink-3 hard rounded-lg px-4 py-2 -rotate-1">
+      <div class="tag-en font-mono text-[10px] tracking-[0.3em] text-ink/55">${esc(d.en)}</div>
+      <div class="tag-name font-display font-extrabold text-2xl leading-tight">${esc(d.name)}</div>
+      <div class="tag-motif text-[11px] text-ink/60">${esc(d.motif)}</div>
     </div>
-    <div class="mt-3 max-w-[300px] bg-navy text-paper ink-3 hard rounded-lg px-4 py-3 rotate-1">
+    <div class="tag-skill flex-1 min-w-0 bg-navy text-paper ink-3 hard rounded-lg px-4 py-3 rotate-1">
       <div class="flex items-center gap-2 mb-1">
         ${icon(ICON[d.id], '!text-xl text-yellow')}
         <span class="font-display font-extrabold">${esc(d.skill.name)}</span>
-        <span class="ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
+        <span class="kbd-badge ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
       </div>
-      <p class="text-[12px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
-      <div class="font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
+      <div class="tag-more">
+        <p class="tag-desc text-[12px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
+        <div class="tag-cd font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
+      </div>
     </div>`;
 
   $('#stats').innerHTML = statBars(d);
@@ -298,12 +399,12 @@ function renderDex() {
     card.className = 'bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col text-left ' +
       'transition-transform hover:-translate-y-1 active:translate-y-0.5';
     card.innerHTML = `
-      <div class="clapper-stripes h-5 border-b-4 border-ink w-full"></div>
-      <div class="w-full aspect-square p-3" style="background:${d.color}22">
+      <div class="dex-cap clapper-stripes h-5 border-b-4 border-ink w-full"></div>
+      <div class="dex-thumb w-full aspect-square p-3" style="background:${d.color}22">
         <img src="${portrait(d)}" alt="${esc(d.name)}" loading="lazy" decoding="async"
              class="w-full h-full object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.22)]">
       </div>
-      <div class="w-full border-t-4 border-ink px-3 py-2.5">
+      <div class="dex-name w-full border-t-4 border-ink px-3 py-2.5">
         <h3 class="font-display font-extrabold text-lg leading-tight">${esc(d.name)}</h3>
       </div>`;
     card.onclick = () => openDex(d);
