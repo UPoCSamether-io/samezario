@@ -359,3 +359,66 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #shark-cols #stats        { order: 3; }
   #shark-cols .name-pane    { order: 4; }   /* 一度入れたら変えないので最後 */
 }
+
+/* ---- ゲーム HUD ----
+   safe-area を見るのは、DASH を右下に置くから。iPhone 横持ちでは画面下端が
+   ホームインジケータのスワイプ帯で、余白が無いと DASH を押したつもりが
+   ホームジェスチャに吸われる。ノッチ側も同じ理由で避ける */
+#hud {
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+           max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+@media (width >= 48rem) {
+  #hud {
+    padding: max(1.5rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right))
+             max(1.5rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left));
+  }
+}
+
+/* 狭い画面。固定幅のままだと 300+250+ミニマップ150 が横に溢れる */
+@media (width < 40rem) {
+  #hud-size { width: 46vw; min-width: 150px; }
+  #hud-board { font-size: 11px; }
+  #hud-board li:nth-child(n+4) { display: none; }   /* 上位3名だけ */
+  #mini { width: 96px; height: 96px; }
+}
+
+/* ---- タッチ端末の HUD 組み替え ----
+   操舵は画面のどこでも効くので、左親指が操舵・右親指がアクションになる。
+   既定の配置はボタンが左下＝操舵と同じ側にあり、必ず喧嘩する。 */
+@media (pointer: coarse) {
+  #hud-pause { display: grid; }
+  /* タッチでは押せないキーの名前を出しても場所を食うだけ */
+  .kbd-badge { display: none; }
+
+  /* ミニマップは SIZE ゲージの下へ。左下のままだと、左親指で左下方向へ
+     操舵している間ずっと自分の指で完全に隠れる。左下は丸ごと明け渡す。
+     絶対配置の子は親の padding box を基準にするので、#hud のパディングでは
+     寄らない。safe-area をここでも自分で足す */
+  #hud-mini {
+    position: absolute;
+    left: max(1rem, env(safe-area-inset-left));
+    top: calc(max(1rem, env(safe-area-inset-top)) + 4.5rem);
+  }
+
+  /* DASH を右下、SKILL をその左上へ。親指は根元を支点に弧を描くので、
+     その軌道上に並べる。使用頻度の高い DASH を一番近い位置に置く */
+  #hud-actions {
+    position: absolute;
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  #hud-actions > #hud-skill { margin-bottom: 3.25rem; }
+
+  /* 横持ちの高さ 390px では 84px のボタンが画面の 21% を占める。
+     右下からの寄りが死角になるので、待機中は水面を透かす。
+     この2値は実機で見ながら詰める調整つまみ */
+  #hud-actions > * { opacity: .6; transition: opacity .1s; }
+  #hud-actions > *:active { opacity: 1; }
+}
+
+/* スマホ横。104px は縦の 27% を食うので落とす（44px の倍近くは残る） */
+@media (max-height: 500px) {
+  #hud-skill, #hud-dash { width: 84px; height: 84px; }
+  #hud-actions > #hud-skill { margin-bottom: 2.5rem; }
+}

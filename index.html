@@ -275,10 +275,10 @@
     <div id="vignette" class="absolute inset-0 pointer-events-none"></div>
 
     <!-- HUD -->
-    <div class="absolute inset-0 pointer-events-none p-4 md:p-6 flex flex-col justify-between">
+    <div id="hud" class="absolute inset-0 pointer-events-none flex flex-col justify-between">
       <div class="flex justify-between items-start gap-4">
         <!-- サイズゲージ -->
-        <div class="w-[300px]">
+        <div id="hud-size" class="w-[300px]">
           <div class="flex items-end gap-2 mb-1">
             <span class="font-mono font-bold text-xs tracking-[0.25em] text-paper/80 bg-ink/70 px-2 py-1 rounded">SIZE</span>
             <span id="hud-mass" class="font-mono font-bold text-4xl text-yellow leading-none"
@@ -291,16 +291,22 @@
             <div class="absolute inset-x-0 bottom-0 h-[6px] sprockets opacity-70"></div>
           </div>
         </div>
-        <!-- リーダーボード -->
-        <div class="w-[250px] bg-paper ink-4 hard-lg">
-          <div class="clapper-stripes h-4 border-b-4 border-ink"></div>
-          <div id="hud-online" class="hidden border-b-4 border-ink bg-navy text-mint font-mono text-[10px] tracking-[0.2em] px-2.5 py-1"></div>
-          <ul id="hud-board" class="p-2.5 space-y-0.5 text-[13px]"></ul>
+        <!-- リーダーボード。⏸ はタッチのときだけ出る（Esc が無いため） -->
+        <div class="flex items-start gap-2.5">
+          <button id="hud-pause" aria-label="一時停止"
+                  class="hidden shrink-0 w-11 h-11 bg-paper ink-4 hard grid place-items-center pointer-events-auto active:translate-x-1 active:translate-y-1 transition-transform">
+            <span class="material-symbols-rounded !text-2xl">pause</span>
+          </button>
+          <div class="w-[250px] bg-paper ink-4 hard-lg">
+            <div class="clapper-stripes h-4 border-b-4 border-ink"></div>
+            <div id="hud-online" class="hidden border-b-4 border-ink bg-navy text-mint font-mono text-[10px] tracking-[0.2em] px-2.5 py-1"></div>
+            <ul id="hud-board" class="p-2.5 space-y-0.5 text-[13px]"></ul>
+          </div>
         </div>
       </div>
 
       <div class="flex justify-between items-end gap-4">
-        <div class="flex items-end gap-4 pointer-events-auto">
+        <div id="hud-actions" class="flex items-end gap-4 pointer-events-auto">
           <!-- スキル -->
           <button id="hud-skill" class="w-[104px] h-[104px] bg-yellow ink-4 hard-lg relative overflow-hidden group flex flex-col active:translate-x-1 active:translate-y-1 transition-transform">
             <div class="h-6 shrink-0 clapper-stripes border-b-4 border-ink origin-bottom-left group-hover:-rotate-12 transition-transform"></div>
@@ -309,7 +315,7 @@
               <div id="hud-skill-name" class="font-display font-extrabold text-[11px] mt-0.5 px-1 text-center leading-tight">スキル</div>
             </div>
             <div id="hud-cd" class="absolute inset-0 bg-ink/72 grid place-items-center font-mono font-bold text-2xl text-paper opacity-0 transition-opacity">0</div>
-            <span class="absolute -top-2 -right-2 w-8 h-8 bg-paper ink-2 rounded-full grid place-items-center font-mono font-bold text-sm hard-sm">E</span>
+            <span class="kbd-badge absolute -top-2 -right-2 w-8 h-8 bg-paper ink-2 rounded-full grid place-items-center font-mono font-bold text-sm hard-sm">E</span>
           </button>
           <!-- ダッシュ（フィルムリール） -->
           <div id="hud-dash" class="w-[104px] h-[104px] rounded-full ink-4 hard-lg bg-paper relative grid place-items-center">
@@ -321,11 +327,11 @@
             <!-- スタミナゲージ。使った分だけリールが暗く欠ける -->
             <div id="hud-stam" class="absolute inset-1.5 rounded-full pointer-events-none"></div>
             <div class="relative w-9 h-9 rounded-full bg-yellow ink-3 grid place-items-center font-mono font-bold text-[10px] leading-none text-center">DASH</div>
-            <span class="absolute -bottom-1 -left-1 px-1.5 py-0.5 bg-paper ink-2 rounded-full font-mono font-bold text-[9px] hard-sm">SPACE</span>
+            <span class="kbd-badge absolute -bottom-1 -left-1 px-1.5 py-0.5 bg-paper ink-2 rounded-full font-mono font-bold text-[9px] hard-sm">SPACE</span>
           </div>
         </div>
         <!-- ミニマップ -->
-        <div class="bg-paper ink-4 hard-lg p-1.5">
+        <div id="hud-mini" class="bg-paper ink-4 hard-lg p-1.5">
           <canvas id="mini" width="150" height="150" class="block w-[150px] h-[150px] ink-2"></canvas>
         </div>
       </div>

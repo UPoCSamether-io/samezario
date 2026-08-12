@@ -428,6 +428,18 @@ $('#quit').onclick = () => { dropNet(); show('title'); };
 $('#hud-skill').onclick = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
 $('#retry').onclick = () => play();
 
+// DASH。game.js にボタンの存在を教えず、Space の経路をそのまま再利用する
+// （スキルが上でやっているのと同じ手）。game.js 側に状態が増えない。
+// pointercancel も拾うのは、通知などで pointer を奪われたときに
+// pointerup が来ず、ブーストが押しっぱなしで張り付くため
+const hudDash = $('#hud-dash');
+const dashKey = (type) => window.dispatchEvent(new KeyboardEvent(type, { key: ' ' }));
+hudDash.addEventListener('pointerdown', (e) => { e.preventDefault(); dashKey('keydown'); });
+hudDash.addEventListener('pointerup', () => dashKey('keyup'));
+hudDash.addEventListener('pointercancel', () => dashKey('keyup'));
+
+$('#hud-pause').onclick = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
 function showResult(r) {
   dropNet();                       // 死んだら部屋を出る（ホストなら次の人へ委譲される）
   const best = Math.max(save.best, r.mass);
