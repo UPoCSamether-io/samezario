@@ -1,6 +1,7 @@
 // サメザリオ — Canvas ゲームループ（slither.io 形式）
 import { SHARKS, BOT_NAMES } from './data.js';
 import { paintShark, paintSpriteShark, bodyLength, taper } from './shark-art.js';
+import { makeSteer } from './steer.js';
 
 const TAU = Math.PI * 2;
 const INK = '#2d2d2d';
@@ -239,13 +240,27 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // カーソルは「画面中心からのオフセット」で持つ。
   // ワールド座標で覚えるとカメラが進んだぶん狙点が置き去りになり、
   // カーソルを止めていてもサメがその一点を回り続けてしまう
-  const onMove = (e) => {
+  const steer = makeSteer();
+  const aimAt = (e) => {
     const b = canvas.getBoundingClientRect();
     mouse.sx = e.clientX - b.left - b.width / 2;
     mouse.sy = e.clientY - b.top - b.height / 2;
   };
-  const onDown = (e) => { if (e.button === 0) player.boost = true; };
-  const onUp = (e) => { if (e.button === 0) player.boost = false; };
+  const onMove = (e) => { if (steer.owns(e)) aimAt(e); };
+  // マウスは押しっぱなしでダッシュ。タッチは同じ指が操舵を兼ねていて競合するので
+  // ここでは踏まず、HUD の DASH ボタンに任せる（main.js が Space を合成する）
+  const onDown = (e) => {
+    if (!steer.claim(e)) return;
+    if (e.pointerType === 'mouse') { if (e.button === 0) player.boost = true; }
+    else aimAt(e);        // 指を置いた瞬間からその向きへ進ませる
+  };
+  const onUp = (e) => {
+    if (e.pointerType === 'mouse' && e.button === 0) player.boost = false;
+    steer.release(e);
+  };
+  // 通知やシステムジェスチャに pointer を奪われると pointerup は来ない。
+  // ここで戻さないとブーストが張り付き、操舵の席も埋まったままになる
+  const onCancel = (e) => { player.boost = false; steer.release(e); };
   const onKey = (e) => {
     const k = e.key.toLowerCase();
     if (k === ' ') { e.preventDefault(); player.boost = true; }
@@ -260,9 +275,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   const onBlur = () => { player.boost = false; if (!dead) setPaused(true); };
 
   if (!attract) {
-    window.addEventListener('mousemove', onMove);
-    canvas.addEventListener('mousedown', onDown);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onBlur);
@@ -1025,9 +1041,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       running = false; dead = true;
       ro.disconnect();
       if (net) net.onmsg = null;
-      window.removeEventListener('mousemove', onMove);
-      canvas.removeEventListener('mousedown', onDown);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
