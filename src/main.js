@@ -19,7 +19,7 @@ const ICON = {
   airport: 'rotate_right',   // 旋回飛行
 };
 const icon = (name, cls) => `<span class="material-symbols-rounded ${cls}" aria-hidden="true">${name}</span>`;
-const portrait = (d) => `/img/sharks/${d.id}_side.png`;   // 立ち絵（タイトルと図鑑で使う）
+const portrait = (d) => `/img/sharks/${d.id}_side.webp`;   // 立ち絵（タイトルと図鑑で使う）
 
 // ---------- セーブデータ ----------
 const SAVE = 'samezario.save';

@@ -7,8 +7,14 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%88%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@600;800;900&family=Plus+Jakarta+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&family=M+PLUS+Rounded+1c:wght@700;800;900&family=Dela+Gothic+One&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,700,1,0&display=swap" rel="stylesheet">
+<!-- フォント CSS は描画を止めない（media=print → onload で all）。全部 display=swap なので
+     フォールバックで先に出して後から差し替わる。ぶら下げると FCP が CSS の往復ぶん遅れる。
+     M PLUS は 800 だけ使う。700/900 も足すと @font-face が 126→378 個、CSS が 116KB→347KB。
+     Dela はタイトルの5文字専用なので text= で1サブセットに切る（115KB→326B）。
+     Material Symbols は軸指定の形が違い、他と1リクエストに混ぜると空の CSS が返るので別のまま -->
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@600;800;900&family=M+PLUS+Rounded+1c:wght@800&family=Plus+Jakarta+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&text=%E3%82%B5%E3%83%A1%E3%82%B6%E3%83%AA%E3%82%AA&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,700,1,0&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
@@ -44,7 +50,7 @@
       </header>
 
       <!-- src / alt は show('title') が直前に使ったサメで差し替える -->
-      <img id="title-shark" src="/img/sharks/cinema_side.png" alt="映画サメ" decoding="async"
+      <img id="title-shark" src="/img/sharks/cinema_side.webp" alt="映画サメ" decoding="async"
            class="bob w-[250px] md:w-[360px] min-h-0 object-contain -my-1 drop-shadow-[8px_10px_0_rgba(45,45,45,.35)] pointer-events-none">
 
       <nav class="w-full max-w-[380px] flex flex-col gap-3">
