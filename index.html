@@ -119,7 +119,8 @@
           <div id="map-next-label" class="px-5 py-2.5 font-bold text-sm">サメ選択 →</div></button>
       </div>
 
-      <div class="flex-1 min-h-0 grid grid-cols-[1fr_340px] gap-5 max-md:grid-cols-1 max-md:grid-rows-[1fr_auto] max-md:gap-3 pb-2">
+      <!-- 畳むかどうかは style.css が決める。幅だけで畳むと横持ちスマホが潰れる -->
+      <div id="map-cols" class="flex-1 min-h-0 grid grid-cols-[1fr_340px] gap-5 pb-2">
         <!-- 掲示板 -->
         <div class="relative paper-sheet ink-4 hard-lg rounded-sm -rotate-[0.6deg] p-4 flex items-center justify-center overflow-hidden">
           <div class="pin top-2 left-2"></div>
@@ -172,7 +173,7 @@
         </div>
 
         <!-- 情報パネル -->
-        <aside id="map-info" class="bg-navy text-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col max-md:max-h-[34vh]">
+        <aside id="map-info" class="bg-navy text-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col">
           <div class="cap clapper-stripes h-5 border-b-4 border-ink"></div>
           <div id="map-info-body" class="p-5 flex-1 overflow-auto thin-scroll"></div>
         </aside>
@@ -191,8 +192,9 @@
           <div class="px-5 py-2.5 font-extrabold text-sm">ACTION! →</div></button>
       </div>
 
-      <div id="shark-cols" class="flex-1 min-h-0 grid grid-cols-[1fr_320px] gap-5 max-md:grid-cols-1 max-md:overflow-auto max-md:thin-scroll max-md:gap-3 pb-2">
-        <div class="min-h-0 flex flex-col gap-4 max-md:contents">
+      <!-- 畳むかどうかは style.css が決める。幅だけで畳むと横持ちスマホが潰れる -->
+      <div id="shark-cols" class="flex-1 min-h-0 grid grid-cols-[1fr_320px] gap-5 thin-scroll pb-2">
+        <div class="shark-col min-h-0 flex flex-col gap-4">
           <!-- プレビュー -->
           <div class="preview-pane relative flex-1 min-h-0 bg-teal-deep ink-4 hard-lg rounded-lg overflow-hidden">
             <div class="absolute inset-0 opacity-40" style="background-image:radial-gradient(rgba(244,239,234,.25) 2px,transparent 2px);background-size:26px 26px"></div>
@@ -203,7 +205,7 @@
           <div id="stats" class="grid grid-cols-4 max-sm:grid-cols-2 gap-3 max-sm:gap-2 shrink-0"></div>
         </div>
 
-        <div class="min-h-0 flex flex-col gap-2.5 max-md:contents">
+        <div class="shark-col min-h-0 flex flex-col gap-2.5">
           <!-- 名前。同じロケ地の部屋へ自動で入り、空いた席はボットが埋める -->
           <div class="name-pane bg-navy text-paper ink-3 hard rounded-lg p-3 shrink-0">
             <label class="block">

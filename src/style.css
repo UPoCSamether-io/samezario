@@ -352,12 +352,47 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 
    `>` (子結合子) は使えない。display: contents は箱の生成を消すだけで
    DOM ツリーは変えないので、この4要素は grid item にはなっても
-   #shark-cols の DOM 上の子にはならない。子孫結合子でないと当たらない */
-@media (width < 48rem) {
+   #shark-cols の DOM 上の子にはならない。子孫結合子でないと当たらない。
+
+   畳む条件が「狭い」ではなく「狭く、かつ縦が十分ある」なのは、横持ちスマホが
+   幅も縦も足りないから。幅だけで畳むと各段が帯に潰れ、実測 667x375 では
+   地図が高さ 75px になって縮尺と方位記号が地図に重なり、サメの立ち絵も
+   プレビューのタグに隠れていた。縦持ちはタッチ端末では回転ガードで塞いだので、
+   ここに来るのは縦長のデスクトップウィンドウだけになる */
+@media (width < 48rem) and (min-height: 501px) {
+  #map-cols { grid-template-columns: 1fr; grid-template-rows: 1fr auto; gap: 0.75rem; }
+  #map-info { max-height: 34vh; }
+
+  #shark-cols { grid-template-columns: 1fr; gap: 0.75rem; overflow: auto; }
+  #shark-cols > .shark-col  { display: contents; }
   #shark-cols .preview-pane { order: 1; min-height: 34vh; }
   #shark-cols #shark-list   { order: 2; overflow: visible; }
   #shark-cols #stats        { order: 3; }
   #shark-cols .name-pane    { order: 4; }   /* 一度入れたら変えないので最後 */
+}
+
+/* 横画面では右カラムの固定幅（340/320px）が 667px の画面の半分を食う。
+   縦に並べ替える余地が無いぶん、横の配分で詰める */
+@media (max-height: 500px) {
+  #map-cols   { grid-template-columns: 1fr minmax(170px, 34%); gap: 0.75rem; }
+  #shark-cols { grid-template-columns: 1fr minmax(160px, 32%); gap: 0.75rem; }
+
+  /* プレビューのタグは立ち絵の上に浮いている。縦積みのままだとタグの高さが
+     パネルを超えて立ち絵が完全に隠れる（実測 667x375 でパネル 127px に対し
+     タグ 172px）。横一列に寝かせて上端の帯にし、下を立ち絵に明け渡す */
+  #preview-tag {
+    top: 0.4rem; left: 0.4rem; right: 0.4rem;
+    display: flex; gap: 0.4rem; align-items: flex-start;
+  }
+  #preview-tag > div { margin-top: 0; min-width: 0; padding: 0.3rem 0.6rem; }
+  /* 残すのは名前とスキル名だけ。英名・モチーフ・効果説明・CD は
+     一覧のカードとステータス欄で読めるので、ここでは立ち絵を優先する */
+  #preview-tag .tag-en,
+  #preview-tag .tag-motif,
+  #preview-tag .tag-desc,
+  #preview-tag .tag-cd { display: none; }
+  #preview-tag .tag-name { font-size: 0.95rem; }
+  #preview-tag .mb-1 { margin-bottom: 0; }
 }
 
 /* ---- ゲーム HUD ----

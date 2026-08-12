@@ -246,9 +246,9 @@ function selectShark(d) {
 
   $('#preview-tag').innerHTML = `
     <div class="bg-paper ink-3 hard rounded-lg px-4 py-2 -rotate-1">
-      <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${esc(d.en)}</div>
-      <div class="font-display font-extrabold text-2xl leading-tight">${esc(d.name)}</div>
-      <div class="text-[11px] text-ink/60">${esc(d.motif)}</div>
+      <div class="tag-en font-mono text-[10px] tracking-[0.3em] text-ink/55">${esc(d.en)}</div>
+      <div class="tag-name font-display font-extrabold text-2xl leading-tight">${esc(d.name)}</div>
+      <div class="tag-motif text-[11px] text-ink/60">${esc(d.motif)}</div>
     </div>
     <div class="mt-3 max-w-[300px] bg-navy text-paper ink-3 hard rounded-lg px-4 py-3 rotate-1">
       <div class="flex items-center gap-2 mb-1">
@@ -256,8 +256,8 @@ function selectShark(d) {
         <span class="font-display font-extrabold">${esc(d.skill.name)}</span>
         <span class="ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
       </div>
-      <p class="text-[12px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
-      <div class="font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
+      <p class="tag-desc text-[12px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
+      <div class="tag-cd font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
     </div>`;
 
   $('#stats').innerHTML = statBars(d);
