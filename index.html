@@ -268,6 +268,14 @@
 
   <!-- ================= ゲーム ================= -->
   <section id="s-game" class="screen">
+    <!-- 縦持ちガード。表示・非表示は CSS が持つ（game.js の自動ポーズと同じ条件式） -->
+    <div id="rotate-hint" class="absolute inset-0 z-40 bg-navy-deep/95 hidden place-items-center px-8 text-center">
+      <div>
+        <span class="material-symbols-rounded !text-6xl text-yellow block mb-4">screen_rotation</span>
+        <p class="font-display font-extrabold text-xl text-paper">端末を横にしてください</p>
+        <p class="mt-2 text-sm text-paper/70">左右の視界が要る画面です。<br>横向きにすると続きから再開できます。</p>
+      </div>
+    </div>
     <canvas id="stage" class="absolute inset-0 w-full h-full cursor-crosshair"></canvas>
 
     <!-- 画面端のビネット。canvas に毎フレーム塗ると全画面ぶんのラジアルグラデーションを

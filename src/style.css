@@ -425,3 +425,10 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #hud-skill, #hud-dash { width: 84px; height: 84px; }
   #hud-actions > #hud-skill { margin-bottom: 2.5rem; }
 }
+
+/* 縦持ちガード。.io 系は左右の視界が生命線で、縦だと横からの寄りに反応できない。
+   ここの条件式は game.js の自動ポーズとまったく同じ。ズレると
+   「案内は出ているのに世界は動いている」または「横なのに止まる」になる */
+@media (orientation: portrait) and (pointer: coarse) {
+  #rotate-hint { display: grid; }
+}

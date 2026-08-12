@@ -293,6 +293,15 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     onHud?.({ paused: v });
   }
 
+  // 縦に傾けたとき。案内を出すだけだと、端末を戻している間もサメは泳ぎ続けて
+  // 食われる。条件式は style.css の #rotate-hint とまったく同じものを使う。
+  // resize / orientationchange は回転アニメーション中に何度も走るので matchMedia を使う。
+  // 注: setPaused は他人が居る部屋では世界を止められない（メニューが開くだけ）。
+  // これは blur や Esc とまったく同じ既存の挙動で、ここだけ特別扱いはしない
+  const portraitMQ = matchMedia('(orientation: portrait) and (pointer: coarse)');
+  const onPortrait = (e) => { if (e.matches) setPaused(true); };
+  if (!attract) portraitMQ.addEventListener('change', onPortrait);
+
   // ---------- skills ----------
   function useSkill(s) {
     if (!s.alive || s.cd > 0 || paused) return;
@@ -1057,6 +1066,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
+      portraitMQ.removeEventListener('change', onPortrait);
     },
     resume: () => setPaused(false),
   };
