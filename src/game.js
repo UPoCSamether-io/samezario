@@ -240,27 +240,27 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // カーソルは「画面中心からのオフセット」で持つ。
   // ワールド座標で覚えるとカメラが進んだぶん狙点が置き去りになり、
   // カーソルを止めていてもサメがその一点を回り続けてしまう
-  const steer = makeSteer();
+  const steerGate = makeSteer();   // game.js には別物の steer() が居るので名前を分ける
   const aimAt = (e) => {
     const b = canvas.getBoundingClientRect();
     mouse.sx = e.clientX - b.left - b.width / 2;
     mouse.sy = e.clientY - b.top - b.height / 2;
   };
-  const onMove = (e) => { if (steer.owns(e)) aimAt(e); };
+  const onMove = (e) => { if (steerGate.owns(e)) aimAt(e); };
   // マウスは押しっぱなしでダッシュ。タッチは同じ指が操舵を兼ねていて競合するので
   // ここでは踏まず、HUD の DASH ボタンに任せる（main.js が Space を合成する）
   const onDown = (e) => {
-    if (!steer.claim(e)) return;
+    if (!steerGate.claim(e)) return;
     if (e.pointerType === 'mouse') { if (e.button === 0) player.boost = true; }
     else aimAt(e);        // 指を置いた瞬間からその向きへ進ませる
   };
   const onUp = (e) => {
     if (e.pointerType === 'mouse' && e.button === 0) player.boost = false;
-    steer.release(e);
+    steerGate.release(e);
   };
   // 通知やシステムジェスチャに pointer を奪われると pointerup は来ない。
   // ここで戻さないとブーストが張り付き、操舵の席も埋まったままになる
-  const onCancel = (e) => { player.boost = false; steer.release(e); };
+  const onCancel = (e) => { player.boost = false; steerGate.release(e); };
   const onKey = (e) => {
     const k = e.key.toLowerCase();
     if (k === ' ') { e.preventDefault(); player.boost = true; }
