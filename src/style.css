@@ -445,6 +445,39 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #rotate-hint { display: grid; }
 }
 
+/* ---- 横画面のタイトル ----
+   縦積み（タイトル→立ち絵→ボタン3つ）は 419px 要るので、横持ちの 390px には
+   到底入らない。スクロールコンテナも無いので上下が切れて到達不能になっていた。
+   横では左にブランド・右に操作の2カラムへ組み替える。左右に余っている幅を
+   使うだけで縦の要求が半分以下になる。
+   coarse で絞らないのは、縦の短いウィンドウならマウスでも同じ得をするため */
+@media (max-height: 500px) {
+  /* 左にブランド（ロゴを上、立ち絵を下）、右に操作。grid なのは、flex 行だと
+     header・立ち絵・nav が横一列の3カラムになってしまうため。
+     ロゴと立ち絵を同じ列の別の行に置きたいので行と列を明示する */
+  #title-stage {
+    display: grid;
+    grid-template-columns: 1fr min(44vw, 360px);
+    grid-template-rows: auto auto;
+    align-items: center;
+    justify-items: center;
+    gap: 0.5rem clamp(1rem, 4vw, 3rem);
+  }
+  #title-stage > header       { grid-area: 1 / 1; }
+  #title-stage > #title-shark { grid-area: 2 / 1; }
+  #title-stage > nav          { grid-area: 1 / 2 / span 2 / auto; width: 100%; gap: 0.5rem; }
+
+  /* 縮めた列でロゴが1文字ずつ折り返さないよう、改行を禁じてから字を詰める */
+  #title-stage > header h1 {
+    white-space: nowrap;
+    font-size: clamp(28px, 5.2vw, 44px);
+    padding: 0.4rem 1.2rem;
+  }
+  #title-stage > header p { margin-top: 0.35rem; font-size: 10px; letter-spacing: 0.28em; }
+  /* 立ち絵は縦基準で決める。幅基準だと横長画面ほど高さが溢れる */
+  #title-stage > #title-shark { width: auto; height: clamp(80px, 34vh, 170px); margin: 0; }
+}
+
 /* 図鑑のカード。auto-fill なので列数は幅任せ。下限を 150px まで緩めるのは
    狭い画面だけにする — カードは5枚しかないので、広い画面で下限を下げても
    空トラックが増えてカードが縮むだけだった（実測 1920 で 220px → 156px） */

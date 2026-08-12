@@ -33,6 +33,19 @@
     <canvas id="attract" class="absolute inset-0 w-full h-full"></canvas>
   </div>
 
+  <!-- ================= 縦持ちガード =================
+       全画面に被せる。ゲームだけでなくタイトルからブロックするのは、メニューが
+       横向き前提の組みになったため（縦だと収まらない）。表示条件は CSS が持ち、
+       game.js の自動ポーズが同じ条件式を使う。
+       z-50 = レターボックス(40)より上。#app 直下に置いて .screen の display に依存させない -->
+  <div id="rotate-hint" class="absolute inset-0 z-50 bg-navy-deep/95 hidden place-items-center px-8 text-center">
+    <div>
+      <span class="material-symbols-rounded !text-6xl text-yellow block mb-4">screen_rotation</span>
+      <p class="font-display font-extrabold text-xl text-paper">端末を横にしてください</p>
+      <p class="mt-2 text-sm text-paper/70">横向き専用のゲームです。<br>端末を回すとそのまま続けられます。</p>
+    </div>
+  </div>
+
   <!-- ================= レターボックス ================= -->
   <div id="chrome">
     <div class="letterbox top-0 border-b-4 border-ink"></div>
@@ -43,7 +56,7 @@
 
   <!-- ================= タイトル ================= -->
   <section id="s-title" class="screen on">
-    <div class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[var(--bar-pad)]">
+    <div id="title-stage" class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[var(--bar-pad)]">
       <header class="text-center -rotate-1 relative">
         <!-- 看板が周囲の水を照らす分の光。文字と同じ琥珀色でないと濁る -->
         <div class="absolute -inset-12 bg-[#ff9f22]/25 blur-3xl rounded-full"></div>
@@ -267,14 +280,6 @@
 
   <!-- ================= ゲーム ================= -->
   <section id="s-game" class="screen">
-    <!-- 縦持ちガード。表示・非表示は CSS が持つ（game.js の自動ポーズと同じ条件式） -->
-    <div id="rotate-hint" class="absolute inset-0 z-40 bg-navy-deep/95 hidden place-items-center px-8 text-center">
-      <div>
-        <span class="material-symbols-rounded !text-6xl text-yellow block mb-4">screen_rotation</span>
-        <p class="font-display font-extrabold text-xl text-paper">端末を横にしてください</p>
-        <p class="mt-2 text-sm text-paper/70">左右の視界が要る画面です。<br>横向きにすると続きから再開できます。</p>
-      </div>
-    </div>
     <canvas id="stage" class="absolute inset-0 w-full h-full cursor-crosshair"></canvas>
 
     <!-- 画面端のビネット。canvas に毎フレーム塗ると全画面ぶんのラジアルグラデーションを
