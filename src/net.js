@@ -3,17 +3,21 @@ const BASE_URL = import.meta.env.VITE_WS_URL || location.origin;
 const URL_ = BASE_URL.replace(/^http/, 'ws') + '/ws';
 
 /**
- * 部屋に入る。resolve は hello（自分の id とホストかどうか）が返った時点。
+ * 部屋に入る。resolve は hello（サーバが振った自分の id）が返った時点。
  * それ以降のメッセージは attach() で渡したハンドラへ流れる。
  * hello から attach までの間に届いた分は溜めておく — ここを落とすと
- * 「入室したのにホスト側にサメが生えない人」が出る。
+ * 入室直後に一度だけ届く 'full'（盤面まるごと）を取りこぼす。
  */
 export function connect({ map, shark, name }) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(URL_);
+    // サーバは同じスナップショットを1回だけ作って全員へ配るので、届くのはバイナリ。
+    // 既定の Blob だと読むのに await が要って順序が崩れるため、同期で解ける型にする
+    ws.binaryType = 'arraybuffer';
+    const decoder = new TextDecoder();
     let queued = [];
     const net = {
-      id: null, host: false, ws, onmsg: null,
+      id: null, ws, onmsg: null,
       attach(fn) {
         net.onmsg = fn;
         const q = queued;
@@ -32,15 +36,13 @@ export function connect({ map, shark, name }) {
     ws.onerror = () => { clearTimeout(timer); fail(); };
     ws.onclose = () => { clearTimeout(timer); emit({ t: 'down' }); fail(); };
     ws.onmessage = (e) => {
-      const m = JSON.parse(e.data);
+      const m = JSON.parse(typeof e.data === 'string' ? e.data : decoder.decode(e.data));
       if (m.t === 'hello') {
         clearTimeout(timer);
         net.id = m.id;
-        net.host = m.host;
         resolve(net);
         return;
       }
-      if (m.t === 'host') net.host = true;
       emit(m);
     };
   });

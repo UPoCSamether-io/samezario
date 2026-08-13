@@ -63,9 +63,14 @@ function spriteOf(def) {
   return SPRITES.get(def.id);
 }
 
-/** 胴の半径 r のサメの体長。伸びずに太さと一緒に拡大する。絵の縦横比で決まるので def が要る */
-export const bodyLength = (r, def) =>
-  r * 2 * (def.fat ?? FAT) * (spriteOf(def)?.aspect ?? ASPECT0);
+/**
+ * 胴の半径 r のサメの体長。伸びずに太さと一緒に拡大する。
+ * 縦横比は data.js の def.aspect（scripts/sprite-aspect.py が bake() と同じトリムで測った値）。
+ * 焼き上がりの実測ではなく定数を使うのは、これが当たり判定の寸法だから：
+ * spriteOf() を読むと画像のロード完了で体長が変わり、同じ盤面でも当たる／当たらないが変わる。
+ * それに、サーバ側の sim.js は document を持たないので spriteOf() を呼べない。
+ */
+export const bodyLength = (r, def) => r * 2 * (def.fat ?? FAT) * (def.aspect ?? ASPECT0);
 
 /**
  * body の点列を骨として原画を曲げる（rope）。

@@ -1,16 +1,31 @@
-// リアルタイム対戦の中継サーバ。
-// 盤面の正は「その部屋に最初に入った人」のブラウザ（ホスト）で、ここがするのは部屋割りと
-// メッセージの配り直しだけ。ゲストの入力はホストへ、ホストのスナップショットは全員へ流す。
-// ponytail: ホスト権限モデル。ホストのクライアントを書き換えればチートできるし、
-// ホストの回線が全員に効く。気になったら server 側で game.js を回す（DOM 依存の切り離しが要る）。
+// リアルタイム対戦の権威サーバ。
+//
+// 盤面の正はここ。部屋ごとに src/sim.js の world を持ち、30Hz で回して 15Hz で配る。
+// ブラウザから受け取るのは操作だけ（向き・ダッシュ・スキル・ポーズ）で、
+// 位置も生死も餌もここが決める。ブラウザ側が動かしているのは「こう答えるはず」という
+// 予測で、ズレは次のスナップショットが正す。
+//
+// 以前はホスト（最初に入った人）のブラウザが正だった。やめた理由は3つ:
+// ホストがタブを裏に回すと rAF が止まって部屋ごと凍る、ホストの回線品質が全員に効く、
+// ホストのクライアントを書き換えればチートできる。
+// 往復も減る —— ゲストの入力は「ゲスト→サーバ→ホスト」、盤面は「ホスト→サーバ→ゲスト」で
+// Render を2往復していたのが、今は1往復で閉じる。
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
+import { MAPS } from '../src/data.js';
+import { createWorld } from '../src/sim.js';
 
-const CAP = 8;                 // 1部屋の人数上限。残りはボットが埋める
-const rooms = new Map();       // roomId("chofu#1") -> { members:Set<ws>, host:ws }
+// 1部屋の人数上限。盤面は常に14匹で、空席をボットが埋める（sim.js の BOT_COUNT+1）。
+// つまり CAP=14 は「満席なら全員が人」。8 にしていた頃は 60人が8部屋へ散って、
+// 半分がボットの海になっていた。14 なら4〜5部屋に集まるうえ、部屋数もボットも減って
+// サーバが軽い（0.1 vCPU / 60人で 4.08 → 5.75 msg/s、+41%）
+const CAP = 14;
+const TICK_MS = 1000 / 30;     // 盤面を進める刻み
+const SNAP_EVERY = 2;          // 何ティックごとに配るか（30Hz / 2 = 15Hz）
+const rooms = new Map();       // roomId("chofu#1") -> room
 let seq = 0;
 
 const send = (ws, m) => {
@@ -18,23 +33,69 @@ const send = (ws, m) => {
   if (ws.bufferedAmount > 1 << 20) return ws.terminate();
   if (ws.readyState === 1) ws.send(JSON.stringify(m));
 };
+
+/**
+ * 同じスナップショットを部屋の全員へ。
+ * 素直に send() を人数分呼ぶと、同じ盤面を人数ぶん JSON にして人数ぶん UTF-8 に
+ * 直すことになる（8人なら8回）。1回だけ作って同じバッファを配る。
+ * バイナリフレームで出るので、受け側（src/net.js）は ArrayBuffer も解く。
+ */
+const sendAll = (members, m, pick) => {
+  let buf = null;
+  for (const ws of members) {
+    if (pick && !pick(ws)) continue;
+    if (ws.bufferedAmount > 1 << 20) { ws.terminate(); continue; }
+    if (ws.readyState === 1) ws.send((buf ??= Buffer.from(JSON.stringify(m))));
+  }
+};
 const clean = (s) => String(s ?? '').replace(/[\p{C}]/gu, '').trim().slice(0, 10) || 'PLAYER';
 
+/**
+ * 部屋をひとつ立てて回し始める。
+ * dt は実時間ではなく固定にしてある。詰まったぶんを dt に乗せると、
+ * 復帰した1ティックでサメが体半分ぶん進んで壁や相手をすり抜ける。
+ * 遅れは「世界がゆっくりになる」形で吸わせるほうが、この規模では安い。
+ */
+function makeRoom(id, map) {
+  const world = createWorld({ map, authority: true, diffs: true });
+  world.fillBots();
+  world.seedFood();
+  const room = { id, map, world, members: new Set(), paused: false, ticks: 0 };
+  room.timer = setInterval(() => {
+    if (room.paused) return;
+    world.step(TICK_MS / 1000);
+    world.drainEvents();   // 演出はブラウザの仕事。ここで捨てないと際限なく積む
+    if (++room.ticks % SNAP_EVERY) return;
+
+    // 差分を先に確定させてから、入ってきた人へ全部を撮る。この順でないと
+    // 「full に載っていた餌」が直後の差分でもう一度届いて、その人の海だけ餌が倍になる
+    const diff = world.snapshot();
+    sendAll(room.members, diff, (ws) => !ws.needFull);
+    if (![...room.members].some((ws) => ws.needFull)) return;
+    const full = world.snapshot(true);
+    sendAll(room.members, full, (ws) => ws.needFull);
+    for (const ws of room.members) ws.needFull = false;
+  }, TICK_MS);
+  return room;
+}
+
 /** 同じマップで空きのある部屋へ。無ければ作る */
-function joinRoom(ws, map) {
-  const key = clean(map).replace(/[^a-z0-9_-]/gi, '') || 'x';
-  let id = null, room = null;
+function joinRoom(ws, mapId) {
+  const key = clean(mapId).replace(/[^a-z0-9_-]/gi, '');
+  // 知らないロケ地名は既定のマップへ落とす。world を作れない名前で部屋は立てられない
+  const map = MAPS.find((m) => m.id === key) || MAPS[0];
+  let room = null;
   for (const [k, r] of rooms) {
-    if (k.startsWith(key + '#') && r.members.size < CAP) { id = k; room = r; break; }
+    if (k.startsWith(map.id + '#') && r.members.size < CAP) { room = r; break; }
   }
   if (!room) {
-    for (let n = 1; !id; n++) if (!rooms.has(`${key}#${n}`)) id = `${key}#${n}`;
-    room = { members: new Set(), host: ws };
+    let id = null;
+    for (let n = 1; !id; n++) if (!rooms.has(`${map.id}#${n}`)) id = `${map.id}#${n}`;
+    room = makeRoom(id, map);
     rooms.set(id, room);
   }
   room.members.add(ws);
   ws.room = room;
-  ws.roomId = id;
   return room;
 }
 
@@ -49,26 +110,31 @@ function wire(ws) {
     if (m.t === 'join') {
       if (ws.room) return;
       ws.id = 's' + ++seq;
-      ws.shark = clean(m.shark);
-      ws.pname = clean(m.name);
       const room = joinRoom(ws, m.map);
-      // 先客のことは hello では教えない。ホストが 'full' で盤面ごと送ってくる
-      send(ws, { t: 'hello', id: ws.id, host: room.host === ws });
-      for (const o of room.members) {
-        if (o !== ws) send(o, { t: 'peer', id: ws.id, shark: ws.shark, name: ws.pname });
-      }
+      room.world.addPlayer({ nid: ws.id, sharkId: clean(m.shark), name: clean(m.name) });
+      room.paused = false;   // 独りだから止めていた部屋。人が来たら動かす
+      ws.needFull = true;    // 盤面は次のティックで撮って送る（上の makeRoom 参照）
+      send(ws, { t: 'hello', id: ws.id });
+      // 先客にも、この人のことは次のスナップショットの名簿で伝わる（最大 66ms 後）
       return;
     }
 
     const room = ws.room;
     if (!room) return;
-    m.id = ws.id;                                  // 差出人はサーバが刻む（自称させない）
-    if (m.to) {                                    // 名指し（ホスト → 入室直後の1人へ全状態）
-      for (const o of room.members) if (o.id === m.to) send(o, m);
-    } else if (room.host === ws) {                 // ホストの配信は全員へ
-      for (const o of room.members) if (o !== ws) send(o, m);
-    } else {                                       // ゲストの入力はホストだけが要る
-      send(room.host, m);
+    // 受け付けるのは操作だけ。差出人は ws.id で、自称は一切見ない
+    switch (m.t) {
+      case 'in':
+        room.world.input(ws.id, { aim: m.a, boost: m.b });
+        break;
+      case 'sk': {
+        const s = room.world.sharks.find((o) => o.nid === ws.id);
+        if (s) room.world.useSkill(s);
+        break;
+      }
+      case 'pause':
+        // 止められるのは独りの部屋だけ。他人が居るのに止めると全員が待たされる
+        room.paused = !!m.v && room.world.humans() <= 1;
+        break;
     }
   });
 
@@ -77,13 +143,11 @@ function wire(ws) {
     const room = ws.room;
     if (!room) return;
     room.members.delete(ws);
-    if (!room.members.size) { rooms.delete(ws.roomId); return; }
-    // ホストが抜けたら次の人へ委譲。全員が同じ盤面を回しているので、旗を立て替えるだけで続く
-    if (room.host === ws) {
-      room.host = [...room.members][0];
-      send(room.host, { t: 'host' });
-    }
-    for (const o of room.members) send(o, { t: 'bye', id: ws.id });
+    room.world.removeShark(ws.id);    // 抜けたことは次のスナップショットの名簿で伝わる
+    if (room.members.size) { room.world.fillBots(); return; }   // 空いた席はボットへ戻す
+    clearInterval(room.timer);        // 誰も見ていない海を回し続けない
+    room.world.destroy();
+    rooms.delete(room.id);
   });
 }
 
@@ -92,9 +156,13 @@ export function attach(server) {
   const wss = new WebSocketServer({
     noServer: true,
     maxPayload: 1 << 20,
-    // スナップショットは同じ形の数字が並ぶので、繰り越し辞書がよく効く（実測 0.4 倍）。
-    // Render の帯域が月5GBしかないので、CPU を少し払って通信量を買う
-    perMessageDeflate: { zlibDeflateOptions: { level: 3 }, threshold: 256 },
+    // 既定は圧縮なし。中継サーバだった頃は「CPU を少し払って通信量を買う」で正しかったが、
+    // 盤面をここで回すようになってから逆転した —— zlib がプロセス全体の CPU の 51% を占め、
+    // 0.1 vCPU では 1部屋すら回らなくなる（実測 3.9/s → 切ると 14.1/s）。
+    // 0.5 CPU / 40人でも 12.7/s・p99 196ms（圧縮）対 15.1/s・p99 69ms（素通し）で、
+    // 買えるのは 0.91 → 0.26 GB/時。帯域が先に尽きる見込みが立ったときだけ WS_DEFLATE=on。
+    perMessageDeflate: process.env.WS_DEFLATE === 'on'
+      && { zlibDeflateOptions: { level: 3 }, threshold: 256 },
   });
   server.on('upgrade', (req, socket, head) => {
     if (new URL(req.url, 'http://x').pathname !== '/ws') return;   // vite の HMR は素通し
@@ -102,9 +170,10 @@ export function attach(server) {
   });
 
   // FIN の来ない線（回線断・スリープ）は readyState 1 のまま永久に残る。放っておくと
-  // ホストが死んでも委譲が走らず部屋が丸ごと凍り、ゲストなら送信分がヒープに溜まり続ける。
-  // ここでは ping を撃たず「無言」だけを見る —— 生きている側は必ず 15Hz 以上で何か送ってくるので、
-  // 黙った線は落ちたか、裏に回って rAF が止まったか。どちらも部屋から外すのが正しい。
+  // 抜けたはずの人のサメが部屋に浮かんだままになり、送信分もヒープに溜まり続ける。
+  // ここでは ping を撃たず「無言」だけを見る —— 生きている側は 20Hz で操作を送ってくるので、
+  // 黙った線は落ちたか、タブが裏に回って rAF が止まったか。どちらも部屋から外すのが正しい。
+  // （盤面はもうサーバが持っているので、ここが遅れても他の人の海は止まらない）
   const dead = Number(process.env.WS_DEAD_MS) || 30_000;
   const sweep = setInterval(() => {
     for (const ws of wss.clients) if (Date.now() - ws.seen > dead) ws.terminate();

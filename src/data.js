@@ -14,7 +14,7 @@ export const SHARKS = [
     intro:
       '調布の撮影所に住み着いた自称・映画監督。ハンチング帽もフィルムも拾いものだが返す気はない。' +
       'カメラを向けられると全力でキメ顔をするため、撮影がまったく進まない。',
-    speed: 1.0, turn: 1.0, growth: 1.0, boostCost: 1.0, boostPower: 1.0,
+    speed: 1.0, turn: 1.0, growth: 1.0, boostCost: 1.0, boostPower: 1.0, aspect: 1.62,
     skill: {
       name: 'スポットライト', key: 'E', cd: 12, dur: 4,
       desc: '前方に光を放ち、範囲内の敵サメを4秒間スローダウンさせる。',
@@ -33,7 +33,7 @@ export const SHARKS = [
     intro:
       '壁でも味方でもすり抜ける、実在が怪しいサメ。本人は「妖怪だから」と胸を張るが、' +
       '単に泳ぎが下手なだけという説が根強い。天神通りでは像の隣に立って小遣いを稼いでいる。',
-    speed: 0.92, turn: 1.35, growth: 1.0, boostCost: 1.0, boostPower: 0.95,
+    speed: 0.92, turn: 1.35, growth: 1.0, boostCost: 1.0, boostPower: 0.95, aspect: 1.90,
     skill: {
       name: 'すり抜け', key: 'E', cd: 16, dur: 3.5,
       desc: '3.5秒間、他のサメの胴体と外壁をすり抜ける。',
@@ -52,7 +52,7 @@ export const SHARKS = [
     intro:
       '流れに乗ることしか考えていない。速度は文句なしの一級品、そのかわり曲がれない。' +
       '花火大会では特等席を取るため三日前から河川敷に浮いており、毎年ひとに心配されている。',
-    speed: 1.18, turn: 0.92, growth: 0.92, boostCost: 1.15, boostPower: 1.05,
+    speed: 1.18, turn: 0.92, growth: 0.92, boostCost: 1.15, boostPower: 1.05, aspect: 1.74,
     skill: {
       name: '急流ブースト', key: 'E', cd: 9, dur: 0.35,
       desc: '一瞬で前方へ直線ダッシュ。サイズを消費しない。',
@@ -71,7 +71,7 @@ export const SHARKS = [
     intro:
       '食べた分だけ確実に大きくなる、そばの申し子。門前の蕎麦屋を全店制覇したという噂に対し、' +
       '本人は「まだ三周目」と静かに首を振る。湧き水で締めた麺以外は麺と認めない面倒なサメ。',
-    speed: 0.96, turn: 1.0, growth: 1.35, boostCost: 1.1, boostPower: 1.0,
+    speed: 0.96, turn: 1.0, growth: 1.35, boostCost: 1.1, boostPower: 1.0, aspect: 1.60,
     skill: {
       name: 'そばガード', key: 'E', cd: 22, dur: 10,
       desc: '10秒間、他のサメへの激突を1回だけ無効化する。',
@@ -90,7 +90,7 @@ export const SHARKS = [
     intro:
       '今日も調布飛行場から飛び立とうとして失敗しているサメ。エンジンは本物、免許は未取得。' +
       'ダッシュだけは誰より速いので、本人は完全に飛べているつもりでいる。',
-    speed: 1.05, turn: 0.98, growth: 0.98, boostCost: 0.62, boostPower: 1.18,
+    speed: 1.05, turn: 0.98, growth: 0.98, boostCost: 0.62, boostPower: 1.18, aspect: 1.83,
     skill: {
       name: '旋回飛行', key: 'E', cd: 14, dur: 2.5,
       desc: '2.5秒間、周囲の餌を一気に吸い寄せる。',
