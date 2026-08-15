@@ -103,22 +103,38 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   }
 
   // ---------- input ----------
-  // カーソルは「画面中心からのオフセット」で持つ。
-  // ワールド座標で覚えるとカメラが進んだぶん狙点が置き去りになり、
-  // カーソルを止めていてもサメがその一点を回り続けてしまう
+  // PC（マウス）: カーソルは「画面中心からのオフセット」で持つ。
+  // スマホ（タッチ）: 指を置いた位置を起点とする「フローティング仮想ジョイスティック」。
+  // 画面のどこでも親指を小さく倒すだけで全方向に直感的に旋回できる。
   const steerGate = makeSteer();   // game.js には別物の steer() が居るので名前を分ける
+  let pointerMode = 'mouse';
   const aimAt = (e) => {
     const b = canvas.getBoundingClientRect();
     mouse.sx = e.clientX - b.left - b.width / 2;
     mouse.sy = e.clientY - b.top - b.height / 2;
   };
-  const onMove = (e) => { if (steerGate.owns(e)) aimAt(e); };
+  const onMove = (e) => {
+    if (!steerGate.owns(e)) return;
+    if (e.pointerType === 'mouse') {
+      pointerMode = 'mouse';
+      aimAt(e);
+    } else {
+      pointerMode = 'touch';
+      const newAim = steerGate.move(e);
+      if (newAim !== null && player.alive) player.aim = newAim;
+    }
+  };
   // マウスは押しっぱなしでダッシュ。タッチは同じ指が操舵を兼ねていて競合するので
   // ここでは踏まず、HUD の DASH ボタンに任せる（main.js が Space を合成する）
   const onDown = (e) => {
     if (!steerGate.claim(e)) return;
-    if (e.pointerType === 'mouse') { if (e.button === 0) player.boost = true; }
-    else aimAt(e);        // 指を置いた瞬間からその向きへ進ませる
+    if (e.pointerType === 'mouse') {
+      pointerMode = 'mouse';
+      if (e.button === 0) player.boost = true;
+      aimAt(e);
+    } else {
+      pointerMode = 'touch';
+    }
   };
   const onUp = (e) => {
     if (e.pointerType === 'mouse' && e.button === 0) player.boost = false;
@@ -252,10 +268,12 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   }
 
   function step(dt) {
-    // 操舵。毎フレーム今のカメラでワールド座標へ焼き直す
+    // 操舵。マウス操作時は毎フレーム今のカメラでワールド座標へ焼き直す
     // （ワールド座標で覚えるとカメラが進んだぶん狙点が置き去りになる）。
-    // 中心に近すぎると向きが定まらないので、そのときは直進を保つ
-    if (!attract && player.alive) {
+    // 中心に近すぎると向きが定まらないので、そのときは直進を保つ。
+    // タッチ操作時は onMove でフローティング仮想スティックの相対ドラッグから
+    // 直接 aim が更新されるため、ここでは上書きしない
+    if (!attract && player.alive && pointerMode === 'mouse') {
       const wx = cam.x + mouse.sx / cam.zoom, wy = cam.y + mouse.sy / cam.zoom;
       if (Math.hypot(wx - player.x, wy - player.y) > radiusOf(player.mass)) {
         player.aim = Math.atan2(wy - player.y, wx - player.x);
@@ -464,10 +482,69 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.globalAlpha = 1;
     ctx.restore();
 
+    // タッチ操舵中のフローティング仮想ジョイスティック描画
+    if (!attract && player.alive) drawJoystick();
+
     // 画面端のビネットは #vignette（CSS）。ここで塗ると全画面のラジアルグラデーションを
     // 毎フレーム評価することになり、それだけで 1フレーム 4.8ms 食っていた
 
     if (mctx) drawMini();
+  }
+
+  function drawJoystick() {
+    const stick = steerGate.getTouchStick(canvas.getBoundingClientRect());
+    if (!stick) return;
+    const { ox, oy, cx, cy, maxR, deadzone } = stick;
+
+    ctx.save();
+    // ベース円（外枠リング）
+    ctx.beginPath();
+    ctx.arc(ox, oy, maxR, 0, TAU);
+    ctx.fillStyle = 'rgba(33, 48, 82, 0.38)';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(244, 239, 234, 0.5)';
+    ctx.stroke();
+
+    // 十字ガイド線
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(244, 239, 234, 0.22)';
+    ctx.beginPath();
+    ctx.moveTo(ox - maxR * 0.65, oy); ctx.lineTo(ox + maxR * 0.65, oy);
+    ctx.moveTo(ox, oy - maxR * 0.65); ctx.lineTo(ox, oy + maxR * 0.65);
+    ctx.stroke();
+
+    // デッドゾーン円
+    ctx.beginPath();
+    ctx.arc(ox, oy, deadzone, 0, TAU);
+    ctx.fillStyle = 'rgba(45, 45, 45, 0.25)';
+    ctx.fill();
+
+    // 接続線（ベース中心 -> ノブ）
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(cx, cy);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(243, 181, 83, 0.55)';
+    ctx.stroke();
+
+    // ノブ（現在位置）
+    const knobR = 18;
+    ctx.beginPath();
+    ctx.arc(cx, cy, knobR, 0, TAU);
+    ctx.fillStyle = 'rgba(243, 181, 83, 0.85)';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+
+    // ノブ中心のドット
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3.5, 0, TAU);
+    ctx.fillStyle = INK;
+    ctx.fill();
+
+    ctx.restore();
   }
 
   function drawMini() {
