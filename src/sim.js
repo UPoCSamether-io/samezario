@@ -47,10 +47,12 @@ export const rand = (a, b) => a + Math.random() * (b - a);
 export const pick = (a) => a[(Math.random() * a.length) | 0];
 export const radiusOf = (m) => 9 + Math.sqrt(m) * 0.72;
 
+/** a から b への最短の角度差（-π..π）。畳まずに引くと 2π の段差が差に化ける */
+const angDiff = (a, b) => ((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI;
+
 /** a を b の方向へ最大 max ラジアンだけ回す */
 function steer(a, b, max) {
-  const d = ((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI;
-  return a + clamp(d, -max, max);
+  return a + clamp(angDiff(a, b), -max, max);
 }
 
 /** "M x yl dx dy,...z"（data.js のエリア輪郭）→ 頂点配列 */
@@ -268,7 +270,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
       def: d, name, isBot,
       // nid = 通信での身元。ボットは 'b0..'、人は接続ID。復活しても同じ nid を引き継ぐ
       nid: nid ?? 'b' + nidSeq++,
-      ex: 0, ey: 0,              // スナップショットとのズレ。数フレームかけて溶かす
+      ex: 0, ey: 0, ea: 0,       // スナップショットとのズレ（位置と向き）。数フレームかけて溶かす
       x, y, angle, aim: angle,   // 初回入力が来るまでは湧いた向きへ直進
       mass: START_MASS,
       path: [{ x, y }],
@@ -604,11 +606,14 @@ export function createWorld({ map, authority = true, diffs = false }) {
         // 予測側：壁での生死もサーバが決める。はみ出したまま補正を待つ
       }
 
-      // スナップショットとのズレは数フレームかけて溶かす（見えるワープを作らない）
-      if (s.ex || s.ey) {
+      // スナップショットとのズレは数フレームかけて溶かす（見えるワープを作らない）。
+      // 向きも位置と同じに扱う —— aim へ渡すだけだと上の steer が旋回レート上限で
+      // 追いかける形になり、曲がり続けている間ずっと遅れが残る
+      if (s.ex || s.ey || s.ea) {
         const k = Math.min(1, dt * 7);
         s.x += s.ex * k; s.y += s.ey * k;
         s.ex -= s.ex * k; s.ey -= s.ey * k;
+        s.angle += s.ea * k; s.ea -= s.ea * k;
       }
 
       // 航跡：ダッシュ中だけ点を置き、寿命が切れた先頭から消える（尻尾から引っ込む）
@@ -655,7 +660,10 @@ export function createWorld({ map, authority = true, diffs = false }) {
   // ---------- 配信 ----------
   const packShark = (o) => [
     o.nid, Math.round(o.x), Math.round(o.y), +o.angle.toFixed(2), Math.round(o.mass),
-    (o.alive ? 1 : 0) | (o.boost ? 2 : 0) | (o.skill > 0 ? 4 : 0) | (o.guard > 0 ? 8 : 0) | (o.iframe > 0 ? 16 : 0),
+    // slow / rapid は見た目ではなく速度と旋回上限そのものを変える。載せ忘れると
+    // 予測側だけが等速で走り、スロー中は追い越し・急流中は置いていかれる（実測 64px）
+    (o.alive ? 1 : 0) | (o.boost ? 2 : 0) | (o.skill > 0 ? 4 : 0) | (o.guard > 0 ? 8 : 0) | (o.iframe > 0 ? 16 : 0)
+    | (o.slow > 0 ? 32 : 0) | (o.rapid > 0 ? 64 : 0),
   ];
   const packFood = (f) => [f.id, Math.round(f.x), Math.round(f.y), +f.v.toFixed(1), f.kind];
   const roster = () => sharks.map((o) => [o.nid, o.name, SHARKS.indexOf(o.def)]);
@@ -723,15 +731,25 @@ export function createWorld({ map, authority = true, diffs = false }) {
       const wasAlive = s.alive;
       s.mass = mass;
       if (s.nid !== me) {
+        // aim は「次のスナップショットまで曲がり続ける先」、ea は「いま開いている向きのズレ」。
+        // 前者だけだと旋回中に体が進行方向を向かず横滑りする。
+        // scripts/turn-probe.mjs 実測、急旋回の横滑り p95 で 12.4° → 8.9°
         s.aim = ang;
+        s.ea = angDiff(s.angle, ang);
         s.boost = !!(flags & 2);
         s.skill = flags & 4 ? 0.25 : 0;
         s.guard = flags & 8 ? 0.25 : 0;
         s.iframe = flags & 16 ? 0.25 : 0;
       }
+      // スロー / 急流は自分にも当てる。他のフラグと違って「自分の操作」ではなく
+      // サーバが決めた効果なので、除け者にすると当てられた本人の予測だけが全速のままになる。
+      // 残り時間が上の演出フラグ(0.25)より短いのは、速度そのものを変えるから ——
+      // 効果が切れた後まで残ると 3.1倍のまま突っ走る。届かない側へ倒して次の便で張り直す
+      s.slow = flags & 32 ? 0.15 : 0;
+      s.rapid = flags & 64 ? 0.15 : 0;
       s.alive = !!(flags & 1);
       if (full || !wasAlive) {                    // 入室直後と復活はワープさせる（補間で盤面を横断させない）
-        s.x = x; s.y = y; s.angle = ang; s.ex = s.ey = 0;
+        s.x = x; s.y = y; s.angle = ang; s.ex = s.ey = s.ea = 0;
         s.path = [{ x, y }]; s.wake.length = 0;
         events.push({ k: 'warp', shark: s });
       } else {
