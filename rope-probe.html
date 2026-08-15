@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>rope gap probe</title>
+<!-- 旋回中の胴の継ぎ目を目で見る用。`npm run dev` → /rope-probe.html
+     左上=直進、左下=最大旋回（r=90 の大きい個体）、右=画像ロード前に出るベクター版。
+     dist には入らない（vite の入口は index.html だけ） -->
+
+<style>body{background:#2a7b7c;margin:0}canvas{display:block}</style>
+<canvas id="c" width="1240" height="900"></canvas>
+<script type="module">
+import { SHARKS } from '/src/data.js';
+import { paintSpriteShark, paintShark, swimBody, taper, bodyLength } from '/src/shark-art.js';
+
+const ctx = document.getElementById('c').getContext('2d');
+const SEGS = 18, TURN_RADIUS = 3.2;
+
+// sim.js の bodyOf と同じ間隔で、最大旋回（旋回半径 = 3.2r/turn）の円弧に骨を並べる
+function arcBody(cx, cy, r, def, k) {
+  const sp = bodyLength(r, def) / SEGS;
+  const kappa = k * def.turn / (TURN_RADIUS * r);
+  const out = []; let x = cx, y = cy, a = 0;
+  for (let i = 0; i <= SEGS; i++) {
+    out.push({ x, y, r: r * taper(i / SEGS) });
+    x += Math.cos(a) * sp; y += Math.sin(a) * sp; a += kappa * sp;
+  }
+  return out;
+}
+
+const def = SHARKS.find((s) => s.id === 'airport');
+function draw() {
+  ctx.clearRect(0, 0, 1240, 900);
+  // 左：スプライト（上=直進 / 下=最大旋回）
+  let ok = paintSpriteShark(ctx, arcBody(80, 80, 90, def, 0), def);
+  ok = paintSpriteShark(ctx, arcBody(80, 330, 90, def, 1), def) && ok;
+  // 右：画像ロード前に出るベクター版（キャラ選択で一瞬見えるやつ）
+  paintShark(ctx, swimBody(900, 200, 420, 420 / bodyLength(1, def), 0), 0, def, { lw: 3.5 });
+  if (!ok) requestAnimationFrame(draw); else document.title = 'ready';
+}
+draw();
+</script>

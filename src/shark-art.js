@@ -64,6 +64,13 @@ function spriteOf(def) {
 }
 
 /**
+ * 全種の画像を先に読ませる。ブラウザ側の入口(main.js)から一度呼ぶ。
+ * spriteOf は「最初に描かれた瞬間」に読み始めるので、これが無いとキャラ選択で
+ * サメを切り替えるたび、その種の画像が届くまでベクター版が一瞬出る。
+ */
+export const preloadSharks = (defs) => defs.forEach(spriteOf);
+
+/**
  * 胴の半径 r のサメの体長。伸びずに太さと一緒に拡大する。
  * 縦横比は data.js の def.aspect（scripts/sprite-aspect.py が bake() と同じトリムで測った値）。
  * 焼き上がりの実測ではなく定数を使うのは、これが当たり判定の寸法だから：
@@ -74,7 +81,10 @@ export const bodyLength = (r, def) => r * 2 * (def.fat ?? FAT) * (def.aspect ?? 
 
 /**
  * body の点列を骨として原画を曲げる（rope）。
- * 隣り合う短冊を少し重ねて、曲がった外側にできる隙間を埋める。
+ * 短冊は骨ごとに回すので、曲がった関節の外側には「高さ×角度差」の楔が開く。
+ * 重ねる量を体の高さと角度差から出すのが要点：長さの一定割合（旧 8%）だと
+ * 体がでかいほど楔だけが伸びて足りなくなり、旋回中に胴が細切れに見えていた。
+ * 埋めるときは元画像の切り出し幅も一緒に伸ばす（引き伸ばすと絵が歪むため）。
  * 画像未ロードなら false を返すので、呼び側はベクター版へ落とす。
  */
 export function paintSpriteShark(ctx, body, def) {
@@ -86,13 +96,22 @@ export function paintSpriteShark(ctx, body, def) {
   for (const p of body) if (p.r > R) R = p.r;
   const h = R * 2 * (def.fat ?? FAT);
   const sw = src.width / (n - 1);
+  const ang = [];
+  for (let i = 0; i < n - 1; i++) {
+    ang.push(Math.atan2(body[i + 1].y - body[i].y, body[i + 1].x - body[i].x));
+  }
   for (let i = 0; i < n - 1; i++) {
     const a = body[i], b = body[i + 1];
     const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    // 次の骨との角度差。外側に開く楔の奥行きは (高さ/2) × 角度差
+    const d = i + 1 < ang.length
+      ? Math.abs(((ang[i + 1] - ang[i] + Math.PI) % TAU + TAU) % TAU - Math.PI) : 0;
+    const over = Math.min(len, len * 0.04 + h * 0.5 * d);   // 上限は短冊1枚ぶん
+    const cut = Math.min(sw * (1 + over / len), src.width - i * sw);
     ctx.save();
     ctx.translate(a.x, a.y);
-    ctx.rotate(Math.atan2(b.y - a.y, b.x - a.x));
-    ctx.drawImage(src, i * sw, 0, sw, src.height, -len * 0.04, -h / 2, len * 1.08, h);
+    ctx.rotate(ang[i]);
+    ctx.drawImage(src, i * sw, 0, cut, src.height, 0, -h / 2, (cut / sw) * len, h);
     ctx.restore();
   }
   return true;

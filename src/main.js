@@ -2,7 +2,9 @@ import { SHARKS, MAPS, TIPS } from './data.js';
 import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath } from './geo.js';
-import { paintShark, paintSpriteShark, bodyLength, swimBody } from './shark-art.js';
+import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
+
+preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
