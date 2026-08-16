@@ -597,12 +597,18 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     if (!paused) step(dt);
     draw(t);
 
-    // 送るのは自分の操作だけ。盤面は onNet が受け取る
+    // 送るのは自分の操作と現在座標。盤面は onNet が受け取る
     if (net) {
       netT += dt;
       if (netT >= 1 / 20) {
         netT = 0;
-        net.send({ t: 'in', a: +player.aim.toFixed(2), b: player.boost ? 1 : 0 });
+        net.send({
+          t: 'in',
+          a: +player.aim.toFixed(2),
+          b: player.boost ? 1 : 0,
+          x: Math.round(player.x),
+          y: Math.round(player.y),
+        });
       }
     }
 
