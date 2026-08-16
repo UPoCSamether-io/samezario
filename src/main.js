@@ -37,24 +37,11 @@ SHARKS.forEach((d) => { new Image().src = portrait(d); });
 // ---------- セーブデータ ----------
 const SAVE = 'samezario.save';
 const save = Object.assign(
-  { unlocked: ['chofu'], best: 0, shark: SHARKS[0].id, name: '', furigana: false },
+  { unlocked: ['chofu'], best: 0, shark: SHARKS[0].id, name: '' },
   JSON.parse(localStorage.getItem(SAVE) || '{}'),
 );
 const persist = () => localStorage.setItem(SAVE, JSON.stringify(save));
 const isUnlocked = (m) => m.unlocked || save.unlocked.includes(m.id);
-
-// ---------- ルビ（ふりがな）切り替え ----------
-function applyFurigana(on) {
-  save.furigana = !!on;
-  persist();
-  document.documentElement.classList.toggle('furigana-on', save.furigana);
-  const stateEl = $('#furigana-state');
-  if (stateEl) stateEl.textContent = save.furigana ? 'ON' : 'OFF';
-  const btn = $('#furigana-toggle');
-  if (btn) btn.setAttribute('aria-pressed', save.furigana ? 'true' : 'false');
-}
-$('#furigana-toggle')?.addEventListener('click', () => applyFurigana(!save.furigana));
-applyFurigana(save.furigana);
 
 // ---------- 画面遷移 ----------
 const screens = Object.fromEntries($$('.screen').map((s) => [s.id.slice(2), s]));
@@ -135,11 +122,7 @@ function tickPreviews(t) {
     const dpr = Math.min(2, devicePixelRatio || 1);
     const w = c.clientWidth, h = c.clientHeight;
     if (!w || !h) continue;
-    // 高さも見ること。幅だけ比べていると、幅が変わらず高さだけ変わったとき
-    // （立ち絵の枠は横幅が親いっぱいで、縦だけレイアウトで動く）バッキングストアが
-    // 古い高さのまま残る。CSS 側の箱に合わせて引き伸ばされてサメが潰れ、
-    // さらに clearRect が w×h ぶんしか消さないので、はみ出した部分に前の絵が
-    // 焼き付いて消えなくなる（実機で「タスクを終了するまで直らない」状態）
+    // 高さも見ること。
     if (c.width !== w * dpr || c.height !== h * dpr) { c.width = w * dpr; c.height = h * dpr; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
@@ -174,20 +157,13 @@ function dimmed(hex) {
 }
 
 // 名前と鍵は重心（geo.js の centroidOfPath）を挟んで上下に置く。
-// data.js の label は「文字を置くために手で決めた点」で図形の中心ではなく、
-// 小さい画面で名前を消して鍵だけ残すと中心から外れて見えるため。
-// 名前が消える画面では鍵を重心そのものへ寄せる
-const LABEL_DY = -22, LOCK_DY = 26;
-// 条件は style.css の .map-label を消すブロックと一字一句そろえること
-const compactMap = matchMedia('(max-height: 500px)');
+const LABEL_DY = -15, LOCK_DY = 52;
 
-/** 鍵の高さを決める。名前が出ているときはその下、消えているときは重心の上 */
 function placeLocks() {
   $$('.map-lock').forEach((lk) => {
-    lk.setAttribute('y', +lk.dataset.cy + (compactMap.matches ? 0 : LOCK_DY));
+    lk.setAttribute('y', +lk.dataset.cy + LOCK_DY);
   });
 }
-compactMap.addEventListener('change', placeLocks);
 
 function renderMaps() {
   const areas = $('#map-areas'), labels = $('#map-labels');
@@ -199,22 +175,30 @@ function renderMaps() {
       d: m.path, fill: open ? m.color : dimmed(m.color), tabindex: '0', role: 'radio',
       'aria-label': `${m.name}${open ? '' : '（未解放）'}`,
     });
-    // フォーカス＝選択。Tab で回すと情報パネルが追いかけるので、
-    // キーボードにも「今どこを見ているか」が選択リングだけで伝わる
     p.onclick = p.onfocus = () => selectMap(m);
     areas.appendChild(p);
 
     const cen = centroidOfPath(m.path);
 
+    // ルビ表示（ふりがな）
+    if (m.kana) {
+      const r = svgEl('text', {
+        class: 'map-ruby' + (open ? '' : ' locked'),
+        x: cen.x, y: cen.y + LABEL_DY - 26,
+      });
+      r.textContent = m.kana;
+      labels.appendChild(r);
+    }
+
+    // エリア名ラベル
     const t = svgEl('text', {
       class: 'map-label' + (open ? '' : ' locked'),
-      x: cen.x, y: cen.y + LABEL_DY,
+      x: cen.x, y: cen.y + LABEL_DY + 14,
     });
-    // SVG text 内のルビ（tspan）対応
-    t.innerHTML = `<tspan class="map-ruby" x="${cen.x}" dy="-13" font-size="14">${esc(m.kana || '')}</tspan><tspan class="map-base" x="${cen.x}" dy="14">${esc(m.name)}</tspan>`;
+    t.textContent = m.name;
     labels.appendChild(t);
 
-    // 未解放マークの南京錠。ラベルは text-anchor:middle で幅が読めないので、横ではなく真下に置く
+    // 未解放マークの南京錠。
     if (!open) {
       const lock = svgEl('text', { class: 'map-lock', x: cen.x });
       lock.dataset.cy = cen.y;      // y は placeLocks が画面に合わせて決める
@@ -230,13 +214,12 @@ function selectMap(m) {
   selMap = m;
   const open = isUnlocked(m);
   $$('.map-area').forEach((n, i) => n.setAttribute('aria-checked', MAPS[i] === m));
-  // 選択リングは別レイヤ。隣のエリアの下に潜らせないため、塗りより上に重ねて描く
+  // 選択リングは別レイヤ。
   $('#map-ring').setAttribute('d', m.path);
   $('#map-next').disabled = !open;
-  // 押せない理由をボタン自身に出す。ラベルが「サメ選択 →」のままだと袋小路に見える。
+  // 押せない理由をボタン自身に出す。
   $('#map-next-label').innerHTML = open ? 'サメ<ruby>選択<rp>(</rp><rt>せんたく</rt><rp>)</rp></ruby> →' : 'まだ<ruby>遊<rp>(</rp><rt>あそ</rt><rp>)</rp></ruby>べません';
-  // 並びは重要な順。パネルは横持ちで本文 197px しか映らず（実測 844x390）、下に置いたものは
-  // 読まれない。
+  // 並びは重要な順。
   $('#map-info-body').innerHTML = `
     <div id="map-en" class="font-mono text-[10px] tracking-[0.3em] text-mint mb-1">${esc(m.en)}</div>
     <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${m.ruby || esc(m.name)}</h3>
@@ -279,8 +262,7 @@ function renderSharks() {
     mainPreview = mountPreview($('#preview'), selShark);
     const list = $('#shark-list');
     list.innerHTML = '';
-    // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ
-    // 黙って戻す（下の recenter）。1面だけだと端で必ず止まってしまう。
+    // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ戻す
     for (let copy = 0; copy < DIAL_COPIES; copy++) {
       SHARKS.forEach((d, i) => {
         const b = document.createElement('button');
@@ -341,7 +323,7 @@ function centeredTile(list) {
   let best = null, bestGap = Infinity;
   for (const el of list.children) {
     const r = el.getBoundingClientRect();
-    if (!r.height) continue;                       // 隠してある面は数えない
+    if (!r.height) continue;
     const gap = Math.abs(r.top + r.height / 2 - mid);
     if (gap < bestGap) { bestGap = gap; best = el; }
   }
@@ -521,7 +503,6 @@ async function play() {
     save.shark = selShark.id; save.name = playerName(); persist();
     dropNet();
     $('#start-btn').disabled = true;
-    // 繋がらなければ黙ってボット部屋。
     try { net = await connect({ map: selMap.id, shark: selShark.id, name: save.name }); }
     catch { net = null; }
     $('#start-btn').disabled = false;

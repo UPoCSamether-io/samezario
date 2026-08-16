@@ -165,24 +165,39 @@
 .map-label {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 30px;                /* viewBox 単位。地図と一緒に伸び縮みする */
+  font-size: 46px;                /* viewBox 単位。地図と一緒に伸び縮みする */
   text-anchor: middle;
   dominant-baseline: middle;
   fill: var(--color-paper);
   stroke: var(--color-ink);
-  stroke-width: 5;
+  stroke-width: 8;
   paint-order: stroke;            /* 縁取りは文字の下に敷く。上に乗せると細る */
   user-select: none;
 }
-.map-label.locked { fill: rgb(244 239 234 / .55); stroke-width: 4; }
-.map-lock {
-  font-family: 'Material Symbols Rounded';
-  font-size: 40px;                /* viewBox 単位。地図と一緒に伸び縮みする */
+.map-label.locked { fill: rgb(244 239 234 / .65); stroke-width: 7; }
+
+.map-ruby {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 24px;
   text-anchor: middle;
   dominant-baseline: middle;
-  fill: rgb(244 239 234 / .55);
+  fill: var(--color-yellow);
   stroke: var(--color-ink);
-  stroke-width: 4;
+  stroke-width: 5;
+  paint-order: stroke;
+  user-select: none;
+}
+.map-ruby.locked { fill: rgb(243 181 83 / .65); stroke-width: 4.5; }
+
+.map-lock {
+  font-family: 'Material Symbols Rounded';
+  font-size: 52px;                /* viewBox 単位。地図と一緒に伸び縮みする */
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: rgb(244 239 234 / .6);
+  stroke: var(--color-ink);
+  stroke-width: 6;
   paint-order: stroke;
   user-select: none;
 }
@@ -433,13 +448,6 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #map-scale > div:last-child { height: 0.7rem; font-size: 8px; }
   #map-scale > div:last-child span { top: 0; }
 
-  /* エリア名は地図が小さいと図形からはみ出して読めない。名前は右の掲示板に
-     大きく出ているので地図からは落とし、代わりに鍵だけを大きく残す。
-     鍵は重心の下（main.js の LOCK_DY）に置いてあるので、名前を消したぶん
-     重心そのものへ戻す。y 属性を直接動かす — SVG 要素への CSS transform は
-     ブラウザによって transform-box の解釈が割れるので、位置合わせには使わない */
-  .map-label { display: none; }
-  .map-lock { font-size: 84px; }
 
   /* ---- サメ選択のダイヤル ----
      一覧をそのまま縮めると 1.8枚しか見えず、選ぶのにスクロールが要る。
@@ -724,8 +732,24 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #res-tip-pane > div { padding: 0.6rem 0.75rem; }
   #res-tip { font-size: 12px; line-height: 1.6; }
 
-  #res-actions { padding: 0.4rem 1.25rem 0.75rem 0; gap: 0.35rem; }
-  #res-actions .btn > div:last-child { padding-top: 0.35rem; padding-bottom: 0.35rem; font-size: 11px; }
+  #res-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    padding: 0.35rem 1.25rem 0.6rem 0;
+  }
+  #res-actions #retry {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+  }
+  #res-actions .btn {
+    margin-top: 6px;
+  }
+  #res-actions .btn > div:last-child {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+    font-size: 11.5px;
+  }
 }
 
 /* ロケ地の情報パネル。横持ちでは本文が 197px しか映らない（実測 844x390）。
@@ -764,7 +788,7 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 }
 
 /* ==========================================================================
-   Accessibility: Furigana / Ruby Typography & Toggle
+   Accessibility: Furigana / Ruby Typography (Always ON)
    ========================================================================== */
 
 /* Ruby base styling */
@@ -774,6 +798,7 @@ ruby {
 }
 
 rt {
+  display: ruby-text;
   font-size: 0.52em;
   line-height: 1;
   font-weight: 700;
@@ -788,74 +813,11 @@ rp {
   display: none;
 }
 
-/* Default (Furigana OFF): Hide ruby elements cleanly without taking space */
-html:not(.furigana-on) rt {
-  display: none;
-}
-
-/* Furigana ON: Display ruby texts cleanly */
-html.furigana-on rt {
-  display: ruby-text;
-}
-
 /* Buttons and badge ruby tweaks */
 .btn rt {
-  font-size: 0.46em;
+  font-size: 0.45em;
   font-weight: 800;
   transform: translateY(-0.2em);
 }
 
-/* SVG map ruby label */
-.map-ruby {
-  display: none;
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 700;
-  fill: var(--color-yellow);
-  stroke: var(--color-ink);
-  stroke-width: 3;
-  paint-order: stroke;
-  user-select: none;
-}
-html.furigana-on .map-ruby {
-  display: block;
-}
-
-/* Furigana Toggle Button in Bottom Letterbox */
-.furigana-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.2rem 0.65rem;
-  border-radius: 9999px;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  border: 2px solid var(--color-ink);
-  box-shadow: 2px 2px 0 0 var(--color-ink);
-  cursor: pointer;
-  transition: transform 0.08s ease-out, background-color 0.15s ease-out, box-shadow 0.08s ease-out;
-  user-select: none;
-  z-index: 50;
-  line-height: 1.2;
-}
-.furigana-toggle:hover {
-  background: var(--color-yellow);
-}
-.furigana-toggle:active {
-  transform: translate(2px, 2px);
-  box-shadow: 0 0 0 0 var(--color-ink);
-}
-html.furigana-on .furigana-toggle {
-  background: var(--color-yellow);
-}
-html.furigana-on .furigana-toggle #furigana-state {
-  color: var(--color-danger);
-}
-
-@media (max-height: 500px) {
-  .furigana-toggle {
-    padding: 0.1rem 0.45rem;
-    font-size: 10px;
-  }
-}
 
