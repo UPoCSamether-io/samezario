@@ -44,14 +44,15 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 | `src/main.js` | 画面遷移、各画面の描画、HUD更新、セーブ（localStorage） |
 | `src/game.js` | ブラウザ側。入力・カメラ・Canvas描画と、サーバの答えの先読み |
 | `src/shark-art.js` | サメの見た目。ゲーム内とプレビューで共有 |
-| `src/data.js` | サメ5種 / マップ4種 / 調布Tips のマスターデータ |
+| `src/data.js` | サメ5種 / マップ5種 / 調布Tips のマスターデータ |
 | `src/sim.js` | 盤面そのもの。移動・成長・衝突・ボットAI・餌・スナップショット。**DOM を触らないのでサーバとブラウザが同じものを回す** |
 | `src/net.js` | 対戦サーバとの線。JSON を投げて受けるだけ |
 | `server/index.mjs` | 対戦の権威サーバ。部屋ごとに `sim.js` の world を 30Hz で回し、15Hz で配る |
 | `src/style.css` | デザイントークン（Retro Pop Cinema）と共通クラス |
-| `public/img/` | アセット画像（サメスプライト等）。エリアマップは `data.js` の SVG パスに置き換え済みで、`chofu_map.png` は取り直し用の原本 |
-| — | プレイエリアの外周は `data.js` の `path`（実際のエリア輪郭）そのもの。内外判定は `Path2D` + `isPointInPath`。`size` は一辺ではなく**実効面積の平方根**で、ゲーム側が輪郭の面積が `size²` になるよう拡大する |
-| `scripts/seal-arms.mjs` | エリア輪郭から細すぎる腕を落とすワンショット道具（`node scripts/seal-arms.mjs --emit`）。原本の path もここ |
+| `public/img/` | アセット画像（サメスプライト等）。エリアマップは `data.js` の SVG パスに置き換え済みで、`chofu_map.png`（5エリアを色で塗り分けた図）は取り直し用の原本 |
+| — | プレイエリアの外周は `data.js` の `path`（実際のエリア輪郭）そのもの。内外判定は `Path2D` + `isPointInPath`。`size` は一辺ではなく**実効面積の平方根**で、ゲーム側が輪郭の面積が `size²` になるよう拡大する。**選択画面での見た目の大きさと遊べる広さは一致しない**（多摩川は図では最小だがワールドでは最長）——倍率と通路の幅の実測値は `docs/stage_design_plan.md` §4 |
+| `scripts/trace-areas.py` | 色分けしたエリア図から輪郭を起こす（`python3 scripts/trace-areas.py`）。エリア間の白い区切り線は両側で分け合わせるので、隙間なく敷き詰まる。出力は次の seal-arms へ |
+| `scripts/seal-arms.mjs` | エリア輪郭から細すぎる腕を落とすワンショット道具（`node scripts/seal-arms.mjs --emit`）。取り出したままの path もここ |
 | `scripts/loadtest.mjs` | 人数分ぶら下がって配信レートを測る。判定は「スナップショットが 15Hz 届くか」 |
 | `docs/` | 仕様書・設計ドキュメント（`specifications.md` 等）。デプロイ手順は `deploy-ec2.md` |
 | `scripts/ec2-deploy.sh` | EC2(t3.micro) 上で流す初回セットアップ兼デプロイ。何度流してもいい |

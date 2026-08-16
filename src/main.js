@@ -1,7 +1,7 @@
 import { SHARKS, MAPS, TIPS } from './data.js';
 import { startGame } from './game.js';
 import { connect } from './net.js';
-import { centroidOfPath } from './geo.js';
+import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
 import { save, persist, isUnlocked } from './progress.js';
 
@@ -161,13 +161,16 @@ function dimmed(hex) {
 // 小さい画面で名前を消して鍵だけ残すと中心から外れて見えるため。
 // 名前が消える画面では鍵を重心そのものへ寄せる
 const LABEL_DY = -22, LOCK_DY = 26;
+// ただし多摩川のような細長いエリアでは、重心の 22px 上がもう隣のエリアの中になる。
+// ずらした先が輪郭の外なら重心そのものへ戻す（名前や鍵が他所の海に浮かないように）
+const offsetIn = (m, cen, dy) => (insidePath(m.path, cen.x, cen.y + dy) ? dy : 0);
 // 条件は style.css の .map-label を消すブロックと一字一句そろえること
 const compactMap = matchMedia('(max-height: 500px)');
 
 /** 鍵の高さを決める。名前が出ているときはその下、消えているときは重心の上 */
 function placeLocks() {
   $$('.map-lock').forEach((lk) => {
-    lk.setAttribute('y', +lk.dataset.cy + (compactMap.matches ? 0 : LOCK_DY));
+    lk.setAttribute('y', +lk.dataset.cy + (compactMap.matches ? 0 : +lk.dataset.dy));
   });
 }
 compactMap.addEventListener('change', placeLocks);
@@ -191,7 +194,7 @@ function renderMaps() {
 
     const t = svgEl('text', {
       class: 'map-label' + (open ? '' : ' locked'),
-      x: cen.x, y: cen.y + LABEL_DY,
+      x: cen.x, y: cen.y + offsetIn(m, cen, LABEL_DY),
     });
     t.textContent = m.name;
     labels.appendChild(t);
@@ -200,6 +203,7 @@ function renderMaps() {
     if (!open) {
       const lock = svgEl('text', { class: 'map-lock', x: cen.x });
       lock.dataset.cy = cen.y;      // y は placeLocks が画面に合わせて決める
+      lock.dataset.dy = offsetIn(m, cen, LOCK_DY);
       lock.textContent = 'lock';
       labels.appendChild(lock);
     }

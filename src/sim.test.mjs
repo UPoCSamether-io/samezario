@@ -70,6 +70,25 @@ for (const map of MAPS) {
   w.destroy();
 }
 
+// 3b. 上と同じことを全マップで。エリアを描き直したときに効く。
+// 多摩川は外接矩形の 1/3 しか中身がない細長い一本道で、湧き座標の棄却サンプリングも
+// 壁の押し戻しも、いちばん条件が厳しいのはここになる
+for (const map of MAPS) {
+  const w = createWorld({ map });
+  w.fillBots();
+  w.seedFood();
+  assert.ok(w.food.length > 1000, `${map.id}: 餌が湧いていない (${w.food.length})`);
+  for (let i = 0; i < 150; i++) {
+    w.step(1 / 30);
+    w.drainEvents();
+  }
+  for (const s of w.sharks) {
+    assert.ok(Number.isFinite(s.x) && Number.isFinite(s.y), `${map.id}: 座標が NaN`);
+    if (s.alive) assert.ok(w.arena.inside(s.x, s.y), `${map.id}: ${s.name} が壁の外に居る`);
+  }
+  w.destroy();
+}
+
 // 4. 捕食：口元に置いた餌は食われ、質量が増える
 {
   const w = createWorld({ map: chofu });
