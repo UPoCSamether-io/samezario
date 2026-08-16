@@ -179,6 +179,22 @@
         </aside>
       </div>
     </div>
+
+    <!-- ================= エリア解放（現地写真の照合） =================
+         現地で撮った写真とジオフェンスでエリアを開ける。中身は状態ごとに main.js が
+         流し込む（#dex-detail と同じ被せ方で、画面遷移は挟まない）。
+         カメラと位置情報は Secure Context 限定なので、実機では https か localhost が要る -->
+    <div id="unlock" class="absolute inset-0 bg-navy/85 backdrop-blur-sm hidden place-items-center z-20 px-6 py-[var(--bar-pad)]">
+      <div class="relative w-full max-w-[560px] max-h-full bg-paper ink-4 hard-lg rounded-xl overflow-hidden flex flex-col">
+        <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
+        <button id="unlock-close" aria-label="閉じる"
+                class="absolute top-9 right-4 z-10 w-10 h-10 grid place-items-center rounded-full bg-yellow ink-2 hard-sm
+                       transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
+          <span class="material-symbols-rounded !text-xl">close</span>
+        </button>
+        <div id="unlock-body" class="min-h-0 overflow-auto thin-scroll"></div>
+      </div>
+    </div>
   </section>
 
   <!-- ================= サメ選択 ================= -->
