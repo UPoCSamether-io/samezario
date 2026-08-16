@@ -752,9 +752,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
     grid-column: 1 / -1;
   }
   #res-actions .btn > div:last-child {
-    padding: 0.35rem 0.25rem;
-    min-height: 2rem;
-    font-size: 11.5px;
+    display: block;
+    text-align: center;
+    padding: 0.35rem 0.25rem 0.25rem;
+    font-size: 12px;
+    line-height: 1.2;
   }
   #res-actions .btn rt {
     font-size: 0.42em;
