@@ -10,6 +10,8 @@
 // キャンセルは失敗ではなく「何もしなかった」。加点も通知も起こさないよう、
 // 戻り値では ok=false / cancelled=true の別枠にしてある（docs 側の完了条件）。
 
+import { plainText } from './ruby.js';
+
 export const HASHTAGS = ['#サメザリオ', '#調布'];
 
 /** シェアに載せるプロジェクトURL。クエリ（?demo=1 など）は落とす */
@@ -24,7 +26,8 @@ export function projectUrl(loc = globalThis.location) {
  * OS の共有シートでもプレビューが1行に潰れて読めない。
  */
 export function shortLore(spot, max = 70) {
-  const first = String(spot?.desc || '').split('。')[0];
+  const desc = plainText(spot?.desc || '');
+  const first = String(desc).split('。')[0];
   if (!first) return '';
   const s = first.length > max ? first.slice(0, max - 1) + '…' : first + '。';
   return s;
@@ -33,14 +36,17 @@ export function shortLore(spot, max = 70) {
 /**
  * 共有文。ロケ地名・短い歴史紹介・ハッシュタグを含む（URL は share() が別に受け取るので
  * ここには入れない。文面に混ぜると共有シートでURLが二重に出る端末がある）。
+ * ルビ記法（｜親文字《よみ》）は除去してプレーンテキストにする。
  */
 export function shareText(map, spot) {
   // 「エリア」は data.js の name から外れている（地図のラベル用に短くしてある）ので、
   // 文章として読ませるここでは足す
   const lore = shortLore(spot);
-  const spotLine = lore ? `📍${spot.name} — ${lore}` : `📍${spot.name}`;
+  const spotName = plainText(spot?.name || '');
+  const mapName = plainText(map?.name || '');
+  const spotLine = lore ? `📍${spotName} — ${lore}` : `📍${spotName}`;
   return [
-    `『${map.name}エリア』を解放！`,
+    `『${mapName}エリア』を解放！`,
     spotLine,
     HASHTAGS.join(' '),
   ].join('\n');

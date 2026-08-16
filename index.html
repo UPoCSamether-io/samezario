@@ -103,6 +103,17 @@
           </div>
         </button>
       </nav>
+
+      <!-- こどもモード（ふりがな）トグル -->
+      <div class="mt-1 flex items-center justify-center">
+        <label for="kids-toggle"
+               class="cursor-pointer select-none inline-flex items-center gap-2 bg-paper text-ink ink-2 hard-sm rounded-full px-4 py-1.5
+                      transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
+          <input type="checkbox" id="kids-toggle" class="accent-[var(--color-teal)] w-4 h-4 cursor-pointer" aria-describedby="kids-desc">
+          <span class="font-display font-extrabold text-xs md:text-sm">🧒 こどもモード（ふりがな）</span>
+        </label>
+        <span id="kids-desc" class="sr-only">むずかしい漢字にふりがなを表示します</span>
+      </div>
     </div>
   </section>
 

@@ -4,6 +4,7 @@ import {
   photoFile, classifyError, shareUnlock, explainShare,
 } from './share.js';
 import { MAPS } from './data.js';
+import { plainText } from './ruby.js';
 
 const map = MAPS.find((m) => m.id === 'jindaiji');
 const spot = map.spot;
@@ -29,8 +30,8 @@ assert.equal(projectUrl(null), '');
 // 共有文にはロケ地名・歴史・ハッシュタグが載る
 {
   const t = shareText(map, spot);
-  assert.ok(t.includes(spot.name), 'スポット名');
-  assert.ok(t.includes(`『${map.name}エリア』`), 'エリア名');
+  assert.ok(t.includes(plainText(spot.name)), 'スポット名');
+  assert.ok(t.includes(`『${plainText(map.name)}エリア』`), 'エリア名');
   assert.ok(t.includes(shortLore(spot)), '歴史紹介');
   for (const h of HASHTAGS) assert.ok(t.includes(h), h);
   // URL は share() が別に受け取るので文面には入れない（二重表示よけ）
@@ -40,6 +41,12 @@ assert.equal(projectUrl(null), '');
   const tNoLore = shareText(map, { id: 'test', name: 'テスト場所', desc: '' });
   assert.ok(tNoLore.includes('📍テスト場所\n#サメザリオ'));
   assert.ok(!tNoLore.includes('—'));
+
+  // ルビ記法（｜親文字《よみ》）が正しく平文に展開されること
+  const tRuby = shareText({ name: '｜調布《ちょうふ》' }, { name: '｜布多天神社《ふだてんじんじゃ》', desc: '｜延喜式《えんぎしき》に記される。' });
+  assert.ok(tRuby.includes('『調布エリア』'));
+  assert.ok(tRuby.includes('📍布多天神社 — 延喜式に記される。'));
+  assert.ok(!tRuby.includes('｜') && !tRuby.includes('《'));
 }
 
 // コピー・X へ渡すときだけ URL を足す
@@ -99,7 +106,7 @@ function stub({ share, canShare = () => true, writeText, open } = {}) {
   assert.deepEqual([r.ok, r.via, r.cancelled, r.withPhoto], [true, 'share', false, true]);
   assert.equal(log.shared[0].files.length, 1);
   assert.equal(log.shared[0].url, URL_);
-  assert.ok(log.shared[0].text.includes(spot.name));
+  assert.ok(log.shared[0].text.includes(plainText(spot.name)));
 }
 
 // canShare が写真を拒む端末では、文だけで共有する（丸ごと失敗させない）
@@ -202,7 +209,7 @@ for (const via of ['share', 'share-text', 'copy', 'tweet', 'none']) {
 // 全スポットで文面が組める（データが増えたときの取りこぼしよけ）
 for (const m of MAPS) {
   const t = shareText(m, m.spot);
-  assert.ok(t.includes(m.spot.name) && t.includes(HASHTAGS[0]), m.id);
+  assert.ok(t.includes(plainText(m.spot.name)) && t.includes(HASHTAGS[0]), m.id);
   assert.ok(t.length < 140, `${m.id}: 共有文が長すぎる（${t.length}字）`);
 }
 

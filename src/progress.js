@@ -27,6 +27,7 @@ const createDefaults = () => ({
   points: 0,
   spots: {},
   seenHowto: false,   // 遊び方を一度でも閉じたか。初回だけ自動で挟むための印
+  kids: false,        // こどもモード（ふりがな表示）の有効無効
 });
 
 const DEFAULTS = createDefaults();

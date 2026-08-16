@@ -5,6 +5,7 @@ import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
 import { save, persist, isUnlocked, isCleared, clearSpot, markShared } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
+import { rubify, plainText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
@@ -12,7 +13,6 @@ preloadSharks(SHARKS);   // タイトルを出している間に全種そろえ�
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtTime = (s) => `${(s / 60) | 0}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 // アイコンは合字なので、フォントが載るまで隠しておく（style.css の .material-symbols-rounded）。
@@ -84,7 +84,22 @@ function show(name) {
 function paintTitleShark() {
   const img = $('#title-shark');
   img.src = portrait(selShark);
-  img.alt = selShark.name;
+  img.alt = plainText(selShark.name);
+}
+
+// ---------- こどもモード（ふりがな） ----------
+const kidsToggle = $('#kids-toggle');
+function applyKidsMode(on) {
+  document.documentElement.classList.toggle('kids-mode', on);
+  if (kidsToggle) kidsToggle.checked = on;
+}
+applyKidsMode(!!save.kids);
+if (kidsToggle) {
+  kidsToggle.addEventListener('change', (e) => {
+    save.kids = e.target.checked;
+    persist();
+    applyKidsMode(save.kids);
+  });
 }
 
 // ---------- タイトル背面のデモ再生 ----------
@@ -206,7 +221,7 @@ function renderMaps(keep = null) {
     const p = svgEl('path', {
       class: 'map-area' + (open ? '' : ' locked'),
       d: m.path, fill: open ? m.color : dimmed(m.color), tabindex: '0', role: 'radio',
-      'aria-label': `${m.name}${open ? '' : '（未解放）'}`,
+      'aria-label': `${plainText(m.name)}${open ? '' : '（未解放）'}`,
     });
     // フォーカス＝選択。Tab で回すと情報パネルが追いかけるので、
     // キーボードにも「今どこを見ているか」が選択リングだけで伝わる
@@ -219,7 +234,7 @@ function renderMaps(keep = null) {
       class: 'map-label' + (open ? '' : ' locked'),
       x: cen.x, y: cen.y + offsetIn(m, cen, LABEL_DY),
     });
-    t.textContent = m.name;
+    t.textContent = plainText(m.name);
     labels.appendChild(t);
 
     // 未解放マークの南京錠。ラベルは text-anchor:middle で幅が読めないので、横ではなく真下に置く
@@ -260,16 +275,16 @@ function selectMap(m) {
         <span class="font-mono font-bold text-[11px] bg-yellow text-ink ink-2 rounded px-1.5 py-0.5">${save.points} pt</span>
       </div>
     </div>
-    <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${esc(m.name)}</h3>
+    <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${rubify(m.name)}</h3>
     <div id="map-badge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 mb-4 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
       ${open ? '解放済み' : '未解放'}
     </div>
     <div>
       <div class="font-mono text-[10px] tracking-[0.25em] text-yellow mb-1">HISTORY</div>
-      <p class="text-[13px] leading-relaxed text-paper/80">${esc(m.lore)}</p>
+      <p class="text-[13px] leading-relaxed text-paper/80">${rubify(m.lore)}</p>
     </div>
     ${spotCard(m)}
-    <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${esc(m.blurb)}</p>
+    <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${rubify(m.blurb)}</p>
     <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · 実際の地形</div>`;
 }
 
@@ -292,10 +307,10 @@ function spotCard(m) {
       <div class="font-display font-bold text-sm mb-1.5 flex items-center gap-1.5">
         ${icon(done ? 'task_alt' : 'photo_camera', '!text-lg text-yellow')}${head}
       </div>
-      <div class="font-display font-extrabold text-[15px] leading-tight">${esc(s.name)}</div>
-      <p class="mt-1 text-[12px] leading-relaxed text-paper/70">${esc(s.desc)}</p>
+      <div class="font-display font-extrabold text-[15px] leading-tight">${rubify(s.name)}</div>
+      <p class="mt-1 text-[12px] leading-relaxed text-paper/70">${rubify(s.desc)}</p>
       <div class="mt-2 flex items-start gap-1.5 text-[11.5px] leading-snug text-mint">
-        ${icon('center_focus_strong', '!text-[15px] shrink-0')}<span>${esc(s.angle)}</span>
+        ${icon('center_focus_strong', '!text-[15px] shrink-0')}<span>${rubify(s.angle)}</span>
       </div>
       ${done ? `
       <div class="mt-2 font-mono text-[10px] text-paper/55">
@@ -377,17 +392,17 @@ function paintIdle(err = '') {
   unlockBody.innerHTML = `
     <div class="p-6 max-sm:p-4">
       <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${open ? 'BONUS SPOT' : 'UNLOCK AREA'}</div>
-      <h3 class="font-display font-extrabold text-2xl leading-tight">${esc(s.name)}</h3>
-      <div class="text-[12px] text-ink/60 mt-0.5">${esc(m.name)}エリア${done ? ' ・ 撮影ずみ' : ''}</div>
+      <h3 class="font-display font-extrabold text-2xl leading-tight">${rubify(s.name)}</h3>
+      <div class="text-[12px] text-ink/60 mt-0.5">${rubify(m.name)}エリア${done ? ' ・ 撮影ずみ' : ''}</div>
 
-      <p class="mt-3 text-[13px] leading-relaxed text-ink/80">${esc(s.desc)}</p>
+      <p class="mt-3 text-[13px] leading-relaxed text-ink/80">${rubify(s.desc)}</p>
 
       <div class="mt-4 bg-navy text-paper ink-3 rounded-lg p-4">
         <div class="flex items-center gap-1.5 mb-1">
           ${icon('center_focus_strong', '!text-lg text-yellow')}
           <span class="font-display font-extrabold text-sm">お手本アングル</span>
         </div>
-        <p class="text-[13px] leading-relaxed text-paper/85">${esc(s.angle)}</p>
+        <p class="text-[13px] leading-relaxed text-paper/85">${rubify(s.angle)}</p>
         <div class="mt-2 pt-2 border-t-2 border-paper/20 font-mono text-[10px] text-mint">
           現地から半径 ${s.radius}m 以内 ・ 成功で +${s.points}pt
         </div>
@@ -448,8 +463,8 @@ function paintSuccess(r, gained) {
         <div class="stamp inline-block bg-ink text-yellow ink-3 rounded-lg px-6 py-2 hard neon">
           <span class="font-display font-black text-3xl max-sm:text-2xl">${opened ? 'AREA UNLOCKED' : 'SPOT CLEARED'}</span>
         </div>
-        <p class="mt-3 font-display font-extrabold text-xl">${esc(m.name)}エリア</p>
-        <p class="font-mono text-[11px] text-ink/55">${esc(s.name)} ・ ${
+        <p class="mt-3 font-display font-extrabold text-xl">${rubify(m.name)}エリア</p>
+        <p class="font-mono text-[11px] text-ink/55">${rubify(s.name)} ・ ${
           r.demo ? 'DEMO' : r.blind ? '現在地で確認' : `一致度 ${r.score}%`}</p>
       </div>
 
@@ -473,8 +488,8 @@ function paintSuccess(r, gained) {
 
       <div class="relative border-4 border-ink rounded-lg p-4 pt-5 mt-6">
         <span class="absolute -top-3 left-4 bg-yellow ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">HISTORY</span>
-        <p class="text-[13px] leading-relaxed text-ink/80">${esc(s.desc)}</p>
-        <p class="mt-2 text-[13px] leading-relaxed text-ink/80">${esc(m.lore)}</p>
+        <p class="text-[13px] leading-relaxed text-ink/80">${rubify(s.desc)}</p>
+        <p class="mt-2 text-[13px] leading-relaxed text-ink/80">${rubify(m.lore)}</p>
       </div>
 
       <div class="mt-5 flex flex-col gap-3">
@@ -603,7 +618,7 @@ function renderSharks() {
             ${icon(ICON[d.id], '!text-[22px]')}
           </span>
           <span class="min-w-0">
-            <span class="tile-name block font-display font-extrabold text-base leading-tight">${esc(d.name)}</span>
+            <span class="tile-name block font-display font-extrabold text-base leading-tight">${rubify(d.name)}</span>
             <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${esc(d.tag)}</span>
           </span>`;
         b.onclick = () => selectShark(d);
@@ -712,17 +727,17 @@ function selectShark(d) {
   $('#preview-tag').innerHTML = `
     <div class="shrink-0 bg-paper ink-3 hard rounded-lg px-4 py-2 -rotate-1">
       <div class="tag-en font-mono text-[10px] tracking-[0.3em] text-ink/55">${esc(d.en)}</div>
-      <div class="tag-name font-display font-extrabold text-2xl leading-tight">${esc(d.name)}</div>
-      <div class="tag-motif text-[11px] text-ink/60">${esc(d.motif)}</div>
+      <div class="tag-name font-display font-extrabold text-2xl leading-tight">${rubify(d.name)}</div>
+      <div class="tag-motif text-[11px] text-ink/60">${rubify(d.motif)}</div>
     </div>
     <div class="tag-skill flex-1 min-w-0 bg-navy text-paper ink-3 hard rounded-lg px-4 py-3 rotate-1">
       <div class="flex items-center gap-2 mb-1">
         ${icon(ICON[d.id], '!text-xl text-yellow')}
-        <span class="font-display font-extrabold">${esc(d.skill.name)}</span>
+        <span class="font-display font-extrabold">${rubify(d.skill.name)}</span>
         <span class="kbd-badge ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
       </div>
       <div class="tag-more">
-        <p class="tag-desc text-[12px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
+        <p class="tag-desc text-[12px] leading-relaxed text-paper/85">${rubify(d.skill.desc)}</p>
         <div class="tag-cd font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
       </div>
     </div>`;
@@ -767,11 +782,11 @@ function renderDex() {
     card.innerHTML = `
       <div class="dex-cap clapper-stripes h-5 border-b-4 border-ink w-full"></div>
       <div class="dex-thumb w-full aspect-square p-3" style="background:${d.color}22">
-        <img src="${portrait(d)}" alt="${esc(d.name)}" loading="lazy" decoding="async"
+        <img src="${portrait(d)}" alt="${plainText(d.name)}" loading="lazy" decoding="async"
              class="w-full h-full object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.22)]">
       </div>
       <div class="dex-name w-full border-t-4 border-ink px-3 py-2.5">
-        <h3 class="font-display font-extrabold text-lg leading-tight">${esc(d.name)}</h3>
+        <h3 class="font-display font-extrabold text-lg leading-tight">${rubify(d.name)}</h3>
       </div>`;
     card.onclick = () => openDex(d);
     wrap.appendChild(card);
@@ -786,7 +801,7 @@ function openDex(d) {
     <div class="grid gap-6 p-6 md:p-8 md:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
         <div>
           <div class="rounded-xl ink-3 p-4" style="background:${d.color}22">
-            <img src="${portrait(d)}" alt="${esc(d.name)}" decoding="async"
+            <img src="${portrait(d)}" alt="${plainText(d.name)}" decoding="async"
                  class="w-full object-contain drop-shadow-[7px_8px_0_rgba(45,45,45,.22)]">
           </div>
           <div class="grid grid-cols-2 gap-2 mt-4">${statBars(d)}</div>
@@ -795,26 +810,26 @@ function openDex(d) {
         <div class="min-w-0">
           <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${esc(d.en)}</div>
           <div class="flex items-baseline gap-2 flex-wrap">
-            <h3 class="font-display font-extrabold text-3xl md:text-4xl leading-tight">${esc(d.name)}</h3>
+            <h3 class="font-display font-extrabold text-3xl md:text-4xl leading-tight">${rubify(d.name)}</h3>
             <span class="text-[11px] font-bold bg-yellow ink-2 rounded px-2 py-0.5">${esc(d.tag)}</span>
           </div>
-          <div class="text-[12px] text-ink/55 mt-1">モチーフ：${esc(d.motif)}</div>
+          <div class="text-[12px] text-ink/55 mt-1">モチーフ：${rubify(d.motif)}</div>
 
-          <p class="mt-5 text-[15px] leading-[1.9] font-bold">${esc(d.intro)}</p>
+          <p class="mt-5 text-[15px] leading-[1.9] font-bold">${rubify(d.intro)}</p>
 
           <div class="bg-navy text-paper ink-3 rounded-lg p-4 mt-5">
             <div class="flex items-center gap-2 mb-1">
               ${icon(ICON[d.id], '!text-xl text-yellow')}
-              <span class="font-display font-extrabold">${esc(d.skill.name)}</span>
+              <span class="font-display font-extrabold">${rubify(d.skill.name)}</span>
               <span class="kbd-badge ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
             </div>
-            <p class="text-[12.5px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
+            <p class="text-[12.5px] leading-relaxed text-paper/85">${rubify(d.skill.desc)}</p>
             <div class="font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
           </div>
 
           <div class="relative border-4 border-ink rounded-lg p-4 pt-5 mt-7">
             <span class="absolute -top-3 left-4 bg-yellow ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">CHOFU TIPS</span>
-            <p class="text-[12.5px] leading-relaxed text-ink/80">${esc(d.lore)}</p>
+            <p class="text-[12.5px] leading-relaxed text-ink/80">${rubify(d.lore)}</p>
           </div>
         </div>
     </div>`;
@@ -857,7 +872,7 @@ async function play() {
     pausePanel.style.display = 'none';
     $('#hud-online').classList.toggle('hidden', !net);
     $('#hud-skill-icon').textContent = ICON[selShark.id];
-    $('#hud-skill-name').textContent = selShark.skill.name;
+    $('#hud-skill-name').textContent = plainText(selShark.skill.name);
     myName = net ? save.name : 'YOU';
     ctl = startGame({
       canvas: stage, mini, sharkId: selShark.id, map: selMap,
@@ -935,7 +950,7 @@ function showResult(r) {
   save.best = best; persist();
 
   show('result');
-  $('#res-sub').innerHTML = `${esc(selMap.name)} ／ ${esc(selShark.name)}`
+  $('#res-sub').innerHTML = `${rubify(selMap.name)} ／ ${rubify(selShark.name)}`
     + (r.cause ? `<br><span class="text-danger">${esc(r.cause)}に接触</span>` : '');
   $('#res-stats').innerHTML = [
     ['到達サイズ', r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
@@ -947,5 +962,5 @@ function showResult(r) {
       <div class="res-stat-v font-mono font-bold text-xl sm:text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
-  $('#res-tip').textContent = TIPS[(Math.random() * TIPS.length) | 0];
+  $('#res-tip').innerHTML = rubify(TIPS[(Math.random() * TIPS.length) | 0]);
 }

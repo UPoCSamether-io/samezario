@@ -781,3 +781,23 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 @media (max-height: 500px) {
   #dex-list { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 }
+
+/* ================= こどもモード（ふりがな / ルビ） =================
+   html:not(.kids-mode) のときは rt を非表示にし、通常テキストとして描画する。
+   .kids-mode のときはフォントサイズ 0.58em、太字で読みやすくし、
+   行間が極端に広がりすぎないよう調整する */
+html:not(.kids-mode) rt {
+  display: none;
+}
+html.kids-mode ruby {
+  ruby-align: center;
+  ruby-position: over;
+}
+html.kids-mode rt {
+  font-size: 0.58em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  user-select: none;
+}
+
