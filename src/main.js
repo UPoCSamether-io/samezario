@@ -623,9 +623,9 @@ function showResult(r) {
     ['撃破数', r.kills, 'KILLS'],
     ['生存時間', fmtTime(r.time), 'SURVIVED'],
   ].map(([label, val, sub], i) => `
-    <div class="res-stat ${i === 0 ? 'bg-yellow' : 'bg-paper'} ink-3 hard rounded-lg p-3 text-center ${['', '-rotate-1', 'rotate-1'][i]}">
+    <div class="res-stat ${i === 0 ? 'bg-yellow' : 'bg-paper'} ink-3 hard rounded-lg p-2 sm:p-3 text-center ${['', '-rotate-1', 'rotate-1'][i]}">
       <div class="font-mono text-[9px] tracking-[0.2em] text-ink/60">${label}</div>
-      <div class="res-stat-v font-mono font-bold text-3xl leading-tight my-0.5">${val}</div>
+      <div class="res-stat-v font-mono font-bold text-xl sm:text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
   $('#res-tip').textContent = TIPS[(Math.random() * TIPS.length) | 0];
