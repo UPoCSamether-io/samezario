@@ -1,0 +1,115 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hash lab — 基準写真としきい値</title>
+<!-- 現地写真の基準ハッシュを作り、しきい値を決める道具。`npm run dev` → /hash-lab.html
+     使い方:
+       1. スポットの写真をまとめて放り込む（別時間帯・別の人で 10〜20枚が目安）
+       2. 各行の ○/× で「正解（そのスポット）」と「不正解（隣の建物・別の場所）」を分ける
+       3. 下に出る「○ 同士の最大距離 < しきい値 < ○×間の最小距離」を見て値を決める
+       4. 「data.js に貼る」の中身を src/data.js の該当スポットの hashes / threshold へ写す
+     照合本体と同じ /src/verify.js の photoHash を通すので、正規化の経路がずれない
+     （経路がずれると同じ被写体でも一致しなくなる。docs/07 4.3）。
+     dist には入らない（vite の入口は index.html だけ） -->
+
+<style>
+  body { background: #f4efea; color: #2d2d2d; font: 14px/1.6 system-ui, sans-serif; margin: 0; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.lead { margin: 0 0 16px; color: #2d2d2daa; }
+  #drop { border: 4px dashed #2d2d2d55; border-radius: 12px; padding: 28px; text-align: center; cursor: pointer; }
+  #drop.over { border-color: #2a7b7c; background: #2a7b7c12; }
+  table { border-collapse: collapse; margin-top: 20px; width: 100%; }
+  th, td { border: 2px solid #2d2d2d; padding: 4px 8px; text-align: left; vertical-align: middle; }
+  th { background: #2d2d2d; color: #f4efea; font-size: 12px; letter-spacing: .08em; }
+  td.num { font: 700 13px "Space Grotesk", monospace; text-align: right; }
+  img.thumb { width: 64px; height: 48px; object-fit: cover; border: 2px solid #2d2d2d; display: block; }
+  code { font: 700 13px "Space Grotesk", monospace; }
+  .ok { background: #2a7b7c22; } .ng { background: #ba1a1a18; }
+  button.tag { font: 700 13px monospace; border: 2px solid #2d2d2d; background: #f4efea; cursor: pointer; padding: 2px 8px; }
+  #matrix td { font: 12px "Space Grotesk", monospace; text-align: right; padding: 2px 6px; }
+  #out { white-space: pre-wrap; background: #213052; color: #f4efea; padding: 14px; border-radius: 8px; margin-top: 12px; }
+  .verdict { font-weight: 700; }
+</style>
+
+<h1>hash lab</h1>
+<p class="lead">基準写真の dHash を作り、しきい値の分離帯を確かめる。判定に使うのと同じ <code>photoHash</code> を通している。</p>
+
+<div id="drop">写真をここへドロップ（クリックで選択）</div>
+<input id="file" type="file" accept="image/*" multiple hidden>
+
+<table id="list"></table>
+<h3 id="mtitle" hidden>ハミング距離</h3>
+<table id="matrix"></table>
+<div id="verdict"></div>
+<div id="out" hidden></div>
+
+<script type="module">
+import { photoHash, hamming, toHex } from '/src/verify.js';
+
+const shots = [];   // { name, url, hash, good }
+const $ = (s) => document.querySelector(s);
+
+$('#drop').onclick = () => $('#file').click();
+$('#file').onchange = (e) => add([...e.target.files]);
+for (const [ev, fn] of [
+  ['dragover', (e) => { e.preventDefault(); $('#drop').classList.add('over'); }],
+  ['dragleave', () => $('#drop').classList.remove('over')],
+  ['drop', (e) => { e.preventDefault(); $('#drop').classList.remove('over'); add([...e.dataTransfer.files]); }],
+]) $('#drop').addEventListener(ev, fn);
+
+async function add(files) {
+  for (const f of files) {
+    if (!f.type.startsWith('image/')) continue;
+    shots.push({ name: f.name, url: URL.createObjectURL(f), hash: await photoHash(f), good: true });
+  }
+  draw();
+}
+
+function draw() {
+  $('#list').innerHTML = `<tr><th></th><th>ファイル</th><th>dHash</th><th>判定</th></tr>` + shots.map((s, i) => `
+    <tr class="${s.good ? 'ok' : 'ng'}">
+      <td><img class="thumb" src="${s.url}" alt=""></td>
+      <td>${s.name}</td>
+      <td><code>${toHex(s.hash)}</code></td>
+      <td><button class="tag" data-i="${i}">${s.good ? '○ 正解' : '× 不正解'}</button></td>
+    </tr>`).join('');
+  for (const b of $('#list').querySelectorAll('.tag')) {
+    b.onclick = () => { shots[b.dataset.i].good = !shots[b.dataset.i].good; draw(); };
+  }
+
+  $('#mtitle').hidden = shots.length < 2;
+  $('#matrix').innerHTML = shots.length < 2 ? '' :
+    `<tr><th></th>${shots.map((_, i) => `<th>${i + 1}</th>`).join('')}</tr>` + shots.map((a, i) => `
+      <tr><th>${i + 1} ${a.good ? '○' : '×'}</th>${shots.map((b) => {
+        const d = hamming(a.hash, b.hash);
+        const same = a.good === b.good;
+        return `<td style="background:${a === b ? '#ddd' : same && a.good ? '#2a7b7c22' : same ? '#fff' : '#ba1a1a18'}">${d}</td>`;
+      }).join('')}</tr>`).join('');
+
+  const good = shots.filter((s) => s.good), bad = shots.filter((s) => !s.good);
+  const pairs = (xs, ys, self) => {
+    const out = [];
+    xs.forEach((a, i) => ys.forEach((b, j) => { if (!self || i < j) out.push(hamming(a.hash, b.hash)); }));
+    return out;
+  };
+  const within = pairs(good, good, true);       // ○ 同士 = 同じ被写体の別撮影
+  const across = pairs(good, bad, false);       // ○×間 = 無関係な写真
+  const hi = within.length ? Math.max(...within) : null;
+  const lo = across.length ? Math.min(...across) : null;
+
+  $('#verdict').innerHTML = !good.length ? '' : `
+    <p class="verdict">
+      ○同士の最大 ${hi ?? '—'} ／ ○×間の最小 ${lo ?? '—'}
+      ${hi !== null && lo !== null
+        ? (hi < lo
+          ? ` → 分離あり。しきい値は <code>${Math.floor((hi + lo) / 2)}</code> あたり（${hi} 〜 ${lo} の間）`
+          : ' → <b>分離していない</b>。基準写真を増やすか、アングルの指定を絞ること')
+        : ' → 判断するには ○ を2枚以上と × を1枚以上'}
+    </p>`;
+
+  $('#out').hidden = !good.length;
+  $('#out').textContent = !good.length ? '' :
+    `// src/data.js の該当スポットへ\n`
+    + `hashes: [\n${good.map((s) => `  '${toHex(s.hash)}',   // ${s.name}`).join('\n')}\n],\n`
+    + `threshold: ${hi !== null && lo !== null && hi < lo ? Math.floor((hi + lo) / 2) : 14},`;
+}
+</script>
