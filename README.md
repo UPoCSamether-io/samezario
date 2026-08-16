@@ -57,7 +57,7 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 | `scripts/loadtest.mjs` | 人数分ぶら下がって配信レートを測る。判定は「スナップショットが 15Hz 届くか」 |
 | `scripts/ec2-deploy.sh` | EC2(t3.micro) 上で流す初回セットアップ兼デプロイ。何度流してもいい |
 | `hash-lab.html` | 基準写真から dHash を作り、しきい値の分離帯を見る道具（`npm run dev` → `/hash-lab.html`） |
-| `docs/` | 仕様書・設計ドキュメント（`specifications.txt` 等）。デプロイ手順は `deploy-ec2.md` |
+| `docs/` | 仕様書・設計ドキュメント（`specifications.md` 等）。デプロイ手順は `deploy-ec2.md` |
 
 ## 調整ポイント
 
@@ -78,7 +78,7 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 
 ## 現地写真によるエリア解放
 
-未解放のエリアは、**そのエリアの現地スポットで写真を撮ると開く**（`docs/specifications.txt` 4.2）。
+未解放のエリアは、**そのエリアの現地スポットで写真を撮ると開く**（`docs/specifications.md` 4.2）。
 判定は「**位置は厳密に、画像はゆるく**」の二段構え —— ジオフェンスが「現地に行った」ことを担保し、
 画像照合は「指定アングルで撮った」体験と、遠隔地からの適当な写真の排除を受け持つ。
 
