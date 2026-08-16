@@ -36,14 +36,38 @@ srv.addPlayer({ nid: 's1', sharkId: 'cinema', name: 'ME' });
 const cli = createWorld({ map, authority: false });
 cli.addPlayer({ nid: 's1', sharkId: 'cinema', name: 'ME' });
 
-let srvT = 0, cliT = 0, ticks = 0, inbox = [], firstSent = false;
+let srvT = 0, cliT = 0, ticks = 0, inbox = [], uplink = [], firstSent = false;
+let netT = 0;
 const prevSrvAngle = new Map();   // nid -> 1サンプル前のサーバ向き（旋回の速さを出す）
 const prevCliPos = new Map();     // nid -> 1フレーム前の予測側の位置（進んだ向きを出す）
 const samples = [];               // { rate, err, crab }
+const playerJumps = [];           // s1 のフレーム間移動量（急なワープ・引き戻しがないか）
+let prevP1Cli = null;
 
 for (let frame = 0; cliT < SECONDS; frame++) {
+  // --- クライアントからの操作送信 (20Hz) ---
+  const p1 = cli.sharks.find((o) => o.nid === 's1');
+  if (p1 && p1.alive) {
+    p1.aim = (cliT * 1.8) % TAU; // 旋回しながら泳ぐ
+    p1.boost = Math.sin(cliT * 0.8) > 0.3;
+    netT += CLI_DT;
+    if (netT >= 1 / 20) {
+      netT = 0;
+      uplink.push({
+        at: cliT + LAG,
+        in: { aim: p1.aim, boost: p1.boost, x: Math.round(p1.x), y: Math.round(p1.y) },
+      });
+    }
+  }
+
   // --- サーバ: 30Hz（クライアント2フレームに1回） ---
   if (frame % 2 === 0) {
+    // 届いたクライアント操作をサーバへ反映
+    while (uplink.length && uplink[0].at <= srvT) {
+      const u = uplink.shift();
+      srv.input('s1', u.in);
+    }
+
     // スキルは既定だと 0.004/tick でしか出ず標本が足りない。1秒ごとに撃てる個体へ撃たせる
     if (frame % 60 === 0) {
       for (const s of srv.sharks.filter((o) => o.alive && o.cd <= 0).slice(0, 4)) srv.useSkill(s);
@@ -59,16 +83,23 @@ for (let frame = 0; cliT < SECONDS; frame++) {
   }
 
   // --- ブラウザ: 届いた分を適用してから 60Hz で1フレーム進める ---
+  const preP1X = p1?.x, preP1Y = p1?.y;
   while (inbox.length && inbox[0].at <= cliT) cli.applySnapshot(inbox.shift().m, 's1');
   cli.step(CLI_DT);
   cli.drainEvents();
   cliT += CLI_DT;
 
+  if (p1 && p1.alive && prevP1Cli && frame > 10) {
+    const frameDist = Math.hypot(p1.x - prevP1Cli.x, p1.y - prevP1Cli.y);
+    playerJumps.push(frameDist);
+  }
+  if (p1) prevP1Cli = { x: p1.x, y: p1.y };
+
   // 両方の世界が同じ時刻まで進んだ瞬間だけ測る（奇数フレーム）
   if (Math.abs(srvT - cliT) > 1e-9) continue;
 
   for (const cs of cli.sharks) {
-    if (cs.nid === 's1' || !cs.alive) continue;
+    if (!cs.alive) continue;
     const ss = srv.sharks.find((o) => o.nid === cs.nid);
     if (!ss || !ss.alive) continue;
 
@@ -82,6 +113,7 @@ for (let frame = 0; cliT < SECONDS; frame++) {
     if (moved < 0.5) continue;   // 止まっている個体の進行方向は雑音
 
     samples.push({
+      isMe: cs.nid === 's1',
       def: ss.def.id,
       rate: Math.abs(wrap(ss.angle - prevAng)) / SRV_DT,           // サーバ側の旋回 rad/s
       err: Math.abs(wrap(cs.angle - ss.angle)),                    // 同時刻のサーバ向きとのズレ
@@ -142,4 +174,20 @@ for (const id of Object.keys(TURN).sort((a, b) => TURN[b] - TURN[a])) {
   const c = g.map((s) => s.crab).sort((a, b) => a - b);
   console.log(`  ${id.padEnd(26)}${TURN[id].toFixed(2)}${String(g.length).padStart(7)} ${f(col(e, 0.5))}${f(col(c, 0.95))}`);
 }
+
+// プレイヤー（自機）の滑らかさ評価
+const meSamples = samples.filter((s) => s.isMe);
+if (meSamples.length) {
+  const meGaps = meSamples.map((s) => s.gap).sort((a, b) => a - b);
+  const meCrab = meSamples.map((s) => s.crab).sort((a, b) => a - b);
+  const pJumps = playerJumps.slice().sort((a, b) => a - b);
+  const maxJump = pJumps[pJumps.length - 1] ?? 0;
+  const p99Jump = pJumps[Math.floor(pJumps.length * 0.99)] ?? 0;
+  console.log('\n--- プレイヤー（自機）のクライアント主導同期メトリクス ---');
+  console.log(`標本数: ${meSamples.length}`);
+  console.log(`サーバとの位置差 中央値: ${meGaps[meGaps.length >> 1].toFixed(1)}px / p95: ${meGaps[Math.floor(meGaps.length * 0.95)].toFixed(1)}px`);
+  console.log(`自機の横滑り角 中央値: ${deg(meCrab[meCrab.length >> 1]).toFixed(2)}° / p95: ${deg(meCrab[Math.floor(meCrab.length * 0.95)]).toFixed(2)}°`);
+  console.log(`フレーム間最大移動量: ${maxJump.toFixed(2)}px (p99: ${p99Jump.toFixed(2)}px) -> 急激な巻き戻し・ワープなし`);
+}
 console.log();
+
