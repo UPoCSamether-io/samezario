@@ -138,7 +138,7 @@ export const MAPS = [
     spot: {
       id: 'spot_fuda-tenjin',
       name: '布多天神社',
-      lat: 35.6553, lon: 139.5439, radius: 150,
+      lat: 35.655937, lon: 139.545254, radius: 150,
       points: 50, share: 100,
       angle: '参道正面から、鳥居全体が入るように',
       desc: '延喜式にも記される多摩地方有数の古社。『ゲゲゲの鬼太郎』ゆかりの地としても知られる。',
@@ -162,7 +162,7 @@ export const MAPS = [
     spot: {
       id: 'spot_jindaiji-sanmon',
       name: '深大寺 山門',
-      lat: 35.6656, lon: 139.5497, radius: 150,
+      lat: 35.667131, lon: 139.550083, radius: 150,
       points: 300, share: 100,
       angle: '参道から、山門全体が入るように',
       desc: '天平5年（733年）開創、都内では浅草寺に次ぐ古刹。茅葺の山門は元禄8年の建立で、' +
@@ -188,7 +188,7 @@ export const MAPS = [
     spot: {
       id: 'spot_kyodo-museum',
       name: '調布市郷土博物館',
-      lat: 35.6461, lon: 139.5395, radius: 150,
+      lat: 35.646938, lon: 139.535858, radius: 150,
       points: 100, share: 100,
       angle: '正面入口から、建物と館名板が入るように',
       desc: '調布の歴史・民俗・考古の資料を収蔵展示する博物館。多摩川と共に生きた市域の' +
