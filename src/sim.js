@@ -752,8 +752,24 @@ export function createWorld({ map, authority = true, diffs = false }) {
         s.x = x; s.y = y; s.angle = ang; s.ex = s.ey = s.ea = 0;
         s.path = [{ x, y }]; s.wake.length = 0;
         events.push({ k: 'warp', shark: s });
+      } else if (s.nid === me) {
+        // 自分のサメ：クライアントの入力予測を正とする。
+        // サーバから届く座標は往復遅延ぶん過去の位置なので、通常の走行（<=60px）では引き戻さない（ブレーキゼロ）。
+        // 累積誤差（60〜180px）のみ穏やかに吸い寄せ、致命的な乖離（>180px）はワープさせる
+        const dist = Math.hypot(x - s.x, y - s.y);
+        if (dist > 180) {
+          s.x = x; s.y = y; s.ex = s.ey = 0;
+          s.path = [{ x, y }];
+          events.push({ k: 'warp', shark: s });
+        } else if (dist > 60) {
+          const excess = (dist - 60) / dist;
+          s.ex = (x - s.x) * excess;
+          s.ey = (y - s.y) * excess;
+        } else {
+          s.ex = 0; s.ey = 0;
+        }
       } else {
-        s.ex = x - s.x; s.ey = y - s.y;           // ズレは step で少しずつ詰める
+        s.ex = x - s.x; s.ey = y - s.y;           // 他人はスナップショットを基準に step で少しずつ詰める
       }
       if (wasAlive && !s.alive) {
         s.wake.length = 0;
