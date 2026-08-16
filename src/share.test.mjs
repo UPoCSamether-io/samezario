@@ -23,6 +23,7 @@ assert.equal(projectUrl(null), '');
   assert.ok(!s.includes('\n'));
   assert.equal(shortLore({ desc: 'あ'.repeat(200) }), 'あ'.repeat(69) + '…');
   assert.equal(shortLore({ desc: '' }), '');
+  assert.equal(shortLore(null), '');
 }
 
 // 共有文にはロケ地名・歴史・ハッシュタグが載る
@@ -34,6 +35,11 @@ assert.equal(projectUrl(null), '');
   for (const h of HASHTAGS) assert.ok(t.includes(h), h);
   // URL は share() が別に受け取るので文面には入れない（二重表示よけ）
   assert.ok(!t.includes('http'), 'URL を文面に混ぜない');
+
+  // desc が無いスポットでもダッシュだけ残らず綺麗に出る
+  const tNoLore = shareText(map, { id: 'test', name: 'テスト場所', desc: '' });
+  assert.ok(tNoLore.includes('📍テスト場所\n#サメザリオ'));
+  assert.ok(!tNoLore.includes('—'));
 }
 
 // コピー・X へ渡すときだけ URL を足す
@@ -161,6 +167,13 @@ function stub({ share, canShare = () => true, writeText, open } = {}) {
   const r = await shareUnlock({ map, spot }, deps);
   assert.deepEqual([r.ok, r.via, r.cancelled], [false, 'none', false]);
   assert.ok(r.text.includes(URL_));
+}
+
+// open が undefined を返した場合も開けていない判定
+{
+  const { deps } = stub({ open: () => undefined });
+  const r = await shareUnlock({ map, spot }, deps);
+  assert.deepEqual([r.ok, r.via, r.cancelled], [false, 'none', false]);
 }
 
 // 手立てが何も無い環境でも例外にしない

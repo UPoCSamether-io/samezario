@@ -24,7 +24,7 @@ export function projectUrl(loc = globalThis.location) {
  * OS の共有シートでもプレビューが1行に潰れて読めない。
  */
 export function shortLore(spot, max = 70) {
-  const first = String(spot.desc || '').split('。')[0];
+  const first = String(spot?.desc || '').split('。')[0];
   if (!first) return '';
   const s = first.length > max ? first.slice(0, max - 1) + '…' : first + '。';
   return s;
@@ -37,9 +37,11 @@ export function shortLore(spot, max = 70) {
 export function shareText(map, spot) {
   // 「エリア」は data.js の name から外れている（地図のラベル用に短くしてある）ので、
   // 文章として読ませるここでは足す
+  const lore = shortLore(spot);
+  const spotLine = lore ? `📍${spot.name} — ${lore}` : `📍${spot.name}`;
   return [
     `『${map.name}エリア』を解放！`,
-    `📍${spot.name} — ${shortLore(spot)}`,
+    spotLine,
     HASHTAGS.join(' '),
   ].join('\n');
 }
@@ -141,8 +143,8 @@ export async function shareUnlock({ map, spot, photo = null }, deps = {}) {
 
   if (open) {
     const w = open(tweetUrl(text, url), '_blank', 'noopener');
-    // ポップアップブロックで null が返ることがある。開けていないので成功にしない
-    if (w !== null) return result('tweet', { text: full, withPhoto: false });
+    // ポップアップブロックで null/undefined が返ることがある。開けていないので成功にしない
+    if (w) return result('tweet', { text: full, withPhoto: false });
   }
 
   return { ok: false, via: 'none', cancelled: false, text: full, withPhoto: false };
