@@ -16,6 +16,26 @@ docker run --rm --cpus=0.5 --memory=512m -p 5199:5199 -v "$PWD":/app -w /app \
 node scripts/loadtest.mjs --clients 24 --seconds 20
 ```
 
+## 検証
+
+ローカルと GitHub Actions は Node.js `24.18.0` を基準にする。CI と同じ検証は次の順で実行する。
+
+```bash
+npm ci
+git diff --exit-code -- package-lock.json
+npm run build
+npm test
+```
+
+`npm test` はゲームロジックのほか、`server/relay.test.mjs` の WebSocket 中継テストも実行する。
+GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull request の両方で起動し、
+依存関係の npm キャッシュを利用する。このチェックを master の required status check に指定できる。
+
+負荷測定は通常の pull request CI には含めない。GitHub の Actions 画面で `Load test` を選び、
+`Run workflow` からクライアント数・測定秒数・マップを指定して手動起動する。測定条件、
+合格基準（最低配信レート 13 snapshots/s）、実測ログ、サーバーログは30日間 artifact に保存され、
+実測結果は Job Summary にも表示される。
+
 ## 構成
 
 | ファイル | 中身 |
