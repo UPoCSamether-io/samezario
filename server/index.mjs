@@ -189,22 +189,41 @@ const MIME = {
   '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.mp3': 'audio/mpeg',
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const dist = fileURLToPath(new URL('../dist', import.meta.url));
-  const http = createServer(async (req, res) => {
-    const p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
-    if (p === '/health') { res.writeHead(200, { 'content-type': 'text/plain' }).end('OK'); return; }
-    if (p.includes('..')) { res.writeHead(403).end(); return; }
-    const file = join(dist, p === '/' ? 'index.html' : p);
+export const DIST = fileURLToPath(new URL('../dist', import.meta.url));
+
+// ヘッダを1つも付けていなかったので検証子すら無く、ブラウザは再読み込みのたびに
+// 全部（HTML+JS+CSS+画像で約800KB）を取り直していた。届くまでの間サメの原画は
+// 焼けず、立ち絵の <img> は空、フォントは代替のまま —— これが「再読み込み後に
+// 画面遷移するとフォールバックになる／カクつく」の正体。
+// /assets は vite が中身のハッシュを名前に入れるので、内容が変われば URL も変わる = immutable。
+// ponytail: /img はハッシュが付かないので1日で頭打ち。差し替えを即出したいならファイル名を変える
+const cacheFor = (p) =>
+  (p.startsWith('/assets/') ? 'public, max-age=31536000, immutable'
+    : p === '/' || p.endsWith('.html') ? 'no-cache'
+      : 'public, max-age=86400');
+
+export async function serveStatic(req, res) {
+  const p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+  if (p === '/health') { res.writeHead(200, { 'content-type': 'text/plain' }).end('OK'); return; }
+  if (p.includes('..')) { res.writeHead(403).end(); return; }
+  const file = join(DIST, p === '/' ? 'index.html' : p);
+  try {
+    const buf = await readFile(file);
+    res.writeHead(200, {
+      'content-type': MIME[extname(file)] || 'application/octet-stream',
+      'cache-control': cacheFor(p),
+    }).end(buf);
+  } catch {
+    // 見つからない URL は index.html を返す（SPA）。中身は HTML なので毎回確かめさせる
     try {
-      const buf = await readFile(file);
-      res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream' }).end(buf);
-    } catch {
-      try {
-        res.writeHead(200, { 'content-type': 'text/html' }).end(await readFile(join(dist, 'index.html')));
-      } catch { res.writeHead(404).end('build first: npm run build'); }
-    }
-  });
+      res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-cache' })
+        .end(await readFile(join(DIST, 'index.html')));
+    } catch { res.writeHead(404).end('build first: npm run build'); }
+  }
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const http = createServer(serveStatic);
   attach(http);
   const port = Number(process.env.PORT) || 5174;
   http.listen(port, () => console.log(`samezario http://localhost:${port}`));

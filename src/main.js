@@ -29,6 +29,10 @@ const ICON = {
 };
 const icon = (name, cls) => `<span class="material-symbols-rounded ${cls}" aria-hidden="true">${name}</span>`;
 const portrait = (d) => `/img/sharks/${d.id}_side.webp`;   // 立ち絵（タイトルと図鑑で使う）
+// 立ち絵は DOM の <img> なので preloadSharks（canvas 用の原画）の対象外。
+// 先に取っておかないと、タイトルや図鑑へ移った瞬間に取りに行くことになり、
+// 届くまでその枠が空のまま出る
+SHARKS.forEach((d) => { new Image().src = portrait(d); });
 
 // ---------- セーブデータ ----------
 const SAVE = 'samezario.save';
