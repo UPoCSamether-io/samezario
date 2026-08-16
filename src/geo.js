@@ -21,6 +21,21 @@ export function parseAreaPath(d) {
 }
 
 /**
+ * 点がエリアの内側か（ray casting / even-odd）。
+ * sim.js にも同じ判定があるが、あちらは size² へ拡大したあとのワールド座標が相手で、
+ * こちらは viewBox 座標のまま。輪郭は自己交差の無い単純多角形（sim.test.mjs が検査）。
+ */
+export function insidePath(d, x, y) {
+  const pts = parseAreaPath(d);
+  let c = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+}
+
+/**
  * 多角形の面積加重重心。
  * 面積が 0（＝一直線に潰れた輪郭）のときだけ頂点の平均へ逃がす。
  */
