@@ -414,48 +414,71 @@ export function createWorld({ map, authority = true, diffs = false }) {
   }
 
   // ---------- ボットAI ----------
+  const HUNT_R2 = 900 * 900;   // 狩りの間合い。二乗のまま比べる
+  const HUNT_DASH = 520;       // ここまで寄ったらダッシュ＝航跡を相手の前に敷く
+
   function botThink(s, dt) {
     s.moodT -= dt;
     if (s.moodT <= 0) { s.moodT = rand(1.2, 3.5); s.mood = Math.random(); }
 
-    let tx = s.goal?.x, ty = s.goal?.y;
-    // 一番近い餌の塊を狙う
-    if (!s.goal || Math.hypot(s.x - tx, s.y - ty) < 40 || Math.random() < 0.02) {
-      let best = null, bd = 1e9;
-      for (let i = 0; i < food.length; i += 3) {
-        const f = food[i];
-        const d = (f.x - s.x) ** 2 + (f.y - s.y) ** 2;
-        if (d < bd) { bd = d; best = f; }
+    // 獲物さがし。大きさは見ない —— 当たって死ぬのは突っ込んだ側なので（resolve と同じ前提）、
+    // 小さいボットが大きい人の鼻先を切るのは成立する。
+    // 全員が狩ると逃げ場が無くなるので、狩るのは mood の高い個体だけ（再抽選で顔ぶれが入れ替わる）
+    let prey = null, pd2 = HUNT_R2;
+    if (s.mood > 0.45) {
+      for (const o of sharks) {
+        if (o === s || !o.alive || o.iframe > 0) continue;
+        let d2 = (o.x - s.x) ** 2 + (o.y - s.y) ** 2;
+        if (!o.isBot) d2 *= 0.25;        // 人は距離半分ぶん魅力的に見える
+        if (d2 < pd2) { pd2 = d2; prey = o; }
       }
-      s.goal = best ? { x: best.x, y: best.y } : arena.spot();
-      tx = s.goal.x; ty = s.goal.y;
     }
 
-    // 自分より小さいサメの前を横切る（攻撃）
-    if (s.mood > 0.72) {
-      for (const o of sharks) {
-        if (o === s || !o.alive || o.mass > s.mass * 0.85) continue;
-        const d = Math.hypot(o.x - s.x, o.y - s.y);
-        if (d < 620) { tx = o.x + Math.cos(o.angle) * 180; ty = o.y + Math.sin(o.angle) * 180; break; }
+    let tx, ty, hunt = 0;
+    if (prey) {
+      // 迎撃点：相手が「自分が着くまでに進む距離」だけ前に置く。
+      // 180px 固定だと速い相手の後ろを追い、遅い相手には行き過ぎる
+      hunt = Math.hypot(prey.x - s.x, prey.y - s.y);
+      const lead = clamp(hunt * 0.75, 90, 420);
+      tx = prey.x + Math.cos(prey.angle) * lead;
+      ty = prey.y + Math.sin(prey.angle) * lead;
+      s.goal = null;                     // 餌の目標は捨てる。狩りをやめたら引き直す
+    } else {
+      // 一番近い餌の塊を狙う
+      tx = s.goal?.x; ty = s.goal?.y;
+      if (!s.goal || Math.hypot(s.x - tx, s.y - ty) < 40 || Math.random() < 0.02) {
+        let best = null, bd = 1e9;
+        for (let i = 0; i < food.length; i += 3) {
+          const f = food[i];
+          const d = (f.x - s.x) ** 2 + (f.y - s.y) ** 2;
+          if (d < bd) { bd = d; best = f; }
+        }
+        s.goal = best ? { x: best.x, y: best.y } : arena.spot();
+        tx = s.goal.x; ty = s.goal.y;
       }
     }
 
     let want = Math.atan2(ty - s.y, tx - s.x);
 
-    // 胴体と航跡を回避。サイズに関係なく当たれば死ぬので相手は選ばない
+    // 胴体と航跡を回避。サイズに関係なく当たれば死ぬので相手は選ばない。
+    // ただし狩り中は間合いを詰める —— 190px で必ず逃げると、仕掛けた直後に
+    // 自分から離れてしまい一度も刺せない。
+    // 頭から4節は見ない：そこは当たっても死なない（resolve の衝突判定と同じ i=4）
+    const near = hunt ? 120 : 190;
+    const nearW = hunt ? 130 : 170;
     for (const o of sharks) {
       if (o === s || !o.alive) continue;
-      if (Math.hypot(o.x - s.x, o.y - s.y) <= o.reach + 260) {
-        for (let i = 0; i < o.body.length; i += 2) {
+      if (Math.hypot(o.x - s.x, o.y - s.y) <= o.reach + near + 70) {
+        for (let i = 4; i < o.body.length; i += 2) {
           const p = o.body[i];
-          if (Math.hypot(p.x - s.x, p.y - s.y) < 190) { want = Math.atan2(s.y - p.y, s.x - p.x); break; }
+          if (Math.hypot(p.x - s.x, p.y - s.y) < near) { want = Math.atan2(s.y - p.y, s.x - p.x); break; }
         }
       }
-      if (o.wbb && s.x >= o.wbb.x0 - 170 && s.x <= o.wbb.x1 + 170
-                && s.y >= o.wbb.y0 - 170 && s.y <= o.wbb.y1 + 170) {
+      if (o.wbb && s.x >= o.wbb.x0 - nearW && s.x <= o.wbb.x1 + nearW
+                && s.y >= o.wbb.y0 - nearW && s.y <= o.wbb.y1 + nearW) {
         for (let i = 0; i < o.wake.length; i += 2) {
           const p = o.wake[i];
-          if (Math.hypot(p.x - s.x, p.y - s.y) < 170) { want = Math.atan2(s.y - p.y, s.x - p.x); break; }
+          if (Math.hypot(p.x - s.x, p.y - s.y) < nearW) { want = Math.atan2(s.y - p.y, s.x - p.x); break; }
         }
       }
     }
@@ -469,8 +492,10 @@ export function createWorld({ map, authority = true, diffs = false }) {
     }
 
     s.aim = want;
-    s.boost = s.mood > 0.9 && !s.winded;
-    if (s.cd <= 0 && Math.random() < 0.004) world.useSkill(s);
+    // 獲物に寄ったらダッシュ。速いだけでなく、キル帯そのものである航跡を相手の前へ敷ける
+    s.boost = !s.winded && (hunt ? hunt < HUNT_DASH : s.mood > 0.9);
+    // 追い詰めている間はスキルも切る（シネマの減速・多摩川の急流がそのまま決め手になる）
+    if (s.cd <= 0 && Math.random() < (hunt && hunt < HUNT_DASH ? 0.05 : 0.004)) world.useSkill(s);
   }
 
   // ---------- 判定 ----------
