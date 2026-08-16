@@ -5,6 +5,7 @@ import { centroidOfPath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
 import { save, persist, isUnlocked, isCleared, clearSpot, markShared } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
+import { shareUnlock, explainShare } from './share.js';
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
 
@@ -296,8 +297,11 @@ const unlockPanel = $('#unlock');
 const unlockBody = $('#unlock-body');
 let unlockMap = null;   // いま解放しようとしているエリア
 let shotUrl = null;     // 撮った写真のプレビュー。閉じるときに必ず revoke する
+let shotPhoto = null;   // 同じ写真の実体。共有シートに添える候補（送信するのは利用者）
 let running = false;    // 二重起動よけ。撮影中にもう一度押すと入力欄が2つ開く
+let sharing = false;    // 同上。共有シートが出ている間にもう一度押させない
 let opened = false;     // この撮影でエリアが開いたか（解放済みエリアのボーナスと文言を分ける）
+let shareNote = null;   // 直前のシェア結果の知らせ { ok, text }。キャンセルでは付かない
 
 const STEPS = {
   capture: ['photo_camera', 'カメラを開いています', ''],
@@ -322,20 +326,24 @@ function openUnlock(m) {
   // このパネルの間だけ縦持ちを許す（style.css の縦持ちガード参照）。
   // 現地でスポットの前に立っている人に、撮る前後だけ横持ちを強いる理由は無い
   document.documentElement.classList.add('unlocking');
+  shown = null;   // 前回の成功画面を持ち越さない（別のスポットをシェアしてしまう）
+  shareNote = null;
   paintIdle();
 }
 
 function closeUnlock() {
-  if (running || !unlockMap) return;   // 撮影の途中で消すと、戻る先が無くなる
+  if (running || sharing || !unlockMap) return;   // 撮影・共有の途中で消すと、戻る先が無くなる
   unlockPanel.style.display = 'none';
   document.documentElement.classList.remove('unlocking');
   dropShot();
+  shareNote = null;
   unlockMap = null;
 }
 
 function dropShot() {
   if (shotUrl) URL.revokeObjectURL(shotUrl);
   shotUrl = null;
+  shotPhoto = null;   // 端末の外へは出さない。パネルを閉じた時点で手放す
 }
 
 /** 撮る前。解放条件（スポット・お手本アングル・ジオフェンス）を読ませる画面 */
@@ -402,10 +410,14 @@ function paintStep(step) {
     </div>`;
 }
 
+// 直前に描いた成功画面。シェアの結果で描き直すとき、照合の結果と GAIN を持ち回らずに済む
+let shown = null;
+
 /** 通った後。解放の演出 → そのエリアの歴史 → シェア */
 function paintSuccess(r, gained) {
   const m = unlockMap, s = m.spot;
   const rec = save.spots[s.id];
+  shown = { r, gained };
   unlockBody.innerHTML = `
     <div class="p-6 max-sm:p-4">
       <div class="text-center">
@@ -442,21 +454,34 @@ function paintSuccess(r, gained) {
       </div>
 
       <div class="mt-5 flex flex-col gap-3">
-        ${rec?.shared ? `
-        <div class="ink-2 border-ink/25 rounded py-2 text-center font-display font-bold text-sm text-ink/55">
-          シェア済み（+${s.share}pt 獲得ずみ）
-        </div>` : `
+        <!-- シェアは何度でも押せる（加点だけがスポットごと1回）。押せなくすると、
+             共有シートを取り違えて閉じた人がもう一度送る手立てを失う -->
         <button class="btn" id="unlock-share"><div class="cap clapper-stripes"></div>
           <div class="py-2.5 font-display font-extrabold flex items-center justify-center gap-2">
-            ${icon('share', '!text-xl')}シェアして +${s.share}pt
-          </div></button>`}
+            ${icon('share', '!text-xl')}${rec?.shared ? 'もう一度シェア' : `シェアして +${s.share}pt`}
+          </div></button>
+        ${shareNote ? `
+        <p class="-mt-1 text-center text-[12px] leading-relaxed font-bold ${shareNote.ok ? 'text-teal-deep' : 'text-danger shake'}">
+          ${esc(shareNote.text)}
+        </p>
+        ${shareNote.copyText ? `
+        <!-- コピーも投稿画面も開けなかった端末向け。手で選んで持っていけるよう文面を出す -->
+        <textarea id="share-text" readonly rows="4" aria-label="共有文"
+                  class="w-full bg-paper ink-2 rounded p-2 text-[12px] leading-relaxed font-body resize-none"
+                  >${esc(shareNote.copyText)}</textarea>` : ''}` : `
+        <p class="-mt-1 text-center font-mono text-[10px] leading-relaxed text-ink/45">
+          ${shotPhoto ? '対応端末では撮った写真も共有候補に入ります。' : ''}送信先を選ぶまで、写真はどこへも送られません。
+        </p>`}
         <button class="btn primary" id="unlock-done"><div class="cap clapper-stripes"></div>
           <div class="py-2.5 font-display font-extrabold text-lg">マップへ戻る</div></button>
       </div>
     </div>`;
-  const sh = $('#unlock-share');
-  if (sh) sh.onclick = () => share(r);
+  $('#unlock-share').onclick = share;
   $('#unlock-done').onclick = closeUnlock;
+  // 触ったら全選択。共有手段が全部塞がった端末での最後の逃げ道なので、
+  // 長押しの範囲指定をさせない
+  const box = $('#share-text');
+  if (box) box.onfocus = () => box.select();
 }
 
 /** 撮る。ここから戻るまでが1回のタップの流れ（iOS は位置の許可をこの中で出す） */
@@ -470,7 +495,8 @@ async function go() {
     if (!r.ok) { paintIdle(explain(r)); return; }
 
     dropShot();
-    if (r.photo) shotUrl = URL.createObjectURL(r.photo);
+    shareNote = null;
+    if (r.photo) { shotPhoto = r.photo; shotUrl = URL.createObjectURL(r.photo); }
     const before = save.points;
     opened = !isUnlocked(m);   // 開ける前に見ておく（clearSpot の後では区別が付かない）
     clearSpot(m, r.score);
@@ -484,27 +510,40 @@ async function go() {
 }
 
 /**
- * シェア。実投稿の検証は X API が有料でできないので、シェアシートが完了した時点で加点する
- * （スポットごと1回）。シートを閉じただけなら reject が来るので加点しない。
- * 共有APIの無い環境では投稿画面を開いた時点で加点扱いにする —— PoC としての割り切り。
+ * シェア。文面の組み立てと共有先の選択は share.js の shareUnlock が持つ（＝Web Share API →
+ * コピー → X 投稿画面 の一本道）。ここが受け持つのは、その結果を画面と加点に写すことだけ。
+ *
+ * 実投稿の検証は X API が有料でできないので、共有シートが完了した時点で加点する
+ * （スポットごと1回。2度目以降は markShared が弾く）—— PoC としての割り切り。
+ * シートを閉じただけ（cancelled）は成功でも失敗でもないので、加点も知らせも出さない。
  */
-async function share(r) {
+async function share() {
+  if (sharing || !shown) return;
+  sharing = true;
   const m = unlockMap, s = m.spot;
-  // 「エリア」は data.js の name から外れている（地図のラベル用に短くしてある）ので、
-  // 文章として読ませるここでは足す
-  const text = `『${m.name}エリア』を解放！ ${s.name} で写真照合クリア — サメザリオ`;
-  const url = location.origin + location.pathname;
+  const btn = $('#unlock-share');
+  if (btn) btn.disabled = true;   // シートが出ている間の連打よけ
   try {
-    if (navigator.share) await navigator.share({ title: 'サメザリオ', text, url });
-    else window.open(
-      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
-      '_blank', 'noopener');
+    const out = await shareUnlock({ map: m, spot: s, photo: shotPhoto });
+    shareNote = out.cancelled ? null : {
+      ok: out.ok,
+      text: explainShare(out),
+      // 何も開けなかったときだけ、文面そのものを画面に出して手で持っていけるようにする
+      copyText: out.via === 'none' ? out.text : '',
+    };
+    if (out.ok) {
+      const before = save.points;
+      markShared(s);
+      selectMap(m);   // 情報パネルのポイントとシェア済み表示を追従させる
+      // 加点があったときだけ GAIN を差し替える。2度目のシェアで +0 に化けさせない
+      if (save.points > before) shown.gained = save.points - before;
+    }
   } catch {
-    return;   // シートを閉じただけ
+    shareNote = { ok: false, text: explainShare({ via: 'none' }), copyText: '' };
+  } finally {
+    sharing = false;
+    paintSuccess(shown.r, shown.gained);   // 知らせを出し、ボタンを押せる状態に戻す
   }
-  markShared(s);
-  selectMap(m);              // 情報パネルのポイント表示を追従させる
-  paintSuccess(r, s.share);  // 直前に入った分＝シェアぶんを GAIN に出す
 }
 
 // ---------- サメ選択 ----------

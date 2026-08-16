@@ -47,6 +47,7 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 | `src/data.js` | サメ5種 / マップ4種 / 現地スポット / 調布Tips のマスターデータ |
 | `src/verify.js` | 現地写真の照合。撮影・現在地・dHash・ジオフェンス。**DOM を触らない判定部は Node から試せる** |
 | `src/progress.js` | セーブデータ。解放とポイントを書ける唯一の場所 |
+| `src/share.js` | 解放結果のシェア。共有文の組み立てと Web Share API → コピー → X の順の一本道。**DOM を触らないので Node から試せる** |
 | `src/sim.js` | 盤面そのもの。移動・成長・衝突・ボットAI・餌・スナップショット。**DOM を触らないのでサーバとブラウザが同じものを回す** |
 | `src/net.js` | 対戦サーバとの線。JSON を投げて受けるだけ |
 | `server/index.mjs` | 対戦の権威サーバ。部屋ごとに `sim.js` の world を 30Hz で回し、15Hz で配る |
@@ -114,6 +115,28 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 - ポイントは照合成功で `spot.points`、SNSシェアで `spot.share`。どちらもスポットごとに1回だけで、
   加算は `progress.js` の `clearSpot` / `markShared` の2つしか書けない
   （差分加算を書かない ＝ 二重加算を構造で潰す。`UPoC_Samether.io/docs/06`）。
+
+### 解放結果のシェア
+
+解放できたら成功画面からシェアできる。文面と共有先の選び方は `src/share.js` の
+`shareUnlock` が一本道で持つ（`verify.js` の `verifyPhoto` と同じ役どころで、
+「共有できたか」を決めるのはここひとつ）。
+
+```
+① navigator.share       共有シート。canShare({files}) が通る端末では撮った写真も候補に載せる
+     ↓ 非対応
+② clipboard.writeText   共有文（本文 + URL）をコピー
+     ↓ 権限が無い / Secure Context でない
+③ X の投稿画面          window.open（ポップアップが塞がれたら文面を画面に出して手で拾わせる）
+```
+
+- 共有文は **ロケ地名・短い歴史紹介（`spot.desc` の先頭一文）・ハッシュタグ**。
+  URL は `share()` に別で渡す（文面に混ぜると端末によって二重に出る）。
+- **写真は共有シートに候補として載るだけ**で、送信先を選ぶのは利用者。こちらから送信も保存もしない。
+  `canShare` が写真を拒む端末では文だけで共有し、丸ごと失敗させない。
+- **シートを閉じただけ（`AbortError`）は成功にしない。** 加点も知らせも出さず、押す前の画面に戻る。
+  失敗（それ以外の例外）とは別扱い（`classifyError`）。
+- **同じスポットを何度でもシェアできる。** 加点だけが `markShared` によりスポットごとに1回。
 
 ### 基準写真の入れ方
 
