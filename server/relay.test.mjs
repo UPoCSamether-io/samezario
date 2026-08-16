@@ -130,7 +130,9 @@ const g = client('G');
 await settle();
 take(g);
 g.ws.send(JSON.stringify({ t: 'pause', v: 1 }));
-await settle();
+await settle(100);
+take(g);
+await settle(200);
 assert.equal(take(g).length, 0, '独りならスナップショットごと止まる');
 
 const h = client('H');                       // 人が来たら動き出す
