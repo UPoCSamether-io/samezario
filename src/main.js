@@ -3,6 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
+import { save, persist, isUnlocked } from './progress.js';
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
 
@@ -35,13 +36,8 @@ const portrait = (d) => `/img/sharks/${d.id}_side.webp`;   // 立ち絵（タイ
 SHARKS.forEach((d) => { new Image().src = portrait(d); });
 
 // ---------- セーブデータ ----------
-const SAVE = 'samezario.save';
-const save = Object.assign(
-  { unlocked: ['chofu'], best: 0, shark: SHARKS[0].id, name: '' },
-  JSON.parse(localStorage.getItem(SAVE) || '{}'),
-);
-const persist = () => localStorage.setItem(SAVE, JSON.stringify(save));
-const isUnlocked = (m) => m.unlocked || save.unlocked.includes(m.id);
+// 実体は progress.js。エリアの解放とポイントを書けるのはあちらの clearSpot / markShared
+// だけで、ここから直に触っていいのは「前回の選択」（shark / name / best）に限る。
 
 // ---------- 画面遷移 ----------
 const screens = Object.fromEntries($$('.screen').map((s) => [s.id.slice(2), s]));
