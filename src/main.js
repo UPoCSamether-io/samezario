@@ -126,7 +126,7 @@ const howtoGo = $('#howto-go'), howtoGoLabel = $('#howto-go-label');
 /** 遊び方を閉じたあとの行き先。初回の寄り道なら読み終わりがそのまま次の一歩になる */
 function aimHowto(next) {
   howtoGo.dataset.go = next;
-  howtoGoLabel.textContent = next === 'title' ? 'とじる' : 'ロケ地を選ぶ →';
+  howtoGoLabel.innerHTML = next === 'title' ? 'とじる' : rubify('｜ロケ地《ろけち》を｜選《えら》ぶ →');
 }
 
 document.addEventListener('click', (e) => {
@@ -261,7 +261,7 @@ function selectMap(m) {
   // 長い文言は折り返してボタンが伸び、ツールバーごと下の地図を押し下げていた
   // （実測 667x375 で3行・56→76px・地図が 20px 縮んでずれる）。
   // 短くしたうえで style.css 側で nowrap にし、行数を常に1に固定する
-  $('#map-next-label').textContent = open ? 'サメ選択 →' : 'まだ遊べません';
+  $('#map-next-label').innerHTML = open ? rubify('｜サメ選択《さめせんたく》 →') : rubify('まだ｜遊《あそ》べません');
   // 並びは重要な順。パネルは横持ちで本文 197px しか映らず（実測 844x390）、下に置いたものは
   // 読まれない。従来の順（blurb → HISTORY）だと史実が丸ごと折り返しの下に沈んでいた。
   // 史実とロック解除の導線がこの画面の主役、blurb は雰囲気づけなので最後に回す
@@ -271,13 +271,13 @@ function selectMap(m) {
       <!-- 寄せは justify-between ではなく ml-auto。横持ちでは #map-en が畳まれるので、
            between だと残った数字が左端へ流れる -->
       <div class="flex items-center gap-1.5 shrink-0 ml-auto">
-        <span class="font-mono text-[10px] text-paper/55">解放 ${MAPS.filter(isUnlocked).length}/${MAPS.length}</span>
+        <span class="font-mono text-[10px] text-paper/55">${rubify('｜解放《かいほう》')} ${MAPS.filter(isUnlocked).length}/${MAPS.length}</span>
         <span class="font-mono font-bold text-[11px] bg-yellow text-ink ink-2 rounded px-1.5 py-0.5">${save.points} pt</span>
       </div>
     </div>
     <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${rubify(m.name)}</h3>
     <div id="map-badge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 mb-4 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
-      ${open ? '解放済み' : '未解放'}
+      ${open ? rubify('｜解放済《かいほうず》み') : rubify('｜未解放《みかいほう》')}
     </div>
     <div>
       <div class="font-mono text-[10px] tracking-[0.25em] text-yellow mb-1">HISTORY</div>
@@ -285,7 +285,7 @@ function selectMap(m) {
     </div>
     ${spotCard(m)}
     <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${rubify(m.blurb)}</p>
-    <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · 実際の地形</div>`;
+    <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · ${rubify('｜実際《じっさい》の｜地形《ちけい》')}</div>`;
 }
 
 /**
@@ -299,9 +299,9 @@ function spotCard(m) {
   const done = isCleared(s);
   const rec = save.spots[s.id];
   const head = open
-    ? (done ? '撮影ずみのスポット' : '現地スポット（ボーナス）')
-    : '現地写真で解放';
-  const label = done ? 'もう一度撮る' : open ? `写真を撮る +${s.points}pt` : '写真を撮って解放';
+    ? (done ? rubify('｜撮影《さつえい》ずみのスポット') : rubify('｜現地《げんち》スポット（ボーナス）'))
+    : rubify('｜現地写真《げんちしゃしん》で｜解放《かいほう》');
+  const label = done ? rubify('もう｜一度《いちど》｜撮《と》る') : open ? rubify(`｜写真《しゃしん》を｜撮《と》る +${s.points}pt`) : rubify('｜写真《しゃしん》を｜撮《と》って｜解放《かいほう》');
   return `
     <div class="mt-4 bg-paper/10 ink-2 border-paper/30 rounded p-3">
       <div class="font-display font-bold text-sm mb-1.5 flex items-center gap-1.5">
@@ -314,14 +314,14 @@ function spotCard(m) {
       </div>
       ${done ? `
       <div class="mt-2 font-mono text-[10px] text-paper/55">
-        一致度 ${rec.score}% ・ ${rec.shared ? 'シェア済み' : 'シェア未'}
+        ${rubify(`｜一致度《いっちど》 ${rec.score}% ・ ${rec.shared ? 'シェア｜済《ず》み' : 'シェア｜未《み》'}`)}
       </div>` : ''}
       <button data-unlock="${m.id}"
               class="mt-3 w-full bg-yellow text-ink ink-2 rounded hard-sm px-3 py-2 font-display font-extrabold text-sm
                      flex items-center justify-center gap-1.5 transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
         ${icon('photo_camera', '!text-lg')}${label}
       </button>
-      <p class="mt-1.5 font-mono text-[10px] text-paper/45">現地（半径${s.radius}m）で撮影してください</p>
+      <p class="mt-1.5 font-mono text-[10px] text-paper/45">${rubify(`｜現地《げんち》（｜半径《はんけい》${s.radius}m）で｜撮影《さつえい》してください`)}</p>
     </div>`;
 }
 
@@ -343,9 +343,9 @@ let opened = false;     // この撮影でエリアが開いたか（解放済�
 let shareNote = null;   // 直前のシェア結果の知らせ { ok, text }。キャンセルでは付かない
 
 const STEPS = {
-  capture: ['photo_camera', 'カメラを開いています', ''],
-  locate: ['my_location', '現在地を確認しています', '屋外のほうが早く決まります'],
-  verify: ['image_search', 'お手本と照合しています', ''],
+  capture: ['photo_camera', 'カメラを｜開《ひら》いています', ''],
+  locate: ['my_location', '｜現在地《げんざいち》を｜確認《かくにん》しています', '｜屋外《おくがい》のほうが｜早《はや》く｜決《き》まります'],
+  verify: ['image_search', 'お｜手本《てほん》と｜照合《しょうごう》しています', ''],
 };
 
 const gmaps = (s) => `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}`;
@@ -393,18 +393,18 @@ function paintIdle(err = '') {
     <div class="p-6 max-sm:p-4">
       <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${open ? 'BONUS SPOT' : 'UNLOCK AREA'}</div>
       <h3 class="font-display font-extrabold text-2xl leading-tight">${rubify(s.name)}</h3>
-      <div class="text-[12px] text-ink/60 mt-0.5">${rubify(m.name)}エリア${done ? ' ・ 撮影ずみ' : ''}</div>
+      <div class="text-[12px] text-ink/60 mt-0.5">${rubify(m.name)}エリア${done ? ' ・ ' + rubify('｜撮影《さつえい》ずみ') : ''}</div>
 
       <p class="mt-3 text-[13px] leading-relaxed text-ink/80">${rubify(s.desc)}</p>
 
       <div class="mt-4 bg-navy text-paper ink-3 rounded-lg p-4">
         <div class="flex items-center gap-1.5 mb-1">
           ${icon('center_focus_strong', '!text-lg text-yellow')}
-          <span class="font-display font-extrabold text-sm">お手本アングル</span>
+          <span class="font-display font-extrabold text-sm">${rubify('お｜手本《てほん》アングル')}</span>
         </div>
         <p class="text-[13px] leading-relaxed text-paper/85">${rubify(s.angle)}</p>
         <div class="mt-2 pt-2 border-t-2 border-paper/20 font-mono text-[10px] text-mint">
-          現地から半径 ${s.radius}m 以内 ・ 成功で +${s.points}pt
+          ${rubify(`｜現地《げんち》から｜半径《はんけい》 ${s.radius}m ｜以内《いない》 ・ ｜成功《せいこう》で +${s.points}pt`)}
         </div>
       </div>
 
@@ -421,14 +421,14 @@ function paintIdle(err = '') {
       <div class="mt-5 flex flex-col gap-3">
         <button class="btn primary" id="unlock-go"><div class="cap clapper-stripes"></div>
           <div class="py-2.5 font-display font-extrabold text-lg flex items-center justify-center gap-2">
-            ${icon('photo_camera', '!text-2xl')}${done ? 'もう一度撮る' : '写真を撮る'}
+            ${icon('photo_camera', '!text-2xl')}${done ? rubify('もう｜一度《いちど》｜撮《と》る') : rubify('｜写真《しゃしん》を｜撮《と》る')}
           </div></button>
         <a class="btn block text-center" href="${gmaps(s)}" target="_blank" rel="noopener">
           <div class="cap clapper-stripes"></div>
-          <div class="py-2 font-display font-bold text-sm">地図でスポットを開く</div></a>
+          <div class="py-2 font-display font-bold text-sm">${rubify('｜地図《ちず》でスポットを｜開《ひら》く')}</div></a>
       </div>
       <p class="mt-3 font-mono text-[10px] leading-relaxed text-ink/45">
-        写真は端末の中だけで照合し、どこにも送りません。位置情報はこの判定にだけ使います。
+        ${rubify('｜写真《しゃしん》は｜端末《たんまつ》の｜中《なか》だけで｜照合《しょうごう》し、どこにも｜送《おく》りません。｜位置情報《いちじょうほう》はこの｜判定《はんてい》にだけ｜使《つか》います。')}
       </p>
     </div>`;
   $('#unlock-go').onclick = go;
@@ -444,8 +444,8 @@ function paintStep(step) {
              background:conic-gradient(from 0deg,var(--color-teal) 0 25%,var(--color-teal-deep) 0 50%,var(--color-teal) 0 75%,var(--color-teal-deep) 0)"></div>
         <div class="absolute inset-0 grid place-items-center text-paper">${icon(ico, '!text-2xl')}</div>
       </div>
-      <p class="mt-4 font-display font-extrabold text-lg">${text}…</p>
-      <p class="mt-1 text-[12px] text-ink/55 h-4">${note}</p>
+      <p class="mt-4 font-display font-extrabold text-lg">${rubify(text)}…</p>
+      <p class="mt-1 text-[12px] text-ink/55 h-4">${rubify(note)}</p>
     </div>`;
 }
 
@@ -465,7 +465,7 @@ function paintSuccess(r, gained) {
         </div>
         <p class="mt-3 font-display font-extrabold text-xl">${rubify(m.name)}エリア</p>
         <p class="font-mono text-[11px] text-ink/55">${rubify(s.name)} ・ ${
-          r.demo ? 'DEMO' : r.blind ? '現在地で確認' : `一致度 ${r.score}%`}</p>
+          r.demo ? 'DEMO' : r.blind ? rubify('｜現在地《げんざいち》で｜確認《かくにん》') : rubify(`｜一致度《いっちど》 ${r.score}%`)}</p>
       </div>
 
       ${shotUrl ? `
@@ -477,7 +477,7 @@ function paintSuccess(r, gained) {
         <div class="bg-yellow ink-3 hard rounded-lg p-3 text-center -rotate-1">
           <div class="font-mono text-[9px] tracking-[0.2em] text-ink/60">GAIN</div>
           <div class="font-mono font-bold text-2xl leading-tight">+${gained}</div>
-          <div class="font-mono text-[9px] text-ink/50">${gained ? 'POINT' : '獲得ずみ'}</div>
+          <div class="font-mono text-[9px] text-ink/50">${gained ? 'POINT' : rubify('｜獲得《かくとく》ずみ')}</div>
         </div>
         <div class="bg-paper ink-3 hard rounded-lg p-3 text-center rotate-1">
           <div class="font-mono text-[9px] tracking-[0.2em] text-ink/60">TOTAL</div>
@@ -497,7 +497,7 @@ function paintSuccess(r, gained) {
              共有シートを取り違えて閉じた人がもう一度送る手立てを失う -->
         <button class="btn" id="unlock-share"><div class="cap clapper-stripes"></div>
           <div class="py-2.5 font-display font-extrabold flex items-center justify-center gap-2">
-            ${icon('share', '!text-xl')}${rec?.shared ? 'もう一度シェア' : `シェアして +${s.share}pt`}
+            ${icon('share', '!text-xl')}${rec?.shared ? rubify('もう｜一度《いちど》シェア') : `シェアして +${s.share}pt`}
           </div></button>
         ${shareNote ? `
         <p class="-mt-1 text-center text-[12px] leading-relaxed font-bold ${shareNote.ok ? 'text-teal-deep' : 'text-danger shake'}">
@@ -509,10 +509,10 @@ function paintSuccess(r, gained) {
                   class="w-full bg-paper ink-2 rounded p-2 text-[12px] leading-relaxed font-body resize-none"
                   >${esc(shareNote.copyText)}</textarea>` : ''}` : `
         <p class="-mt-1 text-center font-mono text-[10px] leading-relaxed text-ink/45">
-          ${shotPhoto ? '対応端末では撮った写真も共有候補に入ります。' : ''}送信先を選ぶまで、写真はどこへも送られません。
+          ${shotPhoto ? rubify('｜対応端末《たいおうたんまつ》では｜撮《と》った｜写真《しゃしん》も｜共有候補《きょうゆうこうほ》に｜入《はい》ります。') : ''}${rubify('｜送信先《そうしんさき》を｜選《えら》ぶまで、｜写真《しゃしん》はどこへも｜送《おく》られません。')}
         </p>`}
         <button class="btn primary" id="unlock-done"><div class="cap clapper-stripes"></div>
-          <div class="py-2.5 font-display font-extrabold text-lg">マップへ戻る</div></button>
+          <div class="py-2.5 font-display font-extrabold text-lg">${rubify('マップへ｜戻《もど》る')}</div></button>
       </div>
     </div>`;
   $('#unlock-share').onclick = share;
@@ -619,7 +619,7 @@ function renderSharks() {
           </span>
           <span class="min-w-0">
             <span class="tile-name block font-display font-extrabold text-base leading-tight">${rubify(d.name)}</span>
-            <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${esc(d.tag)}</span>
+            <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${rubify(d.tag)}</span>
           </span>`;
         b.onclick = () => selectShark(d);
         list.appendChild(b);
@@ -811,9 +811,9 @@ function openDex(d) {
           <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${esc(d.en)}</div>
           <div class="flex items-baseline gap-2 flex-wrap">
             <h3 class="font-display font-extrabold text-3xl md:text-4xl leading-tight">${rubify(d.name)}</h3>
-            <span class="text-[11px] font-bold bg-yellow ink-2 rounded px-2 py-0.5">${esc(d.tag)}</span>
+            <span class="text-[11px] font-bold bg-yellow ink-2 rounded px-2 py-0.5">${rubify(d.tag)}</span>
           </div>
-          <div class="text-[12px] text-ink/55 mt-1">モチーフ：${rubify(d.motif)}</div>
+          <div class="text-[12px] text-ink/55 mt-1">${rubify('モチーフ：')}${rubify(d.motif)}</div>
 
           <p class="mt-5 text-[15px] leading-[1.9] font-bold">${rubify(d.intro)}</p>
 
@@ -872,7 +872,7 @@ async function play() {
     pausePanel.style.display = 'none';
     $('#hud-online').classList.toggle('hidden', !net);
     $('#hud-skill-icon').textContent = ICON[selShark.id];
-    $('#hud-skill-name').textContent = plainText(selShark.skill.name);
+    $('#hud-skill-name').innerHTML = rubify(selShark.skill.name);
     myName = net ? save.name : 'YOU';
     ctl = startGame({
       canvas: stage, mini, sharkId: selShark.id, map: selMap,
@@ -951,11 +951,11 @@ function showResult(r) {
 
   show('result');
   $('#res-sub').innerHTML = `${rubify(selMap.name)} ／ ${rubify(selShark.name)}`
-    + (r.cause ? `<br><span class="text-danger">${esc(r.cause)}に接触</span>` : '');
+    + (r.cause ? `<br><span class="text-danger">${esc(r.cause)}${rubify('に｜接触《せっしょく》')}</span>` : '');
   $('#res-stats').innerHTML = [
-    ['到達サイズ', r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
-    ['撃破数', r.kills, 'KILLS'],
-    ['生存時間', fmtTime(r.time), 'SURVIVED'],
+    [rubify('｜到達《とうたつ》サイズ'), r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
+    [rubify('｜撃破数《げきはすう》'), r.kills, 'KILLS'],
+    [rubify('｜生存時間《せいぞんじかん》'), fmtTime(r.time), 'SURVIVED'],
   ].map(([label, val, sub], i) => `
     <div class="res-stat ${i === 0 ? 'bg-yellow' : 'bg-paper'} ink-3 hard rounded-lg p-2 sm:p-3 text-center ${['', '-rotate-1', 'rotate-1'][i]}">
       <div class="font-mono text-[9px] tracking-[0.2em] text-ink/60">${label}</div>

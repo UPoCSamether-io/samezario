@@ -27,7 +27,7 @@ export const SHARKS = [
     id: 'yokai',
     name: '｜妖怪《ようかい》サメ',
     en: 'YOKAI',
-    tag: '小回り',
+    tag: '｜小回《こまわ》り',
     color: '#7b5ea7', accent: '#c3a9e6',
     motif: '｜水木《みずき》しげる・｜天神通り《てんじんどおり》',
     intro:
@@ -65,7 +65,7 @@ export const SHARKS = [
     id: 'jindaiji',
     name: '｜深大寺《じんだいじ》サメ',
     en: 'JINDAIJI',
-    tag: '成長',
+    tag: '｜成長《せいちょう》',
     color: '#3b5a9c', accent: '#9db6e0',
     motif: '｜深大寺《じんだいじ》そば・｜古刹《こさつ》',
     intro:
