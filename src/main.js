@@ -3,7 +3,8 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared } from './progress.js';
+import { runUnlock, explain, isDemo } from './verify.js';
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
 
@@ -172,7 +173,8 @@ function placeLocks() {
 }
 compactMap.addEventListener('change', placeLocks);
 
-function renderMaps() {
+/** 地図を描き直す。keep を渡すとそのエリアを選んだままにする（解放直後に使う） */
+function renderMaps(keep = null) {
   const areas = $('#map-areas'), labels = $('#map-labels');
   areas.innerHTML = labels.innerHTML = '';
   for (const m of MAPS) {
@@ -205,7 +207,7 @@ function renderMaps() {
     }
   }
   placeLocks();
-  selectMap(MAPS.find(isUnlocked) || MAPS[0]);
+  selectMap(keep || MAPS.find(isUnlocked) || MAPS[0]);
 }
 
 function selectMap(m) {
@@ -224,7 +226,15 @@ function selectMap(m) {
   // 読まれない。従来の順（blurb → HISTORY）だと史実が丸ごと折り返しの下に沈んでいた。
   // 史実とロック解除の導線がこの画面の主役、blurb は雰囲気づけなので最後に回す
   $('#map-info-body').innerHTML = `
-    <div id="map-en" class="font-mono text-[10px] tracking-[0.3em] text-mint mb-1">${esc(m.en)}</div>
+    <div class="flex items-center gap-2 mb-1">
+      <div id="map-en" class="font-mono text-[10px] tracking-[0.3em] text-mint">${esc(m.en)}</div>
+      <!-- 寄せは justify-between ではなく ml-auto。横持ちでは #map-en が畳まれるので、
+           between だと残った数字が左端へ流れる -->
+      <div class="flex items-center gap-1.5 shrink-0 ml-auto">
+        <span class="font-mono text-[10px] text-paper/55">解放 ${MAPS.filter(isUnlocked).length}/${MAPS.length}</span>
+        <span class="font-mono font-bold text-[11px] bg-yellow text-ink ink-2 rounded px-1.5 py-0.5">${save.points} pt</span>
+      </div>
+    </div>
     <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${esc(m.name)}</h3>
     <div id="map-badge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 mb-4 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
       ${open ? '解放済み' : '未解放'}
@@ -233,19 +243,267 @@ function selectMap(m) {
       <div class="font-mono text-[10px] tracking-[0.25em] text-yellow mb-1">HISTORY</div>
       <p class="text-[13px] leading-relaxed text-paper/80">${esc(m.lore)}</p>
     </div>
-    ${open ? '' : `
-    <div class="mt-4 bg-paper/10 ink-2 border-paper/30 rounded p-3">
-      <div class="font-display font-bold text-sm mb-1 flex items-center gap-1.5">
-        ${icon('photo_camera', '!text-lg text-yellow')}現地写真で解放
-      </div>
-      <p class="text-[12px] leading-relaxed text-paper/70">現地で撮影した写真をアップロードすると解放されます。<span class="font-mono text-[10px] tracking-widest text-yellow">COMING SOON</span></p>
-    </div>`}
+    ${spotCard(m)}
     <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${esc(m.blurb)}</p>
     <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · 実際の地形</div>`;
 }
 
+/**
+ * 情報パネルの下段。未解放エリアでは解放条件、解放済みエリアでは現地スポットの案内になる。
+ * 撮影ずみのスポットは記録（一致度・シェア）を出して、もう一度撮れる状態のまま置いておく。
+ */
+function spotCard(m) {
+  const s = m.spot;
+  if (!s) return '';
+  const open = isUnlocked(m);
+  const done = isCleared(s);
+  const rec = save.spots[s.id];
+  const head = open
+    ? (done ? '撮影ずみのスポット' : '現地スポット（ボーナス）')
+    : '現地写真で解放';
+  const label = done ? 'もう一度撮る' : open ? `写真を撮る +${s.points}pt` : '写真を撮って解放';
+  return `
+    <div class="mt-4 bg-paper/10 ink-2 border-paper/30 rounded p-3">
+      <div class="font-display font-bold text-sm mb-1.5 flex items-center gap-1.5">
+        ${icon(done ? 'task_alt' : 'photo_camera', '!text-lg text-yellow')}${head}
+      </div>
+      <div class="font-display font-extrabold text-[15px] leading-tight">${esc(s.name)}</div>
+      <p class="mt-1 text-[12px] leading-relaxed text-paper/70">${esc(s.desc)}</p>
+      <div class="mt-2 flex items-start gap-1.5 text-[11.5px] leading-snug text-mint">
+        ${icon('center_focus_strong', '!text-[15px] shrink-0')}<span>${esc(s.angle)}</span>
+      </div>
+      ${done ? `
+      <div class="mt-2 font-mono text-[10px] text-paper/55">
+        一致度 ${rec.score}% ・ ${rec.shared ? 'シェア済み' : 'シェア未'}
+      </div>` : ''}
+      <button data-unlock="${m.id}"
+              class="mt-3 w-full bg-yellow text-ink ink-2 rounded hard-sm px-3 py-2 font-display font-extrabold text-sm
+                     flex items-center justify-center gap-1.5 transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
+        ${icon('photo_camera', '!text-lg')}${label}
+      </button>
+      <p class="mt-1.5 font-mono text-[10px] text-paper/45">現地（半径${s.radius}m）で撮影してください</p>
+    </div>`;
+}
+
 $('#map-next').onclick = () => { if (isUnlocked(selMap)) show('shark'); };
 renderMaps();
+
+// ---------- エリア解放（現地写真の照合） ----------
+// 撮影 → 現在地 → 照合 の一本道は verify.js の runUnlock が持つ。ここが受け持つのは
+// その途中経過を絵にすることと、通った後の「開いた」という手応えだけ。
+// 判定を後でサーバへ移しても、この画面は一行も変わらない。
+const unlockPanel = $('#unlock');
+const unlockBody = $('#unlock-body');
+let unlockMap = null;   // いま解放しようとしているエリア
+let shotUrl = null;     // 撮った写真のプレビュー。閉じるときに必ず revoke する
+let running = false;    // 二重起動よけ。撮影中にもう一度押すと入力欄が2つ開く
+let opened = false;     // この撮影でエリアが開いたか（解放済みエリアのボーナスと文言を分ける）
+
+const STEPS = {
+  capture: ['photo_camera', 'カメラを開いています', ''],
+  locate: ['my_location', '現在地を確認しています', '屋外のほうが早く決まります'],
+  verify: ['image_search', 'お手本と照合しています', ''],
+};
+
+const gmaps = (s) => `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}`;
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-unlock]');
+  if (b) openUnlock(MAPS.find((m) => m.id === b.dataset.unlock));
+});
+$('#unlock-close').onclick = closeUnlock;
+unlockPanel.onclick = (e) => { if (e.target === unlockPanel) closeUnlock(); };   // 外側の暗幕
+addEventListener('keydown', (e) => { if (e.key === 'Escape') closeUnlock(); });
+
+function openUnlock(m) {
+  if (!m?.spot) return;
+  unlockMap = m;
+  unlockPanel.style.display = 'grid';
+  // このパネルの間だけ縦持ちを許す（style.css の縦持ちガード参照）。
+  // 現地でスポットの前に立っている人に、撮る前後だけ横持ちを強いる理由は無い
+  document.documentElement.classList.add('unlocking');
+  paintIdle();
+}
+
+function closeUnlock() {
+  if (running || !unlockMap) return;   // 撮影の途中で消すと、戻る先が無くなる
+  unlockPanel.style.display = 'none';
+  document.documentElement.classList.remove('unlocking');
+  dropShot();
+  unlockMap = null;
+}
+
+function dropShot() {
+  if (shotUrl) URL.revokeObjectURL(shotUrl);
+  shotUrl = null;
+}
+
+/** 撮る前。解放条件（スポット・お手本アングル・ジオフェンス）を読ませる画面 */
+function paintIdle(err = '') {
+  const m = unlockMap, s = m.spot, open = isUnlocked(m);
+  const done = isCleared(s);
+  unlockBody.innerHTML = `
+    <div class="p-6 max-sm:p-4">
+      <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${open ? 'BONUS SPOT' : 'UNLOCK AREA'}</div>
+      <h3 class="font-display font-extrabold text-2xl leading-tight">${esc(s.name)}</h3>
+      <div class="text-[12px] text-ink/60 mt-0.5">${esc(m.name)}エリア${done ? ' ・ 撮影ずみ' : ''}</div>
+
+      <p class="mt-3 text-[13px] leading-relaxed text-ink/80">${esc(s.desc)}</p>
+
+      <div class="mt-4 bg-navy text-paper ink-3 rounded-lg p-4">
+        <div class="flex items-center gap-1.5 mb-1">
+          ${icon('center_focus_strong', '!text-lg text-yellow')}
+          <span class="font-display font-extrabold text-sm">お手本アングル</span>
+        </div>
+        <p class="text-[13px] leading-relaxed text-paper/85">${esc(s.angle)}</p>
+        <div class="mt-2 pt-2 border-t-2 border-paper/20 font-mono text-[10px] text-mint">
+          現地から半径 ${s.radius}m 以内 ・ 成功で +${s.points}pt
+        </div>
+      </div>
+
+      ${err ? `
+      <div class="mt-4 bg-danger/12 ink-2 border-danger/50 rounded p-3 text-[13px] leading-relaxed text-ink shake">
+        ${esc(err)}
+      </div>` : ''}
+
+      ${isDemo() ? `
+      <div class="mt-4 ink-2 border-ink/30 rounded p-2 font-mono text-[10.5px] text-ink/60 text-center">
+        DEMO MODE — 現在地と照合を飛ばして解放します
+      </div>` : ''}
+
+      <div class="mt-5 flex flex-col gap-3">
+        <button class="btn primary" id="unlock-go"><div class="cap clapper-stripes"></div>
+          <div class="py-2.5 font-display font-extrabold text-lg flex items-center justify-center gap-2">
+            ${icon('photo_camera', '!text-2xl')}${done ? 'もう一度撮る' : '写真を撮る'}
+          </div></button>
+        <a class="btn block text-center" href="${gmaps(s)}" target="_blank" rel="noopener">
+          <div class="cap clapper-stripes"></div>
+          <div class="py-2 font-display font-bold text-sm">地図でスポットを開く</div></a>
+      </div>
+      <p class="mt-3 font-mono text-[10px] leading-relaxed text-ink/45">
+        写真は端末の中だけで照合し、どこにも送りません。位置情報はこの判定にだけ使います。
+      </p>
+    </div>`;
+  $('#unlock-go').onclick = go;
+}
+
+/** 撮影中・測位中・照合中。フィルムリールを回して待たせる */
+function paintStep(step) {
+  const [ico, text, note] = STEPS[step];
+  unlockBody.innerHTML = `
+    <div class="p-8 max-sm:p-5 text-center">
+      <div class="relative w-16 h-16 mx-auto">
+        <div class="absolute inset-0 rounded-full ink-3" style="animation:spin 1.8s linear infinite;
+             background:conic-gradient(from 0deg,#2a7b7c 0 25%,#1b5a5b 0 50%,#2a7b7c 0 75%,#1b5a5b 0)"></div>
+        <div class="absolute inset-0 grid place-items-center text-paper">${icon(ico, '!text-2xl')}</div>
+      </div>
+      <p class="mt-4 font-display font-extrabold text-lg">${text}…</p>
+      <p class="mt-1 text-[12px] text-ink/55 h-4">${note}</p>
+    </div>`;
+}
+
+/** 通った後。解放の演出 → そのエリアの歴史 → シェア */
+function paintSuccess(r, gained) {
+  const m = unlockMap, s = m.spot;
+  const rec = save.spots[s.id];
+  unlockBody.innerHTML = `
+    <div class="p-6 max-sm:p-4">
+      <div class="text-center">
+        <div class="stamp inline-block bg-ink text-yellow ink-3 rounded-lg px-6 py-2 hard neon">
+          <span class="font-display font-black text-3xl max-sm:text-2xl">${opened ? 'AREA UNLOCKED' : 'SPOT CLEARED'}</span>
+        </div>
+        <p class="mt-3 font-display font-extrabold text-xl">${esc(m.name)}エリア</p>
+        <p class="font-mono text-[11px] text-ink/55">${esc(s.name)} ・ ${
+          r.demo ? 'DEMO' : r.blind ? '現在地で確認' : `一致度 ${r.score}%`}</p>
+      </div>
+
+      ${shotUrl ? `
+      <div class="mt-4 ink-3 rounded-lg overflow-hidden bg-ink/5">
+        <img src="${shotUrl}" alt="撮影した写真" class="w-full max-h-[34vh] object-contain">
+      </div>` : ''}
+
+      <div class="mt-4 grid grid-cols-2 gap-3">
+        <div class="bg-yellow ink-3 hard rounded-lg p-3 text-center -rotate-1">
+          <div class="font-mono text-[9px] tracking-[0.2em] text-ink/60">GAIN</div>
+          <div class="font-mono font-bold text-2xl leading-tight">+${gained}</div>
+          <div class="font-mono text-[9px] text-ink/50">${gained ? 'POINT' : '獲得ずみ'}</div>
+        </div>
+        <div class="bg-paper ink-3 hard rounded-lg p-3 text-center rotate-1">
+          <div class="font-mono text-[9px] tracking-[0.2em] text-ink/60">TOTAL</div>
+          <div class="font-mono font-bold text-2xl leading-tight">${save.points}</div>
+          <div class="font-mono text-[9px] text-ink/50">POINT</div>
+        </div>
+      </div>
+
+      <div class="relative border-4 border-ink rounded-lg p-4 pt-5 mt-6">
+        <span class="absolute -top-3 left-4 bg-yellow ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">HISTORY</span>
+        <p class="text-[13px] leading-relaxed text-ink/80">${esc(s.desc)}</p>
+        <p class="mt-2 text-[13px] leading-relaxed text-ink/80">${esc(m.lore)}</p>
+      </div>
+
+      <div class="mt-5 flex flex-col gap-3">
+        ${rec?.shared ? `
+        <div class="ink-2 border-ink/25 rounded py-2 text-center font-display font-bold text-sm text-ink/55">
+          シェア済み（+${s.share}pt 獲得ずみ）
+        </div>` : `
+        <button class="btn" id="unlock-share"><div class="cap clapper-stripes"></div>
+          <div class="py-2.5 font-display font-extrabold flex items-center justify-center gap-2">
+            ${icon('share', '!text-xl')}シェアして +${s.share}pt
+          </div></button>`}
+        <button class="btn primary" id="unlock-done"><div class="cap clapper-stripes"></div>
+          <div class="py-2.5 font-display font-extrabold text-lg">マップへ戻る</div></button>
+      </div>
+    </div>`;
+  const sh = $('#unlock-share');
+  if (sh) sh.onclick = () => share(r);
+  $('#unlock-done').onclick = closeUnlock;
+}
+
+/** 撮る。ここから戻るまでが1回のタップの流れ（iOS は位置の許可をこの中で出す） */
+async function go() {
+  if (running) return;
+  running = true;
+  const m = unlockMap;
+  try {
+    const r = await runUnlock(m.spot, paintStep);
+    if (r.code === 'CANCELLED') { paintIdle(); return; }
+    if (!r.ok) { paintIdle(explain(r)); return; }
+
+    dropShot();
+    if (r.photo) shotUrl = URL.createObjectURL(r.photo);
+    const before = save.points;
+    opened = !isUnlocked(m);   // 開ける前に見ておく（clearSpot の後では区別が付かない）
+    clearSpot(m, r.score);
+    renderMaps(m);          // 鍵が外れた地図に描き直す（パネルの裏で済ませておく）
+    paintSuccess(r, save.points - before);
+  } finally {
+    running = false;
+  }
+}
+
+/**
+ * シェア。実投稿の検証は X API が有料でできないので、シェアシートが完了した時点で加点する
+ * （スポットごと1回）。シートを閉じただけなら reject が来るので加点しない。
+ * 共有APIの無い環境では投稿画面を開いた時点で加点扱いにする —— PoC としての割り切り。
+ */
+async function share(r) {
+  const m = unlockMap, s = m.spot;
+  // 「エリア」は data.js の name から外れている（地図のラベル用に短くしてある）ので、
+  // 文章として読ませるここでは足す
+  const text = `『${m.name}エリア』を解放！ ${s.name} で写真照合クリア — サメザリオ`;
+  const url = location.origin + location.pathname;
+  try {
+    if (navigator.share) await navigator.share({ title: 'サメザリオ', text, url });
+    else window.open(
+      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+      '_blank', 'noopener');
+  } catch {
+    return;   // シートを閉じただけ
+  }
+  markShared(s);
+  selectMap(m);              // 情報パネルのポイント表示を追従させる
+  paintSuccess(r, s.share);  // 直前に入った分＝シェアぶんを GAIN に出す
+}
 
 // ---------- サメ選択 ----------
 // 直前に遊んだサメ。タイトルの立ち絵とサメ選択の初期値を兼ねる（初回は映画サメ）
