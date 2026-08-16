@@ -97,7 +97,6 @@ for (const m of MAPS) {
   assert.ok(s.lat > 35.62 && s.lat < 35.69, `${m.id}: lat ${s.lat} が調布の外`);
   assert.ok(s.lon > 139.50 && s.lon < 139.60, `${m.id}: lon ${s.lon} が調布の外`);
   assert.ok(s.radius >= 100 && s.radius <= 300, `${m.id}: radius ${s.radius}`);
-  assert.ok(s.points > 0 && s.share > 0, `${m.id}: ポイントが 0`);
   assert.ok(Array.isArray(s.hashes), `${m.id}: hashes が配列でない`);
   assert.ok(s.threshold > 0 && s.threshold < 32, `${m.id}: threshold ${s.threshold}`);
   for (const h of s.hashes) {

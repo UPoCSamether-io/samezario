@@ -1,9 +1,9 @@
 // セーブデータ。localStorage の 'samezario.save' を専有する唯一のモジュール。
 //
-// エリアの解放とポイントの書き込み口は clearSpot / markShared のふたつしかなく、
+// エリアの解放とスポット記録の書き込み口は clearSpot / markShared のふたつしかなく、
 // どちらも「次の状態を全部組み立てて replace() で丸ごと置き換える」形にしてある。
-// UPoC_Samether.io/docs/06 の「クライアント側で points += 100 のような差分加算を書かない」
-// —— 二重加算を規約ではなく構造で潰す、という原則をそのまま持ってきた。
+// UPoC_Samether.io/docs/06 の「クライアント側で差分加算を書かない」
+// —— 二重書き込みを規約ではなく構造で潰す、という原則をそのまま持ってきた。
 // 判定をサーバへ移したら replace() にサーバの返したスナップショットを渡せばよく、
 // 呼び出し側は変わらない。
 //
@@ -22,7 +22,6 @@ const createDefaults = () => ({
   best: 0,
   shark: SHARKS[0].id,
   name: '',
-  points: 0,
   spots: {},
 });
 
@@ -55,15 +54,14 @@ export const isCleared = (spot) => !!(spot && save.spots[spot.id]);
 export const isShared = (spot) => !!(spot && save.spots[spot.id]?.shared);
 
 /**
- * 照合成功。エリアを開けてポイントを入れる。
- * 2周目以降は「開いているものをもう一度開く」だけでポイントは増えない（記録の一致度は伸びる）。
+ * 照合成功。エリアを開けて記録を残す。
+ * 2周目以降は「開いているものをもう一度開く」だけ（記録の一致度は伸びる）。
  */
 export function clearSpot(map, score = 100) {
   const spot = map.spot;
   const had = save.spots[spot.id];
   return replace({
     unlocked: save.unlocked.includes(map.id) ? save.unlocked : [...save.unlocked, map.id],
-    points: save.points + (had ? 0 : spot.points),
     spots: {
       ...save.spots,
       [spot.id]: {
@@ -76,15 +74,14 @@ export function clearSpot(map, score = 100) {
 }
 
 /**
- * シェア完了。スポットごとに1回だけ加点する。
- * X API が有料で実投稿は検証できないので、シェアシートが完了した時点で入れる割り切り
+ * シェア完了。スポットごとに1回だけ記録する。
+ * X API が有料で実投稿は検証できないので、シェアシートが完了した時点で記録する割り切り
  * （UPoC_Samether.io README「PoC としての割り切り」）。
  */
 export function markShared(spot) {
   const rec = save.spots[spot.id];
   if (!rec || rec.shared) return save;
   return replace({
-    points: save.points + spot.share,
     spots: { ...save.spots, [spot.id]: { ...rec, shared: true } },
   });
 }
