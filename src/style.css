@@ -573,6 +573,9 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   }
 }
 
+/* タッチ版の言い回し。既定は隠しておき、pointer:coarse でだけ .keys と入れ替わる */
+.touch-only { display: none; }
+
 /* ---- タッチ端末の HUD 組み替え ----
    操舵は画面のどこでも効くので、左親指が操舵・右親指がアクションになる。
    既定の配置はボタンが左下＝操舵と同じ側にあり、必ず喧嘩する。 */
@@ -580,9 +583,12 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #hud-pause { display: grid; }
   /* タッチでは押せないキーの名前を出しても場所を食うだけ。
      遊び方の本文は「— <kbd>E</kbd> / <kbd>Shift</kbd>」ごと .keys で包んであるので、
-     消しても見出しの直後に句点が続いて文が壊れない */
+     消しても見出しの直後に句点が続いて文が壊れない。
+     ただし消すだけだと操作方法そのものが消える文（移動・ダッシュ・スキル・一時停止）が
+     あるので、対になる .touch-only にタッチ版の言い方を置いて入れ替える */
   .kbd-badge,
   .keys { display: none; }
+  .touch-only { display: inline; }
 
   /* ミニマップは SIZE ゲージの下へ。左下のままだと、左親指で左下方向へ
      操舵している間ずっと自分の指で完全に隠れる。左下は丸ごと明け渡す。
@@ -668,6 +674,78 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
      説明文を畳んで高さを一覧へ回す。文面は縦や広い画面では従来どおり出る */
   #s-shark .name-pane { padding: 0.4rem 0.6rem; }
   #s-shark .name-pane p { display: none; }
+
+  /* 横画面の遊び方。max-w-2xl のままだと 537px しか使わず、余った幅の隣で
+     6項目が縦に並んでスクロールになる。幅を開けて2段組みにし、
+     項目の途中で列がまたがらないよう break-inside を止める */
+  #howto-panel { max-width: min(96vw, 980px); }
+  /* 下だけ薄いのは、全項目が収まったあと padding-bottom 分だけスクロールバーが
+     出て「まだ下に何かある」と誤読させるため */
+  #howto-body { padding: 1rem 1.25rem 0.5rem; }
+  #howto-foot { padding: 0 1.25rem 0.75rem; }
+  #howto-title { font-size: 1.25rem; margin-bottom: 0.4rem; }
+  #howto-list {
+    column-count: 2;
+    column-gap: 1.75rem;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  /* 3段組みも試したが逆に伸びた（281px > 2段の278px）。項目数が6で高さが不揃いなため、
+     列を増やすと1項目あたりの行数が増えて最長列が勝つ。2段が底 */
+  #howto-list > li { break-inside: avoid; margin: 0 0 0.5rem; }
+
+  /* ---- 横画面のリザルト ----
+     積み上げでは CUT!+戦績 190px / Tips+操作列 240px に対し、使える高さが
+     326px しかない。左右に組み替えると必要な縦は片側ぶんで済み、
+     どれもスクロールなしで収まる。max-w を広げるのは、そのための幅を作るため */
+  #res-panel {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, 46%);
+    grid-template-rows: auto auto 1fr;
+    max-width: min(94vw, 880px);
+  }
+  #res-cap      { grid-area: 1 / 1 / auto / span 2; }
+  #res-main     { grid-area: 2 / 1 / span 2 / auto; align-self: center; }
+  #res-tip-pane { grid-area: 2 / 2; }
+  #res-actions  { grid-area: 3 / 2; justify-content: end; }
+
+  /* 縦を詰める。CUT! は主役なので消さず、一段だけ小さくする。
+     右カラムは Tips と操作列の2段で、320px 級の高さでも両方を出しきる必要がある。
+     文字と余白をここで一段落とす（縦や広い画面は従来のまま） */
+  #res-main { padding: 1rem 1.25rem; overflow: visible; }
+  #res-head { margin-bottom: 0.75rem; }
+  #res-head h2 { font-size: 2rem; padding: 0.25rem 1.5rem; }
+  #res-head #res-sub { margin-top: 0.5rem; }
+
+  /* 2カラムにすると戦績の3枚は 88px 級まで痩せる。到達サイズは5桁+カンマ = 6文字なので、
+     30px のままだとカードから溢れて「12,48」で切れる（実測 640x360）。字を先に詰める */
+  .res-stat { padding: 0.5rem 0.35rem; }
+  .res-stat-v { font-size: 1.375rem; }
+
+  #res-tip-pane { padding: 1rem 1.25rem 0 0; }
+  #res-tip-pane > div { padding: 0.6rem 0.75rem; }
+  #res-tip { font-size: 12px; line-height: 1.6; }
+
+  #res-actions { padding: 0.6rem 1.25rem 0.9rem 0; gap: 0.4rem; }
+  #res-actions .btn > div:last-child { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+  #res-actions #retry > div:last-child { font-size: 1.05rem; }
+}
+
+/* ロケ地の情報パネル。横持ちでは本文が 197px しか映らない（実測 844x390）。
+   HISTORY は main.js 側で blurb より上に出したうえで、ここは3手で詰める:
+   (1) パネルを広げて lore の行数を落とす。地図側は 1fr でも実際には
+       aspect-[1100/963] と高さで決まるので、横持ちでは左に 150px 級が余っている。
+       vw 基準なのは、667 では逆に地図が痩せすぎるため
+   (2) 英字コードは飾りなので畳む
+   (3) 見出しと余白を一段小さく
+   これで史実が折り返しの上に収まり、溢れるのは雰囲気づけの blurb と面積表示になる */
+@media (max-height: 500px) {
+  #map-cols { grid-template-columns: 1fr min(46vw, 400px); }
+  #map-info-body { padding: 0.6rem 0.9rem; }
+  #map-en { display: none; }
+  #map-title { font-size: 1.25rem; }
+  #map-badge { margin-bottom: 0.4rem; }
+  #map-info-body p { line-height: 1.5; }
 }
 
 /* 図鑑のカード。auto-fill なので列数は幅任せ。下限を 150px まで緩めるのは
