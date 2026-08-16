@@ -706,49 +706,59 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
      どれもスクロールなしで収まる。max-w を広げるのは、そのための幅を作るため */
   #res-panel {
     display: grid;
-    grid-template-columns: 1fr minmax(0, 46%);
+    grid-template-columns: 1fr minmax(0, 48%);
     grid-template-rows: auto auto 1fr;
     max-width: min(94vw, 880px);
   }
   #res-cap      { grid-area: 1 / 1 / auto / span 2; }
   #res-main     { grid-area: 2 / 1 / span 2 / auto; align-self: center; }
   #res-tip-pane { grid-area: 2 / 2; }
-  #res-actions  { grid-area: 3 / 2; justify-content: end; }
+  #res-actions  { grid-area: 3 / 2; }
 
   /* 縦を詰める。CUT! は主役なので消さず、一段だけ小さくする。
      右カラムは Tips と操作列の2段で、320px 級の高さでも両方を出しきる必要がある。
      文字と余白をここで一段落とす（縦や広い画面は従来のまま） */
-  #res-main { padding: 1rem 1.25rem; overflow: visible; }
-  #res-head { margin-bottom: 0.75rem; }
-  #res-head h2 { font-size: 2rem; padding: 0.25rem 1.5rem; }
-  #res-head #res-sub { margin-top: 0.5rem; }
+  #res-main { padding: 0.75rem 1rem; overflow: visible; }
+  #res-head { margin-bottom: 0.5rem; }
+  #res-head h2 { font-size: 1.85rem; padding: 0.2rem 1.25rem; }
+  #res-head #res-sub { margin-top: 0.35rem; font-size: 11px; }
 
-  /* 2カラムにすると戦績の3枚は 88px 級まで痩せる。到達サイズは5桁+カンマ = 6文字なので、
-     30px のままだとカードから溢れて「12,48」で切れる（実測 640x360）。字を先に詰める */
-  .res-stat { padding: 0.5rem 0.35rem; }
-  .res-stat-v { font-size: 1.375rem; }
+  /* 2カラムにすると戦績の3枚は 88px 級まで痩せる。 */
+  .res-stat { padding: 0.4rem 0.3rem; }
+  .res-stat-v { font-size: 1.25rem; }
 
-  #res-tip-pane { padding: 1rem 1.25rem 0 0; }
-  #res-tip-pane > div { padding: 0.6rem 0.75rem; }
-  #res-tip { font-size: 12px; line-height: 1.6; }
+  #res-tip-pane { padding: 0.5rem 1rem 0 0; }
+  #res-tip-pane > div { padding: 0.45rem 0.65rem; }
+  #res-tip { font-size: 11px; line-height: 1.45; }
 
   #res-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.4rem;
-    padding: 0.35rem 1.25rem 0.6rem 0;
+    row-gap: 0.85rem;
+    column-gap: 0.5rem;
+    padding: 0.25rem 1rem 0.6rem 0;
+    align-items: end;
+  }
+  #res-actions .btn {
+    margin-top: 10px;
+  }
+  #res-actions .btn > .cap {
+    height: 0.45rem;
+  }
+  #res-actions .btn::before {
+    height: 0.45rem;
   }
   #res-actions #retry {
     grid-column: 1 / -1;
-    margin-top: 8px;
-  }
-  #res-actions .btn {
-    margin-top: 6px;
   }
   #res-actions .btn > div:last-child {
-    padding-top: 0.35rem;
-    padding-bottom: 0.35rem;
+    padding: 0.35rem 0.25rem;
+    min-height: 2rem;
     font-size: 11.5px;
+  }
+  #res-actions .btn rt {
+    font-size: 0.42em;
+    transform: translateY(-0.15em);
   }
 }
 

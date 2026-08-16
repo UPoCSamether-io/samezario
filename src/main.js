@@ -574,8 +574,14 @@ function showResult(r) {
   save.best = best; persist();
 
   show('result');
+  const causeWithRuby = (r.cause || '')
+    .replace(/外壁/g, '<ruby>外壁<rp>(</rp><rt>がいへき</rt><rp>)</rp></ruby>')
+    .replace(/胴体/g, '<ruby>胴体<rp>(</rp><rt>どうたい</rt><rp>)</rp></ruby>')
+    .replace(/泳いだ跡/g, '<ruby>泳<rp>(</rp><rt>およ</rt><rp>)</rp></ruby>いだ<ruby>跡<rp>(</rp><rt>あと</rt><rp>)</rp></ruby>')
+    .replace(/航跡/g, '<ruby>泳<rp>(</rp><rt>およ</rt><rp>)</rp></ruby>いだ<ruby>跡<rp>(</rp><rt>あと</rt><rp>)</rp></ruby>');
+
   $('#res-sub').innerHTML = `${selMap.ruby || esc(selMap.name)} ／ ${selShark.ruby || esc(selShark.name)}`
-    + (r.cause ? `<br><span class="text-danger">${esc(r.cause)}に<ruby>接触<rp>(</rp><rt>せっしょく</rt><rp>)</rp></ruby></span>` : '');
+    + (r.cause ? `<br><span class="text-danger">${causeWithRuby}に<ruby>接触<rp>(</rp><rt>せっしょく</rt><rp>)</rp></ruby></span>` : '');
   $('#res-stats').innerHTML = [
     ['<ruby>大<rp>(</rp><rt>おお</rt><rp>)</rp></ruby>きさ', r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
     ['<ruby>撃破数<rp>(</rp><rt>げきはすう</rt><rp>)</rp></ruby>', r.kills, 'KILLS'],
