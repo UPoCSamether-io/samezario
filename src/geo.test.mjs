@@ -40,16 +40,15 @@ for (const m of MAPS) {
 }
 
 // ブラウザで実測した値との突き合わせ。DOM 版（getPointAtLength を 256 点）が
-// 出していた重心と一致すること。ズレたらどちらかの実装が壊れている
+// 出していた重心と一致すること。ズレたらどちらかの実装が壊れている。
+// 深大寺だけを見るのは、#52 で区割りを引き直しても位置が動かなかった唯一のエリアだから
+// （他は南部を切り出したり作り直したりしたので、当時の実測値とは比べられない）
 {
-  const want = { jindaiji: [536, 368], tamagawa: [874, 535], airport: [220, 535] };
-  for (const [id, [x, y]] of Object.entries(want)) {
-    const m = MAPS.find((v) => v.id === id);
-    assert.ok(m, `${id} が data.js に無い`);
-    const c = centroidOfPath(m.path);
-    assert.ok(Math.abs(c.x - x) <= 2 && Math.abs(c.y - y) <= 2,
-      `${id}: ${JSON.stringify(c)} != ${x},${y}`);
-  }
+  const m = MAPS.find((v) => v.id === 'jindaiji');
+  assert.ok(m, 'jindaiji が data.js に無い');
+  const c = centroidOfPath(m.path);
+  assert.ok(Math.abs(c.x - 536) <= 2 && Math.abs(c.y - 368) <= 2,
+    `jindaiji: ${JSON.stringify(c)} != 536,368`);
 }
 
 console.log('geo ok');
