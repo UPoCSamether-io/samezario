@@ -251,9 +251,9 @@ paintTitleShark();   // 起動直後のタイトルは show() を通らないの
 
 const STAT_KEYS = [
   ['スピード', 'スピード', (d) => d.speed],
-  ['旋回', '<ruby>旋回<rp>(</rp><rt>せんかい</rt><rp>)</rp></ruby>', (d) => d.turn],
+  ['曲がりやすさ', '<ruby>曲<rp>(</rp><rt>ま</rt><rp>)</rp></ruby>がりやすさ', (d) => d.turn],
   ['成長', '<ruby>成長<rp>(</rp><rt>せいちょう</rt><rp>)</rp></ruby>', (d) => d.growth],
-  ['ダッシュ効率', 'ダッシュ<ruby>効率<rp>(</rp><rt>こうりつ</rt><rp>)</rp></ruby>', (d) => 2 - d.boostCost],
+  ['スタミナ', 'スタミナ', (d) => 2 - d.boostCost],
 ];
 
 let mainPreview = null;
@@ -577,7 +577,7 @@ function showResult(r) {
   $('#res-sub').innerHTML = `${selMap.ruby || esc(selMap.name)} ／ ${selShark.ruby || esc(selShark.name)}`
     + (r.cause ? `<br><span class="text-danger">${esc(r.cause)}に<ruby>接触<rp>(</rp><rt>せっしょく</rt><rp>)</rp></ruby></span>` : '');
   $('#res-stats').innerHTML = [
-    ['<ruby>到達<rp>(</rp><rt>とうたつ</rt><rp>)</rp></ruby>サイズ', r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
+    ['<ruby>大<rp>(</rp><rt>おお</rt><rp>)</rp></ruby>きさ', r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
     ['<ruby>撃破数<rp>(</rp><rt>げきはすう</rt><rp>)</rp></ruby>', r.kills, 'KILLS'],
     ['<ruby>生存時間<rp>(</rp><rt>せいぞんじかん</rt><rp>)</rp></ruby>', fmtTime(r.time), 'SURVIVED'],
   ].map(([label, val, sub], i) => `
