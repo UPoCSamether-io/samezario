@@ -197,7 +197,7 @@ function renderMaps() {
       class: 'map-label' + (open ? '' : ' locked'),
       x: cen.x, y: cen.y + LABEL_DY,
     });
-    t.textContent = m.name.replace(/エリア$/, '');
+    t.textContent = m.name;
     labels.appendChild(t);
 
     // 未解放マークの南京錠。ラベルは text-anchor:middle で幅が読めないので、横ではなく真下に置く
@@ -224,14 +224,16 @@ function selectMap(m) {
   // （実測 667x375 で3行・56→76px・地図が 20px 縮んでずれる）。
   // 短くしたうえで style.css 側で nowrap にし、行数を常に1に固定する
   $('#map-next-label').textContent = open ? 'サメ選択 →' : 'まだ遊べません';
+  // 並びは重要な順。パネルは横持ちで本文 197px しか映らず（実測 844x390）、下に置いたものは
+  // 読まれない。従来の順（blurb → HISTORY）だと史実が丸ごと折り返しの下に沈んでいた。
+  // 史実とロック解除の導線がこの画面の主役、blurb は雰囲気づけなので最後に回す
   $('#map-info-body').innerHTML = `
-    <div class="font-mono text-[10px] tracking-[0.3em] text-mint mb-1">${esc(m.en)}</div>
-    <h3 class="font-display font-extrabold text-2xl mb-1 leading-tight">${esc(m.name)}</h3>
-    <div class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 mb-4 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
+    <div id="map-en" class="font-mono text-[10px] tracking-[0.3em] text-mint mb-1">${esc(m.en)}</div>
+    <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${esc(m.name)}</h3>
+    <div id="map-badge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 mb-4 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
       ${open ? '解放済み' : '未解放'}
     </div>
-    <p class="text-sm leading-relaxed text-paper/90 mb-4">${esc(m.blurb)}</p>
-    <div class="border-t-2 border-paper/25 pt-3">
+    <div>
       <div class="font-mono text-[10px] tracking-[0.25em] text-yellow mb-1">HISTORY</div>
       <p class="text-[13px] leading-relaxed text-paper/80">${esc(m.lore)}</p>
     </div>
@@ -242,6 +244,7 @@ function selectMap(m) {
       </div>
       <p class="text-[12px] leading-relaxed text-paper/70">現地で撮影した写真をアップロードすると解放されます。<span class="font-mono text-[10px] tracking-widest text-yellow">COMING SOON</span></p>
     </div>`}
+    <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${esc(m.blurb)}</p>
     <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · 実際の地形</div>`;
 }
 
@@ -484,7 +487,7 @@ function openDex(d) {
             <div class="flex items-center gap-2 mb-1">
               ${icon(ICON[d.id], '!text-xl text-yellow')}
               <span class="font-display font-extrabold">${esc(d.skill.name)}</span>
-              <span class="ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
+              <span class="kbd-badge ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
             </div>
             <p class="text-[12.5px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
             <div class="font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
@@ -620,9 +623,9 @@ function showResult(r) {
     ['撃破数', r.kills, 'KILLS'],
     ['生存時間', fmtTime(r.time), 'SURVIVED'],
   ].map(([label, val, sub], i) => `
-    <div class="${i === 0 ? 'bg-yellow' : 'bg-paper'} ink-3 hard rounded-lg p-3 text-center ${['', '-rotate-1', 'rotate-1'][i]}">
+    <div class="res-stat ${i === 0 ? 'bg-yellow' : 'bg-paper'} ink-3 hard rounded-lg p-3 text-center ${['', '-rotate-1', 'rotate-1'][i]}">
       <div class="font-mono text-[9px] tracking-[0.2em] text-ink/60">${label}</div>
-      <div class="font-mono font-bold text-3xl leading-tight my-0.5">${val}</div>
+      <div class="res-stat-v font-mono font-bold text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
   $('#res-tip').textContent = TIPS[(Math.random() * TIPS.length) | 0];
