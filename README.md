@@ -53,7 +53,7 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 | — | プレイエリアの外周は `data.js` の `path`（実際のエリア輪郭）そのもの。内外判定は `Path2D` + `isPointInPath`。`size` は一辺ではなく**実効面積の平方根**で、ゲーム側が輪郭の面積が `size²` になるよう拡大する |
 | `scripts/seal-arms.mjs` | エリア輪郭から細すぎる腕を落とすワンショット道具（`node scripts/seal-arms.mjs --emit`）。原本の path もここ |
 | `scripts/loadtest.mjs` | 人数分ぶら下がって配信レートを測る。判定は「スナップショットが 15Hz 届くか」 |
-| `docs/` | 仕様書・設計ドキュメント（`specifications.txt` 等）。デプロイ手順は `deploy-ec2.md` |
+| `docs/` | 仕様書・設計ドキュメント（`specifications.md` 等）。デプロイ手順は `deploy-ec2.md` |
 | `scripts/ec2-deploy.sh` | EC2(t3.micro) 上で流す初回セットアップ兼デプロイ。何度流してもいい |
 
 ## 調整ポイント
@@ -75,7 +75,7 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 
 ## 未実装
 
-- **写真照合によるマップ解放**（`docs/specifications.txt` 4.2）。基準画像がまだないため、ロケ地画面は
+- **写真照合によるマップ解放**（`docs/specifications.md` 4.2）。基準画像がまだないため、ロケ地画面は
   ロック表示と説明のみ。SSIM の実装は基準写真が揃ってから。
 - 音（BGM / SE）。
 
