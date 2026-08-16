@@ -337,11 +337,21 @@ export function createWorld({ map, authority = true, diffs = false }) {
   };
 
   /** 操作の反映。サーバはゲストから届いた分を、ブラウザは自分の入力をここへ通す */
-  world.input = (nid, { aim, boost }) => {
+  world.input = (nid, { aim, boost, x, y } = {}) => {
     const s = sharks.find((o) => o.nid === nid);
     if (!s) return;
     if (typeof aim === 'number' && Number.isFinite(aim)) s.aim = aim;
     if (boost !== undefined) s.boost = !!boost;
+    if (world.authority && typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) {
+      if (s.alive && arena.inside(x, y)) {
+        const d = Math.hypot(x - s.x, y - s.y);
+        const maxDist = (BASE_SPEED * s.def.speed * BOOST_MULT * s.def.boostPower * 3.1) * 0.15 + 40;
+        if (d <= maxDist) {
+          s.x = x;
+          s.y = y;
+        }
+      }
+    }
   };
 
   // ---------- 体 ----------
@@ -748,17 +758,42 @@ export function createWorld({ map, authority = true, diffs = false }) {
       s.slow = flags & 32 ? 0.15 : 0;
       s.rapid = flags & 64 ? 0.15 : 0;
       s.alive = !!(flags & 1);
-      if (full || !wasAlive) {                    // 入室直後と復活はワープさせる（補間で盤面を横断させない）
-        s.x = x; s.y = y; s.angle = ang; s.ex = s.ey = s.ea = 0;
-        s.path = [{ x, y }]; s.wake.length = 0;
-        events.push({ k: 'warp', shark: s });
+
+      if (s.nid === me) {
+        // 自機：クライアント主導の位置計算。3段階（デッドゾーン、累積微小補正、致命的ズレ）で補正
+        if (full || !wasAlive) {
+          s.x = x; s.y = y; s.angle = ang; s.ex = s.ey = s.ea = 0;
+          s.path = [{ x, y }]; s.wake.length = 0;
+          events.push({ k: 'warp', shark: s });
+        } else {
+          const d = Math.hypot(x - s.x, y - s.y);
+          if (d < 25) {
+            // ① デッドゾーン：通常の遅延による微小差は無視（ジッターゼロ）
+            s.ex = 0; s.ey = 0;
+          } else if (d < 120) {
+            // ② 累積微小誤差：目に見えない緩やかな速度で溶かす
+            s.ex = (x - s.x) * 0.2; s.ey = (y - s.y) * 0.2;
+          } else {
+            // ③ 致命的なずれ：即時スナップ
+            s.x = x; s.y = y; s.ex = 0; s.ey = 0;
+            s.path = [{ x, y }];
+            events.push({ k: 'warp', shark: s });
+          }
+        }
       } else {
-        s.ex = x - s.x; s.ey = y - s.y;           // ズレは step で少しずつ詰める
+        if (full || !wasAlive) {                    // 入室直後と復活はワープさせる（補間で盤面を横断させない）
+          s.x = x; s.y = y; s.angle = ang; s.ex = s.ey = s.ea = 0;
+          s.path = [{ x, y }]; s.wake.length = 0;
+          events.push({ k: 'warp', shark: s });
+        } else {
+          s.ex = x - s.x; s.ey = y - s.y;           // ズレは step で少しずつ詰める
+        }
       }
       if (wasAlive && !s.alive) {
         s.wake.length = 0;
         events.push({ k: 'die', shark: s, cause: causes.get(nid) ?? '' });
       }
+
     }
   };
 
