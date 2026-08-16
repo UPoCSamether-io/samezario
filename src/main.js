@@ -126,7 +126,7 @@ const howtoGo = $('#howto-go'), howtoGoLabel = $('#howto-go-label');
 /** 遊び方を閉じたあとの行き先。初回の寄り道なら読み終わりがそのまま次の一歩になる */
 function aimHowto(next) {
   howtoGo.dataset.go = next;
-  howtoGoLabel.innerHTML = next === 'title' ? 'とじる' : rubify('ロケ｜地《ち》を｜選《えら》ぶ →');
+  howtoGoLabel.innerHTML = next === 'title' ? 'とじる' : rubify('｜ロケ地《ろけち》を｜選《えら》ぶ →');
 }
 
 document.addEventListener('click', (e) => {
@@ -261,7 +261,7 @@ function selectMap(m) {
   // 長い文言は折り返してボタンが伸び、ツールバーごと下の地図を押し下げていた
   // （実測 667x375 で3行・56→76px・地図が 20px 縮んでずれる）。
   // 短くしたうえで style.css 側で nowrap にし、行数を常に1に固定する
-  $('#map-next-label').innerHTML = open ? rubify('サメ｜選択《せんたく》 →') : rubify('まだ｜遊《あそ》べません');
+  $('#map-next-label').innerHTML = open ? rubify('｜サメ選択《さめせんたく》 →') : rubify('まだ｜遊《あそ》べません');
   // 並びは重要な順。パネルは横持ちで本文 197px しか映らず（実測 844x390）、下に置いたものは
   // 読まれない。従来の順（blurb → HISTORY）だと史実が丸ごと折り返しの下に沈んでいた。
   // 史実とロック解除の導線がこの画面の主役、blurb は雰囲気づけなので最後に回す
@@ -872,7 +872,7 @@ async function play() {
     pausePanel.style.display = 'none';
     $('#hud-online').classList.toggle('hidden', !net);
     $('#hud-skill-icon').textContent = ICON[selShark.id];
-    $('#hud-skill-name').textContent = plainText(selShark.skill.name);
+    $('#hud-skill-name').innerHTML = rubify(selShark.skill.name);
     myName = net ? save.name : 'YOU';
     ctl = startGame({
       canvas: stage, mini, sharkId: selShark.id, map: selMap,
