@@ -2,6 +2,7 @@ node_modules/
 dist/
 .playwright-mcp/
 superpowers/
+UPoC_Samether.io/
 *.local
 
 # Logs
@@ -24,3 +25,6 @@ yarn-error.log*
 
 # Info & Private Knowledge
 docs/private/
+
+# git worktree (parallel-impl skill)
+.worktrees/

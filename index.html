@@ -269,29 +269,34 @@
   <!-- ================= 遊び方 ================= -->
   <section id="s-howto" class="screen">
     <div class="h-full flex items-center justify-center px-6 py-[var(--bar-pad)]">
-      <div class="w-full max-w-2xl bg-paper ink-4 hard-lg rounded-xl overflow-hidden max-h-full flex flex-col">
+      <!-- 文量はブースで15秒で読める量に絞ってある（本文225字）。横持ちでは本文が
+           213px しか映らず、元の368字は2.25画面ぶんスクロールしないと読み切れなかった。
+           2カラム化だけでは 480→347px にしかならず折り返しに収まらない（実測）ので、
+           先に文章を削ってある。増やすときはこの上限を超えないこと。
+           死＝カット。リザルトの見出しが CUT! なので、説明と結果を同じ語でつなぐ -->
+      <div id="howto-panel" class="w-full max-w-2xl bg-paper ink-4 hard-lg rounded-xl overflow-hidden max-h-full flex flex-col">
         <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
-        <div class="p-7 max-sm:p-4 overflow-auto thin-scroll">
-          <h2 class="font-display font-extrabold text-3xl mb-5">遊び方</h2>
-          <ol class="space-y-4 text-[15px] leading-relaxed">
+        <div id="howto-body" class="p-7 max-sm:p-4 overflow-auto thin-scroll">
+          <h2 id="howto-title" class="font-display font-extrabold text-3xl mb-5">遊び方</h2>
+          <ol id="howto-list" class="space-y-4 text-[15px] leading-relaxed">
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">1</span>
-              <div><b class="font-display">移動</b> — マウスカーソルの方向へサメが進みます。頭は常にカーソルを追いかけます。</div></li>
+              <div><b class="font-display">移動</b><span class="keys"> — マウスカーソルの方向へ進みます。頭は常にカーソルを追いかけます。</span><span class="touch-only"> — 画面をなぞった方向へ進みます。指を置いた場所が基準です。</span></div></li>
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">2</span>
-              <div><b class="font-display">ダッシュ</b><span class="keys"> — <kbd class="kbd">左クリック</kbd> / <kbd class="kbd">Space</kbd></span>。スタミナを消費して加速。使い切ると息切れし、ゲージが少し戻るまで再ダッシュできません。<br>
-              ダッシュ中は<b>航跡</b>が約2.5秒残ります。<b>触れた相手は死にます</b>（自分は平気）。相手を囲って逃げ場を塞ぐのが決め手です。</div></li>
+              <div><b class="font-display">ダッシュ</b><span class="keys"> — <kbd class="kbd">左クリック</kbd> / <kbd class="kbd">Space</kbd></span><span class="touch-only"> — 右下の<b>DASH</b>を押しっぱなし</span>。スタミナを使って加速。使い切ると息切れします。</div></li>
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">3</span>
-              <div><b class="font-display">スキル</b><span class="keys"> — <kbd class="kbd">E</kbd> / <kbd class="kbd">Shift</kbd></span>。サメごとの固有スキル（クールダウンあり）。</div></li>
+              <div><b class="font-display">航跡</b> — ダッシュ中は航跡が約2.5秒残り、<b>触れた相手はカット</b>（自分は平気）。囲い込みが決め手です。</div></li>
+            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">4</span>
+              <div><b class="font-display">スキル</b><span class="keys"> — <kbd class="kbd">E</kbd> / <kbd class="kbd">Shift</kbd></span><span class="touch-only"> — 右下の<b>スキル</b>ボタン</span>。サメごとの固有スキル（クールダウンあり）。</div></li>
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-danger text-paper ink-2 rounded-full font-mono font-bold hard-sm">!</span>
-              <div><b class="font-display">死亡条件</b> — 外壁への衝突、または<b>他のサメの胴体</b>に頭からぶつかること。<b>サイズは関係ありません</b>——最小のサメでも最大のサメを倒せます。<br>
-              相手を倒すには、相手を自分の胴体にぶつけさせます。</div></li>
+              <div><b class="font-display">カットがかかる条件</b> — 外壁、または<b>他のサメの胴体</b>に頭からぶつかること。<b>サイズは無関係</b>で、小さいサメでも大物にカットをかけられます。</div></li>
             <!-- マーカーに文字を置くとキー表記（Esc）と紛らわしいのでアイコンにする -->
             <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-mint ink-2 rounded-full hard-sm"><span class="material-symbols-rounded !text-[18px]">pause</span></span>
-              <div><b class="font-display">一時停止</b><span class="keys"> — <kbd class="kbd">Esc</kbd></span>。他の人が居る部屋ではメニューが開くだけで、世界は止まりません。</div></li>
+              <div><b class="font-display">一時停止</b><span class="keys"> — <kbd class="kbd">Esc</kbd></span><span class="touch-only"> — リーダーボード横の<span class="material-symbols-rounded !text-[15px] align-text-bottom">pause</span>ボタン</span>。他の人が居る部屋では世界は止まりません。</div></li>
           </ol>
         </div>
-        <div class="p-5 pt-0 shrink-0">
-          <button class="btn primary" data-go="title"><div class="cap clapper-stripes"></div>
-            <div class="py-2.5 px-6 font-display font-extrabold text-lg">とじる</div></button>
+        <div id="howto-foot" class="p-5 pt-0 shrink-0 flex justify-center">
+          <button class="btn primary !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
+            <div class="py-1.5 px-8 font-display font-extrabold text-sm">とじる</div></button>
         </div>
       </div>
     </div>
@@ -386,23 +391,29 @@
   <!-- ================= リザルト ================= -->
   <section id="s-result" class="screen">
     <div class="h-full grid place-items-center px-6 py-[var(--bar-pad)]">
-      <!-- 本文だけスクロールさせ、操作列は footer に固定する。
-           高さ 390px の横持ちだと、操作列がスクロールの中に居ると
-           「もう一度撮る」が折り返しの下に落ちて見つからない -->
-      <div class="w-full max-w-[620px] max-h-full bg-paper ink-4 hard-lg rounded-xl overflow-hidden flex flex-col">
-        <div class="clapper-stripes h-7 border-b-4 border-ink shrink-0"></div>
-        <div class="p-7 max-sm:p-4 min-h-0 overflow-auto thin-scroll">
-          <div class="text-center mb-6 max-sm:mb-4">
+      <!-- 縦（デスクトップ / 縦持ち）は1カラムの積み上げ。横持ちは高さが足りず、
+           積んだままだと Tips か操作列のどちらかが必ず溢れる（実測 844x390 で
+           戦績が消え、下段の2ボタンがパネルの overflow-hidden に切られた）。
+           横は style.css の #res-panel が2カラムへ組み替える — 左に CUT! と戦績、
+           右に Tips と操作列。タイトル画面と同じ「余っている幅を縦に回す」やり方 -->
+      <div id="res-panel" class="w-full max-w-[620px] max-h-full bg-paper ink-4 hard-lg rounded-xl overflow-hidden flex flex-col">
+        <div id="res-cap" class="clapper-stripes h-7 border-b-4 border-ink shrink-0"></div>
+        <!-- pb-1 は戦績カードの回転（±1deg）のはみ出しを飲む余白。0 だとスクロール量が
+             1px だけ増え、収まっているのに縦スクロールバーが出る -->
+        <div id="res-main" class="p-7 pb-1 max-sm:p-4 max-sm:pb-1 min-h-0 overflow-auto thin-scroll">
+          <div id="res-head" class="text-center mb-6 max-sm:mb-4">
             <h2 class="font-display font-black text-5xl max-sm:text-4xl -rotate-2 inline-block bg-ink text-yellow px-8 py-2 rounded-lg hard neon">CUT!</h2>
             <p id="res-sub" class="mt-3 font-bold text-sm text-ink/70"></p>
           </div>
-          <div class="grid grid-cols-3 gap-3 mb-5 max-sm:mb-3" id="res-stats"></div>
-          <div class="bg-navy text-paper ink-3 rounded-lg p-4 relative">
+          <div class="grid grid-cols-3 gap-3" id="res-stats"></div>
+        </div>
+        <div id="res-tip-pane" class="px-7 pt-4 max-sm:px-4 max-sm:pt-2 shrink-0">
+          <div class="bg-navy text-paper ink-3 rounded-lg p-4 max-sm:p-3 relative">
             <span class="absolute -top-3 left-4 bg-yellow text-ink ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">CHOFU TIPS</span>
-            <p id="res-tip" class="text-sm leading-relaxed mt-1"></p>
+            <p id="res-tip" class="text-sm max-sm:text-[13px] leading-relaxed mt-1"></p>
           </div>
         </div>
-        <div class="p-7 pt-4 max-sm:p-4 max-sm:pt-3 shrink-0 flex flex-col gap-3">
+        <div id="res-actions" class="p-7 pt-4 max-sm:p-4 max-sm:pt-3 shrink-0 flex flex-col gap-3">
           <button class="btn primary" id="retry"><div class="cap clapper-stripes"></div>
             <div class="py-2.5 font-display font-extrabold text-xl">もう一度撮る</div></button>
           <div class="grid grid-cols-2 gap-3">

@@ -195,7 +195,7 @@ function renderMaps(keep = null) {
       class: 'map-label' + (open ? '' : ' locked'),
       x: cen.x, y: cen.y + LABEL_DY,
     });
-    t.textContent = m.name.replace(/エリア$/, '');
+    t.textContent = m.name;
     labels.appendChild(t);
 
     // 未解放マークの南京錠。ラベルは text-anchor:middle で幅が読めないので、横ではなく真下に置く
@@ -222,24 +222,29 @@ function selectMap(m) {
   // （実測 667x375 で3行・56→76px・地図が 20px 縮んでずれる）。
   // 短くしたうえで style.css 側で nowrap にし、行数を常に1に固定する
   $('#map-next-label').textContent = open ? 'サメ選択 →' : 'まだ遊べません';
+  // 並びは重要な順。パネルは横持ちで本文 197px しか映らず（実測 844x390）、下に置いたものは
+  // 読まれない。従来の順（blurb → HISTORY）だと史実が丸ごと折り返しの下に沈んでいた。
+  // 史実とロック解除の導線がこの画面の主役、blurb は雰囲気づけなので最後に回す
   $('#map-info-body').innerHTML = `
-    <div class="flex items-center justify-between gap-2 mb-1">
-      <div class="font-mono text-[10px] tracking-[0.3em] text-mint">${esc(m.en)}</div>
-      <div class="flex items-center gap-1.5 shrink-0">
+    <div class="flex items-center gap-2 mb-1">
+      <div id="map-en" class="font-mono text-[10px] tracking-[0.3em] text-mint">${esc(m.en)}</div>
+      <!-- 寄せは justify-between ではなく ml-auto。横持ちでは #map-en が畳まれるので、
+           between だと残った数字が左端へ流れる -->
+      <div class="flex items-center gap-1.5 shrink-0 ml-auto">
         <span class="font-mono text-[10px] text-paper/55">解放 ${MAPS.filter(isUnlocked).length}/${MAPS.length}</span>
         <span class="font-mono font-bold text-[11px] bg-yellow text-ink ink-2 rounded px-1.5 py-0.5">${save.points} pt</span>
       </div>
     </div>
-    <h3 class="font-display font-extrabold text-2xl mb-1 leading-tight">${esc(m.name)}</h3>
-    <div class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 mb-4 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
+    <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${esc(m.name)}</h3>
+    <div id="map-badge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 mb-4 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
       ${open ? '解放済み' : '未解放'}
     </div>
-    <p class="text-sm leading-relaxed text-paper/90 mb-4">${esc(m.blurb)}</p>
-    <div class="border-t-2 border-paper/25 pt-3">
+    <div>
       <div class="font-mono text-[10px] tracking-[0.25em] text-yellow mb-1">HISTORY</div>
       <p class="text-[13px] leading-relaxed text-paper/80">${esc(m.lore)}</p>
     </div>
     ${spotCard(m)}
+    <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${esc(m.blurb)}</p>
     <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · 実際の地形</div>`;
 }
 
@@ -341,7 +346,7 @@ function paintIdle(err = '') {
     <div class="p-6 max-sm:p-4">
       <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${open ? 'BONUS SPOT' : 'UNLOCK AREA'}</div>
       <h3 class="font-display font-extrabold text-2xl leading-tight">${esc(s.name)}</h3>
-      <div class="text-[12px] text-ink/60 mt-0.5">${esc(m.name)}${done ? ' ・ 撮影ずみ' : ''}</div>
+      <div class="text-[12px] text-ink/60 mt-0.5">${esc(m.name)}エリア${done ? ' ・ 撮影ずみ' : ''}</div>
 
       <p class="mt-3 text-[13px] leading-relaxed text-ink/80">${esc(s.desc)}</p>
 
@@ -407,7 +412,7 @@ function paintSuccess(r, gained) {
         <div class="stamp inline-block bg-ink text-yellow ink-3 rounded-lg px-6 py-2 hard neon">
           <span class="font-display font-black text-3xl max-sm:text-2xl">${opened ? 'AREA UNLOCKED' : 'SPOT CLEARED'}</span>
         </div>
-        <p class="mt-3 font-display font-extrabold text-xl">${esc(m.name)}</p>
+        <p class="mt-3 font-display font-extrabold text-xl">${esc(m.name)}エリア</p>
         <p class="font-mono text-[11px] text-ink/55">${esc(s.name)} ・ ${
           r.demo ? 'DEMO' : r.blind ? '現在地で確認' : `一致度 ${r.score}%`}</p>
       </div>
@@ -483,7 +488,9 @@ async function go() {
  */
 async function share(r) {
   const m = unlockMap, s = m.spot;
-  const text = `『${m.name}』を解放！ ${s.name} で写真照合クリア — サメザリオ`;
+  // 「エリア」は data.js の name から外れている（地図のラベル用に短くしてある）ので、
+  // 文章として読ませるここでは足す
+  const text = `『${m.name}エリア』を解放！ ${s.name} で写真照合クリア — サメザリオ`;
   const url = location.origin + location.pathname;
   try {
     if (navigator.share) await navigator.share({ title: 'サメザリオ', text, url });
@@ -734,7 +741,7 @@ function openDex(d) {
             <div class="flex items-center gap-2 mb-1">
               ${icon(ICON[d.id], '!text-xl text-yellow')}
               <span class="font-display font-extrabold">${esc(d.skill.name)}</span>
-              <span class="ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
+              <span class="kbd-badge ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
             </div>
             <p class="text-[12.5px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
             <div class="font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
@@ -870,9 +877,9 @@ function showResult(r) {
     ['撃破数', r.kills, 'KILLS'],
     ['生存時間', fmtTime(r.time), 'SURVIVED'],
   ].map(([label, val, sub], i) => `
-    <div class="${i === 0 ? 'bg-yellow' : 'bg-paper'} ink-3 hard rounded-lg p-3 text-center ${['', '-rotate-1', 'rotate-1'][i]}">
+    <div class="res-stat ${i === 0 ? 'bg-yellow' : 'bg-paper'} ink-3 hard rounded-lg p-3 text-center ${['', '-rotate-1', 'rotate-1'][i]}">
       <div class="font-mono text-[9px] tracking-[0.2em] text-ink/60">${label}</div>
-      <div class="font-mono font-bold text-3xl leading-tight my-0.5">${val}</div>
+      <div class="res-stat-v font-mono font-bold text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
   $('#res-tip').textContent = TIPS[(Math.random() * TIPS.length) | 0];

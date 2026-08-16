@@ -122,7 +122,7 @@ export const SHARKS = [
 export const MAPS = [
   {
     id: 'chofu',
-    name: '調布駅・布田エリア',
+    name: '調布駅・布田',
     en: 'CHOFU STATION',
     unlocked: true,
     label: { x: 48, y: 76 },
@@ -147,7 +147,7 @@ export const MAPS = [
   },
   {
     id: 'jindaiji',
-    name: '深大寺エリア',
+    name: '深大寺',
     en: 'JINDAIJI',
     unlocked: false,
     label: { x: 49, y: 42 },
@@ -172,7 +172,7 @@ export const MAPS = [
   },
   {
     id: 'tamagawa',
-    name: '多摩川エリア',
+    name: '多摩川',
     en: 'TAMAGAWA',
     unlocked: false,
     label: { x: 84, y: 59 },
@@ -198,7 +198,7 @@ export const MAPS = [
   },
   {
     id: 'airport',
-    name: '調布飛行場エリア',
+    name: '調布飛行場',
     en: 'AIRFIELD',
     unlocked: false,
     label: { x: 20, y: 52 },
