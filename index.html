@@ -278,9 +278,11 @@
               <div><b class="font-display">一時停止</b><span class="keys"> — <kbd class="kbd">Esc</kbd></span><span class="touch-only"> — リーダーボード横の<span class="material-symbols-rounded !text-[15px] align-text-bottom">pause</span>ボタン</span>。他の人が居る部屋では世界は止まりません。</div></li>
           </ol>
         </div>
+        <!-- 行き先とラベルは main.js が差し替える。初回のゲームスタートに挟まったときだけ
+             タイトルへ戻さず、そのままロケ地選択へ送る -->
         <div id="howto-foot" class="p-5 pt-0 shrink-0 flex justify-center">
-          <button class="btn primary !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
-            <div class="py-1.5 px-8 font-display font-extrabold text-sm">とじる</div></button>
+          <button id="howto-go" class="btn primary !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
+            <div id="howto-go-label" class="py-1.5 px-8 font-display font-extrabold text-sm">とじる</div></button>
         </div>
       </div>
     </div>
