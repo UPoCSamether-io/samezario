@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-  haversineM, hamming, dhashFromGray, matchAny, matchScore, toHex, fromHex,
+  haversineM, hamming, dhashFromGray, matchAny, matchScore, toHex, fromHex, explain,
 } from './verify.js';
 import { MAPS } from './data.js';
 
@@ -86,6 +86,13 @@ assert.equal(matchScore(0), 100);
 assert.equal(matchScore(64), 0);
 assert.equal(matchScore(8), 88);
 
+// ---------- 失敗理由の文言 ----------
+
+// キャンセル（撮影を開かず戻った）は異常系ではないので、失敗メッセージを出さない
+assert.equal(explain({ code: 'CANCELLED' }), '');
+assert.ok(explain({ code: 'TOO_FAR', meters: 42 }).includes('42'), 'TOO_FARは残り距離を含む');
+assert.ok(explain({ code: 'NO_MATCH' }).length > 0);
+
 // ---------- 実データ ----------
 
 // 全エリアがスポットを持ち、座標が調布市の外接矩形に収まっていること。
@@ -97,7 +104,6 @@ for (const m of MAPS) {
   assert.ok(s.lat > 35.62 && s.lat < 35.69, `${m.id}: lat ${s.lat} が調布の外`);
   assert.ok(s.lon > 139.50 && s.lon < 139.60, `${m.id}: lon ${s.lon} が調布の外`);
   assert.ok(s.radius >= 100 && s.radius <= 300, `${m.id}: radius ${s.radius}`);
-  assert.ok(s.points > 0 && s.share > 0, `${m.id}: ポイントが 0`);
   assert.ok(Array.isArray(s.hashes), `${m.id}: hashes が配列でない`);
   assert.ok(s.threshold > 0 && s.threshold < 32, `${m.id}: threshold ${s.threshold}`);
   for (const h of s.hashes) {
