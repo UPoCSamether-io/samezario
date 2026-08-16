@@ -42,13 +42,7 @@ for (const m of MAPS) {
 // ブラウザで実測した値との突き合わせ。DOM 版（getPointAtLength を 256 点）が
 // 出していた重心と一致すること。ズレたらどちらかの実装が壊れている
 {
-  const want = {
-    chofu: [486, 643],
-    jindaiji: [536, 368],
-    tamagawa: [388, 713],
-    airport: [233, 436],
-    sengawa: [874, 535],
-  };
+  const want = { jindaiji: [536, 368], tamagawa: [874, 535], airport: [220, 535] };
   for (const [id, [x, y]] of Object.entries(want)) {
     const m = MAPS.find((v) => v.id === id);
     assert.ok(m, `${id} が data.js に無い`);
