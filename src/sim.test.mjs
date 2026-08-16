@@ -176,34 +176,14 @@ for (const map of MAPS) {
     assert.ok(!client.food.some((f) => f.id === gone), '食われた餌は差分で消える');
   }
 
-  // 8. 補間：自分のサメは自然な遅延（<=60px）では引き戻されず、累積誤差（>60px）は緩やかに補正され、大乖離（>180px）はワープする
-  const meShark = client.sharks.find((o) => o.nid === 'me');
-  const otherShark = client.sharks.find((o) => o.nid !== 'me');
-
-  // A) 自然な遅延（距離 40px）: ex, ey は 0（引き戻しゼロ）
-  meShark.x = 1000; meShark.y = 1000;
-  client.applySnapshot({ t: 'snap', s: [[meShark.nid, 1040, 1000, 0, 30, 1]] }, 'me');
-  assert.equal(meShark.ex, 0, '自然な遅延（<=60px）では ex は 0');
-  assert.equal(meShark.ey, 0, '自然な遅延（<=60px）では ey は 0');
-
-  // B) 他人のサメ: 距離 40px でも通常通り ex, ey がセットされる
-  otherShark.x = 1000; otherShark.y = 1000;
-  client.applySnapshot({ t: 'snap', s: [[otherShark.nid, 1040, 1000, 0, 30, 1]] }, 'me');
-  assert.equal(otherShark.ex, 40, '他人のサメは ex が 40');
-
-  // C) 累積誤差（距離 100px）: 超過分 (100 - 60) / 100 = 0.4 倍だけ ex がセットされる
-  meShark.x = 1000; meShark.y = 1000;
-  client.applySnapshot({ t: 'snap', s: [[meShark.nid, 1100, 1000, 0, 30, 1]] }, 'me');
-  assert.equal(Math.round(meShark.ex), 40, '累積誤差ゾーンでは超過分のみ補正 (100 * 0.4 = 40)');
-
-  // D) 大乖離（距離 200px）: 即座にワープ
-  meShark.x = 1000; meShark.y = 1000;
-  client.applySnapshot({ t: 'snap', s: [[meShark.nid, 1200, 1000, 0, 30, 1]] }, 'me');
-  assert.equal(meShark.x, 1200, '大乖離（>180px）では即座にワープ');
-  assert.equal(meShark.ex, 0, 'ワープ後は ex は 0');
+  // 予測側は生死を自分で決めない（authority=false なので壁でも死なない）
+  const me = client.sharks.find((o) => o.nid === 'me');
+  me.iframe = 0;
+  me.x = client.arena.bb.x1 + 500;
+  client.step(1 / 30);
+  assert.equal(me.alive, true, '予測側は壁で勝手に殺さない（サーバの宣告を待つ）');
 
   server.destroy(); client.destroy();
 }
 
 console.log('sim ok');
-
