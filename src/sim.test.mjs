@@ -186,4 +186,60 @@ for (const map of MAPS) {
   server.destroy(); client.destroy();
 }
 
+// ---------------------------------------------------------------------------
+// 8. クライアント主導座標の反映とサニティチェック（サーバー側）
+{
+  const w = createWorld({ map: chofu, authority: true });
+  const s = w.addPlayer({ nid: 'p1', sharkId: 'cinema', name: 'P' });
+  const origX = s.x, origY = s.y;
+
+  // 正常な微小移動（10px 移動）は反映される
+  w.input('p1', { aim: 0, boost: false, x: origX + 10, y: origY });
+  assert.equal(s.x, origX + 10, '正常範囲の座標入力は反映される');
+
+  // 異常なテレポート（1000px 先）は棄却される
+  const currentX = s.x;
+  w.input('p1', { aim: 0, boost: false, x: currentX + 1000, y: origY });
+  assert.equal(s.x, currentX, '異常な距離のテレポートは棄却される');
+
+  // エリア外の座標も棄却される
+  w.input('p1', { aim: 0, boost: false, x: w.arena.bb.x1 + 900, y: w.arena.bb.y1 + 900 });
+  assert.equal(s.x, currentX, 'エリア外の座標は棄却される');
+  w.destroy();
+}
+
+// 9. 自機 (me) の3段階スナップショット補正
+{
+  const c = createWorld({ map: chofu, authority: false });
+  const me = c.addPlayer({ nid: 'me', sharkId: 'cinema', name: 'ME' });
+  me.x = 500; me.y = 500; me.ex = 0; me.ey = 0;
+
+  // ① デッドゾーン (< 25px): 微小な遅れによる差は補正せずジッターゼロ (ex=0, ey=0)
+  c.applySnapshot({
+    t: 'snap',
+    s: [[me.nid, 515, 510, me.angle, me.mass, 1]],
+  }, 'me');
+  assert.equal(me.ex, 0, 'デッドゾーン内では ex=0');
+  assert.equal(me.ey, 0, 'デッドゾーン内では ey=0');
+  assert.equal(me.x, 500, 'クライアント座標は維持される');
+
+  // ② 累積微小誤差 (25px <= d < 120px): 緩やかに溶かすため微小な ex/ey が設定される
+  c.applySnapshot({
+    t: 'snap',
+    s: [[me.nid, 550, 500, me.angle, me.mass, 1]],
+  }, 'me');
+  assert.ok(me.ex > 0 && me.ex <= 50 * 0.3, `累積誤差では緩やかな ex が設定される: ${me.ex}`);
+  assert.equal(me.x, 500, '即時ワープはしない');
+
+  // ③ 致命的ずれ (d >= 120px): 即座にスナップ補正
+  c.applySnapshot({
+    t: 'snap',
+    s: [[me.nid, 800, 500, me.angle, me.mass, 1]],
+  }, 'me');
+  assert.equal(me.x, 800, '致命的なずれでは即時スナップされる');
+  assert.equal(me.ex, 0, 'スナップ後は ex=0');
+  c.destroy();
+}
+
 console.log('sim ok');
+

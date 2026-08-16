@@ -28,10 +28,15 @@ const SNAP_EVERY = 2;          // 何ティックごとに配るか（30Hz / 2 =
 const rooms = new Map();       // roomId("chofu#1") -> room
 let seq = 0;
 
+const SIM_LAG = Number(process.env.SIM_LAG) || 0;
+
 const send = (ws, m) => {
   // 100秒分も滞留しているならその線は読まれていない。溜め続けるとヒープが持たない
   if (ws.bufferedAmount > 1 << 20) return ws.terminate();
-  if (ws.readyState === 1) ws.send(JSON.stringify(m));
+  if (ws.readyState === 1) {
+    if (SIM_LAG > 0) setTimeout(() => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); }, SIM_LAG);
+    else ws.send(JSON.stringify(m));
+  }
 };
 
 /**
@@ -45,7 +50,11 @@ const sendAll = (members, m, pick) => {
   for (const ws of members) {
     if (pick && !pick(ws)) continue;
     if (ws.bufferedAmount > 1 << 20) { ws.terminate(); continue; }
-    if (ws.readyState === 1) ws.send((buf ??= Buffer.from(JSON.stringify(m))));
+    if (ws.readyState === 1) {
+      const data = (buf ??= Buffer.from(JSON.stringify(m)));
+      if (SIM_LAG > 0) setTimeout(() => { if (ws.readyState === 1) ws.send(data); }, SIM_LAG);
+      else ws.send(data);
+    }
   }
 };
 const clean = (s) => String(s ?? '').replace(/[\p{C}]/gu, '').trim().slice(0, 10) || 'PLAYER';
@@ -124,7 +133,7 @@ function wire(ws) {
     // 受け付けるのは操作だけ。差出人は ws.id で、自称は一切見ない
     switch (m.t) {
       case 'in':
-        room.world.input(ws.id, { aim: m.a, boost: m.b });
+        room.world.input(ws.id, { aim: m.a, boost: m.b, x: m.x, y: m.y });
         break;
       case 'sk': {
         const s = room.world.sharks.find((o) => o.nid === ws.id);
