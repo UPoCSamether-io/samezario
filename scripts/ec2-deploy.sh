@@ -60,7 +60,11 @@ fi
 
 # ---- ソース --------------------------------------------------------------
 if [ -d $APP_DIR/.git ]; then
-  sudo -u $USER_ git -C $APP_DIR pull --ff-only
+  # pull --ff-only ではなく reset --hard。この箱は「master をそのまま置く場所」で、
+  # ここで編集する人は居ない前提。緊急の scp や中断したデプロイで作業ツリーが汚れていると
+  # pull は止まるが、デプロイは止まってほしくない（＝常に master と同じ状態に落とす）
+  sudo -u $USER_ git -C $APP_DIR fetch -q --prune origin
+  sudo -u $USER_ git -C $APP_DIR reset -q --hard origin/master
 else
   git clone -q $REPO $APP_DIR && chown -R $USER_:$USER_ $APP_DIR
 fi

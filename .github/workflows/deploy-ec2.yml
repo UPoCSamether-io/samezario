@@ -1,0 +1,65 @@
+# master へ push したら対戦サーバ（EC2）も追いつかせる。
+#
+# フロントは Cloudflare Pages が push で勝手に出ていくので、EC2 を手で流していると
+# その間だけ Pages が新しく EC2 が古い状態になる。src/sim.js はブラウザとサーバが
+# 同じものを回す前提なので、そこがズレると予測と権威が食い違って
+# 「サメがワープする」「当たったのに判定されない」になる。押したら両方出る、に揃える。
+#
+# 箱には SSH せず SSM 経由で叩く。ランナーの IP は広大で流動的なので、22番を
+# GitHub のレンジに開けると実質全開になる。SSM なら開けるポートは無く、
+# 認証も OIDC なので長期キーを GitHub に置かずに済む。
+name: deploy-ec2
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:   # 手で流し直したいとき
+
+permissions:
+  id-token: write      # OIDC のトークンを貰うのに要る
+  contents: read
+
+# デプロイを重ねない。追い越すと古い方が後から着く
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      - name: ec2-deploy.sh を叩く
+        env:
+          EC2: ${{ secrets.EC2_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          # fetch/reset をここでも撃つのは、まだ scripts/ec2-deploy.sh が箱に無い
+          # 状態（＝この仕組みを入れた最初の1回）でも自力で追いつけるようにするため
+          ID=$(aws ssm send-command --instance-ids "$EC2" \
+            --document-name AWS-RunShellScript \
+            --parameters 'commands=["cd /opt/samezario && sudo -u ec2-user git fetch -q --prune origin && sudo -u ec2-user git reset -q --hard origin/master && sudo bash scripts/ec2-deploy.sh"]' \
+            --query Command.CommandId --output text)
+
+          aws ssm wait command-executed --command-id "$ID" --instance-id "$EC2" || true
+          aws ssm get-command-invocation --command-id "$ID" --instance-id "$EC2" \
+            --query StandardOutputContent --output text
+          aws ssm get-command-invocation --command-id "$ID" --instance-id "$EC2" \
+            --query StandardErrorContent --output text >&2
+
+          # wait は失敗しても握り潰しているので、判定はここで
+          S=$(aws ssm get-command-invocation --command-id "$ID" --instance-id "$EC2" \
+            --query Status --output text)
+          echo "status=$S"
+          [ "$S" = Success ]
+
+      - name: 生きているか確かめる
+        run: |
+          set -euo pipefail
+          # 落ちていても systemd が上げ直すので、restart ループに入っていないかを見る
+          sleep 5
+          test "$(curl -sS --fail --max-time 10 https://54-168-149-87.nip.io/health)" = OK
