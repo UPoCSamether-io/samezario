@@ -142,9 +142,14 @@ export async function shareUnlock({ map, spot, photo = null }, deps = {}) {
   }
 
   if (open) {
-    const w = open(tweetUrl(text, url), '_blank', 'noopener');
-    // ポップアップブロックで null/undefined が返ることがある。開けていないので成功にしない
-    if (w) return result('tweet', { text: full, withPhoto: false });
+    // windowFeatures に noopener を渡すと、正常に開いても仕様上 null が返り、
+    // ポップアップブロックと区別できない。戻り値を受け取ってから同期的に opener を切る。
+    const w = open(tweetUrl(text, url), '_blank');
+    if (w) {
+      try { w.opener = null; } catch { /* WindowProxy を触れない端末でも投稿画面は開いている */ }
+      return result('tweet', { text: full, withPhoto: false });
+    }
+    // ポップアップブロックで null/undefined が返った。開けていないので成功にしない
   }
 
   return { ok: false, via: 'none', cancelled: false, text: full, withPhoto: false };

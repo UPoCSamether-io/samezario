@@ -151,14 +151,16 @@ function stub({ share, canShare = () => true, writeText, open } = {}) {
 
 // ④ コピーもできなければ X の投稿画面
 {
+  const opened = { opener: {} };
   const { log, deps } = stub({
     writeText: async () => { throw new Error('NotAllowedError'); },
-    open: () => ({}),
+    open: () => opened,
   });
   const r = await shareUnlock({ map, spot }, deps);
   assert.equal(r.via, 'tweet');
   assert.ok(log.opened[0][0].includes('twitter.com/intent/tweet'));
-  assert.equal(log.opened[0][2], 'noopener');
+  assert.deepEqual(log.opened[0].slice(1), ['_blank']);
+  assert.equal(opened.opener, null, '投稿先から元画面を操作させない');
 }
 
 // ポップアップブロックで開けなかったら成功にしない（文面は手で拾えるよう返す）
