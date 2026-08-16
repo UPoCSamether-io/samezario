@@ -24,7 +24,9 @@ node scripts/loadtest.mjs --clients 24 --seconds 20
 | `src/main.js` | 画面遷移、各画面の描画、HUD更新、セーブ（localStorage） |
 | `src/game.js` | ブラウザ側。入力・カメラ・Canvas描画と、サーバの答えの先読み |
 | `src/shark-art.js` | サメの見た目。ゲーム内とプレビューで共有 |
-| `src/data.js` | サメ5種 / マップ4種 / 調布Tips のマスターデータ |
+| `src/data.js` | サメ5種 / マップ4種 / 現地スポット / 調布Tips のマスターデータ |
+| `src/verify.js` | 現地写真の照合。撮影・現在地・dHash・ジオフェンス。**DOM を触らない判定部は Node から試せる** |
+| `src/progress.js` | セーブデータ。解放とポイントを書ける唯一の場所 |
 | `src/sim.js` | 盤面そのもの。移動・成長・衝突・ボットAI・餌・スナップショット。**DOM を触らないのでサーバとブラウザが同じものを回す** |
 | `src/net.js` | 対戦サーバとの線。JSON を投げて受けるだけ |
 | `server/index.mjs` | 対戦の権威サーバ。部屋ごとに `sim.js` の world を 30Hz で回し、15Hz で配る |
@@ -33,6 +35,7 @@ node scripts/loadtest.mjs --clients 24 --seconds 20
 | — | プレイエリアの外周は `data.js` の `path`（実際のエリア輪郭）そのもの。内外判定は `Path2D` + `isPointInPath`。`size` は一辺ではなく**実効面積の平方根**で、ゲーム側が輪郭の面積が `size²` になるよう拡大する |
 | `scripts/seal-arms.mjs` | エリア輪郭から細すぎる腕を落とすワンショット道具（`node scripts/seal-arms.mjs --emit`）。原本の path もここ |
 | `scripts/loadtest.mjs` | 人数分ぶら下がって配信レートを測る。判定は「スナップショットが 15Hz 届くか」 |
+| `hash-lab.html` | 基準写真から dHash を作り、しきい値の分離帯を見る道具（`npm run dev` → `/hash-lab.html`） |
 | `docs/` | 仕様書・設計ドキュメント（`specifications.txt` 等） |
 
 ## 調整ポイント
@@ -52,11 +55,66 @@ node scripts/loadtest.mjs --clients 24 --seconds 20
 `def.aspect` は当たり判定の寸法（体長）なので手で書かない。原画を差し替えたら
 `python3 scripts/sprite-aspect.py` で測り直して `data.js` へ写す。
 
+## 現地写真によるエリア解放
+
+未解放のエリアは、**そのエリアの現地スポットで写真を撮ると開く**（`docs/specifications.txt` 4.2）。
+判定は「**位置は厳密に、画像はゆるく**」の二段構え —— ジオフェンスが「現地に行った」ことを担保し、
+画像照合は「指定アングルで撮った」体験と、遠隔地からの適当な写真の排除を受け持つ。
+
+| エリア | スポット | ジオフェンス | 取得 |
+| --- | --- | --- | --- |
+| 調布駅・布田（初期解放） | 布多天神社 | 150m | +50pt（解放ではなくボーナス） |
+| 深大寺 | 深大寺 山門 | 150m | +300pt |
+| 多摩川 | 調布市郷土博物館 | 150m | +100pt |
+| 調布飛行場 | 味の素スタジアム前 モニュメント | 200m | +100pt |
+
+座標・解説文・進行の設計は `UPoC_Samether.io`（U☆PoC 側リポジトリ）の
+`data/stages.master.json` と `docs/05〜07` から。エリアの形はこちらの手描き4エリアのままで、
+**スポットは既存エリアの解放条件として載せている**（8駅エリアへの分割はしていない）。
+
+流れは `src/verify.js` の `runUnlock` が一本道で持つ:
+
+```
+撮影  <input type="file" capture="environment">   OS のカメラに丸投げ（getUserMedia は使わない）
+  ↓
+測位  getCurrentPosition 1回だけ                  常時トラッキングはしない
+  ↓
+判定  verifyPhoto()  ① Haversine ≦ 半径           位置は厳密に
+                     ② dHash のハミング距離 ≦ しきい値   画像はゆるく
+  ↓
+記録  progress.js の clearSpot()                  ポイントと解放はここだけが書く
+```
+
+- **写真は端末から出ない。** 照合はブラウザの中で完結し、アップロードも保存もしない。
+  位置情報もこの判定にだけ使う。
+- **`?demo=1` で位置と照合を飛ばす。** 会場が調布市外のときの保険（`isDemo()`）。
+- **カメラと位置情報は https か localhost でしか動かない**（Secure Context）。
+  実機で試すなら Cloudflare Tunnel などの HTTPS トンネル越しに。
+- ポイントは照合成功で `spot.points`、SNSシェアで `spot.share`。どちらもスポットごとに1回だけで、
+  加算は `progress.js` の `clearSpot` / `markShared` の2つしか書けない
+  （差分加算を書かない ＝ 二重加算を構造で潰す。`UPoC_Samether.io/docs/06`）。
+
+### 基準写真の入れ方
+
+`src/data.js` の `spot.hashes` が空の間は、**位置だけで解放できる**（撮った写真は問わない）。
+基準写真が用意できたら:
+
+1. `npm run dev` → `/hash-lab.html` にそのスポットの写真をまとめて放り込む
+   （別時間帯・別の人で 10〜20枚。隣の建物など「不正解」も数枚）
+2. 各行を ○ / × に分け、「○同士の最大距離 < しきい値 < ○×間の最小距離」になる値を読む
+3. 出力された `hashes` / `threshold` を `data.js` の該当スポットへ写す
+
+dHash の経験則は、同じ被写体の別撮影が距離 6〜12、無関係な画像が 22〜32。初期値は 14。
+基準写真は照合本体と同じ `photoHash()` を通すこと（正規化の経路がずれると一致しなくなる）。
+
+判定をブラウザに置いている以上、参照ハッシュとしきい値は配布物から読める。秘匿したくなったら
+`verify.js` の `verifyPhoto` の中身を `POST /api/verify` に差し替える（式は同じなので、
+詰めたしきい値はそのまま持ち越せる）。
+
 ## 未実装
 
-- **写真照合によるマップ解放**（`docs/specifications.txt` 4.2）。基準画像がまだないため、ロケ地画面は
-  ロック表示と説明のみ。SSIM の実装は基準写真が揃ってから。
 - 音（BGM / SE）。
+- 基準写真そのもの（上記のとおり、無い間は位置だけで解放できる状態で動く）。
 
 ## オンライン対戦
 

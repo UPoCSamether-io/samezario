@@ -360,6 +360,18 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 .bob { animation: bob 3.6s ease-in-out infinite; }
 @keyframes bob { 0%,100% { transform: translateY(0) rotate(-1deg) } 50% { transform: translateY(-14px) rotate(1deg) } }
 
+/* エリア解放の判子。大きく振りかぶって押し、勢い余って少し戻る。
+   回転を最後まで残すのは、まっすぐ収まると「印刷された見出し」に見えてしまうため */
+.stamp { animation: stamp .5s cubic-bezier(.2, .9, .3, 1.4) both; }
+@keyframes stamp {
+  0%   { opacity: 0; transform: scale(2.4) rotate(-14deg) }
+  60%  { opacity: 1; transform: scale(.94) rotate(-3deg) }
+  100% { opacity: 1; transform: scale(1) rotate(-3deg) }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stamp { animation: none; transform: rotate(-3deg) }
+}
+
 .shake { animation: shake .4s linear; }
 @keyframes shake {
   0%,100% { transform: none } 20% { transform: translate(-6px,3px) }
@@ -624,6 +636,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    「案内は出ているのに世界は動いている」または「横なのに止まる」になる */
 @media (orientation: portrait) and (pointer: coarse) {
   #rotate-hint { display: grid; }
+  /* ただしエリア解放のパネルを開いている間は縦のまま使わせる。現地でスポットの前に
+     立っている人に、撮る前後だけ横持ちを強いる理由が無い（カメラ自体は OS の画面で、
+     向きに縛られない）。パネルは1カラムなので縦でもそのまま収まる。
+     クラスは main.js の openUnlock / closeUnlock が付け外しする */
+  html.unlocking #rotate-hint { display: none; }
 }
 
 /* ロケ地のツールバー。ボタンの文言は解放状況で入れ替わるので、折り返すと
