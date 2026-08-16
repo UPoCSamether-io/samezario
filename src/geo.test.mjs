@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseAreaPath, centroidOfPath } from './geo.js';
+import { parseAreaPath, centroidOfPath, insidePath } from './geo.js';
 import { MAPS } from './data.js';
 
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
@@ -49,6 +49,61 @@ for (const m of MAPS) {
   const c = centroidOfPath(m.path);
   assert.ok(Math.abs(c.x - 536) <= 2 && Math.abs(c.y - 368) <= 2,
     `jindaiji: ${JSON.stringify(c)} != 536,368`);
+}
+
+// 実データ全部を、まったく別の解き方（1px の走査線で塗って画素の平均を取る）と突き合わせる。
+// centroidOfPath は符号付き面積の重み付け和なので、共通の間違いに落ちる余地がない。
+// エリアを描き直しても効き続ける形にしてあるのが、上の実測ピンとの違い
+{
+  const rasterCentroid = (pts) => {
+    const ys = pts.map((p) => p[1]);
+    let n = 0, sx = 0, sy = 0;
+    for (let y = Math.floor(Math.min(...ys)); y <= Math.ceil(Math.max(...ys)); y++) {
+      const wy = y + 0.5, xs = [];
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        if ((a[1] <= wy) === (b[1] <= wy)) continue;
+        xs.push(a[0] + ((wy - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
+      }
+      xs.sort((p, q) => p - q);
+      for (let i = 0; i + 1 < xs.length; i += 2) {
+        for (let x = Math.ceil(xs[i] - 0.5); x <= Math.floor(xs[i + 1] - 0.5); x++) {
+          n++; sx += x + 0.5; sy += wy;
+        }
+      }
+    }
+    return { x: sx / n, y: sy / n };
+  };
+
+  for (const m of MAPS) {
+    const c = centroidOfPath(m.path), r = rasterCentroid(parseAreaPath(m.path));
+    assert.ok(Math.abs(c.x - r.x) <= 1.5 && Math.abs(c.y - r.y) <= 1.5,
+      `${m.id}: 多角形 ${JSON.stringify(c)} と走査線 ${JSON.stringify(r)} が食い違う`);
+  }
+}
+
+// 内外判定。main.js が名前と鍵の置き場所をこれで決めるので、重心は必ず内側であること
+{
+  const sq = 'M0 0l10 0,0 10,-10 0z';
+  assert.ok(insidePath(sq, 5, 5), '正方形の中');
+  assert.ok(!insidePath(sq, 15, 5) && !insidePath(sq, 5, -1), '正方形の外');
+  for (const m of MAPS) {
+    const c = centroidOfPath(m.path);
+    assert.ok(insidePath(m.path, c.x, c.y), `${m.id} の重心が輪郭の外にある`);
+  }
+}
+
+// #52 のエリア構成。5ロケ地がそろっていて、地図の上での並びが実際の調布市と合っていること
+// （viewBox は右が東、下が南）
+{
+  assert.deepEqual(MAPS.map((m) => m.id),
+    ['chofu', 'jindaiji', 'tamagawa', 'airport', 'sengawa']);
+  const cen = Object.fromEntries(MAPS.map((m) => [m.id, centroidOfPath(m.path)]));
+  assert.ok(cen.tamagawa.y > cen.chofu.y, '多摩川が調布駅・布田より南にある');
+  assert.ok(cen.tamagawa.y > cen.airport.y, '多摩川が調布飛行場より南にある');
+  assert.ok(cen.jindaiji.y < cen.chofu.y, '深大寺が調布駅・布田より北にある');
+  assert.ok(cen.sengawa.x > cen.chofu.x, 'つつじヶ丘・仙川が調布駅・布田より東にある');
+  assert.ok(cen.airport.x < cen.chofu.x, '調布飛行場が調布駅・布田より西にある');
 }
 
 console.log('geo ok');
