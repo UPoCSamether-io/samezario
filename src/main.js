@@ -9,7 +9,7 @@ preloadSharks(SHARKS);   // タイトルを出している間に全種そろえ�
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtTime = (s) => `${(s / 60) | 0}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 // アイコンは合字なので、フォントが載るまで隠しておく（style.css の .material-symbols-rounded）。
@@ -37,11 +37,24 @@ SHARKS.forEach((d) => { new Image().src = portrait(d); });
 // ---------- セーブデータ ----------
 const SAVE = 'samezario.save';
 const save = Object.assign(
-  { unlocked: ['chofu'], best: 0, shark: SHARKS[0].id, name: '' },
+  { unlocked: ['chofu'], best: 0, shark: SHARKS[0].id, name: '', furigana: false },
   JSON.parse(localStorage.getItem(SAVE) || '{}'),
 );
 const persist = () => localStorage.setItem(SAVE, JSON.stringify(save));
 const isUnlocked = (m) => m.unlocked || save.unlocked.includes(m.id);
+
+// ---------- ルビ（ふりがな）切り替え ----------
+function applyFurigana(on) {
+  save.furigana = !!on;
+  persist();
+  document.documentElement.classList.toggle('furigana-on', save.furigana);
+  const stateEl = $('#furigana-state');
+  if (stateEl) stateEl.textContent = save.furigana ? 'ON' : 'OFF';
+  const btn = $('#furigana-toggle');
+  if (btn) btn.setAttribute('aria-pressed', save.furigana ? 'true' : 'false');
+}
+$('#furigana-toggle')?.addEventListener('click', () => applyFurigana(!save.furigana));
+applyFurigana(save.furigana);
 
 // ---------- 画面遷移 ----------
 const screens = Object.fromEntries($$('.screen').map((s) => [s.id.slice(2), s]));
@@ -197,7 +210,8 @@ function renderMaps() {
       class: 'map-label' + (open ? '' : ' locked'),
       x: cen.x, y: cen.y + LABEL_DY,
     });
-    t.textContent = m.name;
+    // SVG text 内のルビ（tspan）対応
+    t.innerHTML = `<tspan class="map-ruby" x="${cen.x}" dy="-13" font-size="14">${esc(m.kana || '')}</tspan><tspan class="map-base" x="${cen.x}" dy="14">${esc(m.name)}</tspan>`;
     labels.appendChild(t);
 
     // 未解放マークの南京錠。ラベルは text-anchor:middle で幅が読めないので、横ではなく真下に置く
@@ -220,32 +234,28 @@ function selectMap(m) {
   $('#map-ring').setAttribute('d', m.path);
   $('#map-next').disabled = !open;
   // 押せない理由をボタン自身に出す。ラベルが「サメ選択 →」のままだと袋小路に見える。
-  // 長い文言は折り返してボタンが伸び、ツールバーごと下の地図を押し下げていた
-  // （実測 667x375 で3行・56→76px・地図が 20px 縮んでずれる）。
-  // 短くしたうえで style.css 側で nowrap にし、行数を常に1に固定する
-  $('#map-next-label').textContent = open ? 'サメ選択 →' : 'まだ遊べません';
+  $('#map-next-label').innerHTML = open ? 'サメ<ruby>選択<rp>(</rp><rt>せんたく</rt><rp>)</rp></ruby> →' : 'まだ<ruby>遊<rp>(</rp><rt>あそ</rt><rp>)</rp></ruby>べません';
   // 並びは重要な順。パネルは横持ちで本文 197px しか映らず（実測 844x390）、下に置いたものは
-  // 読まれない。従来の順（blurb → HISTORY）だと史実が丸ごと折り返しの下に沈んでいた。
-  // 史実とロック解除の導線がこの画面の主役、blurb は雰囲気づけなので最後に回す
+  // 読まれない。
   $('#map-info-body').innerHTML = `
     <div id="map-en" class="font-mono text-[10px] tracking-[0.3em] text-mint mb-1">${esc(m.en)}</div>
-    <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${esc(m.name)}</h3>
+    <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${m.ruby || esc(m.name)}</h3>
     <div id="map-badge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 mb-4 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
-      ${open ? '解放済み' : '未解放'}
+      ${open ? '<ruby>解放済<rp>(</rp><rt>かいほうず</rt><rp>)</rp></ruby>み' : '<ruby>未解放<rp>(</rp><rt>みかいほう</rt><rp>)</rp></ruby>'}
     </div>
     <div>
       <div class="font-mono text-[10px] tracking-[0.25em] text-yellow mb-1">HISTORY</div>
-      <p class="text-[13px] leading-relaxed text-paper/80">${esc(m.lore)}</p>
+      <p class="text-[13px] leading-relaxed text-paper/80">${m.rubyLore || esc(m.lore)}</p>
     </div>
     ${open ? '' : `
     <div class="mt-4 bg-paper/10 ink-2 border-paper/30 rounded p-3">
       <div class="font-display font-bold text-sm mb-1 flex items-center gap-1.5">
-        ${icon('photo_camera', '!text-lg text-yellow')}現地写真で解放
+        ${icon('photo_camera', '!text-lg text-yellow')}<ruby>現地写真<rp>(</rp><rt>げんちしゃしん</rt><rp>)</rp></ruby>で<ruby>解放<rp>(</rp><rt>かいほう</rt><rp>)</rp></ruby>
       </div>
-      <p class="text-[12px] leading-relaxed text-paper/70">現地で撮影した写真をアップロードすると解放されます。<span class="font-mono text-[10px] tracking-widest text-yellow">COMING SOON</span></p>
+      <p class="text-[12px] leading-relaxed text-paper/70"><ruby>現地<rp>(</rp><rt>げんち</rt><rp>)</rp></ruby>で<ruby>撮影<rp>(</rp><rt>さつえい</rt><rp>)</rp></ruby>した<ruby>写真<rp>(</rp><rt>しゃしん</rt><rp>)</rp></ruby>をアップロードすると<ruby>解放<rp>(</rp><rt>かいほう</rt><rp>)</rp></ruby>されます。<span class="font-mono text-[10px] tracking-widest text-yellow">COMING SOON</span></p>
     </div>`}
-    <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${esc(m.blurb)}</p>
-    <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · 実際の地形</div>`;
+    <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${m.rubyBlurb || esc(m.blurb)}</p>
+    <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · <ruby>実際<rp>(</rp><rt>じっさい</rt><rp>)</rp></ruby>の<ruby>地形<rp>(</rp><rt>ちけい</rt><rp>)</rp></ruby></div>`;
 }
 
 $('#map-next').onclick = () => { if (isUnlocked(selMap)) show('shark'); };
@@ -257,10 +267,10 @@ let selShark = SHARKS.find((s) => s.id === save.shark) || SHARKS[0];
 paintTitleShark();   // 起動直後のタイトルは show() を通らないのでここで描く
 
 const STAT_KEYS = [
-  ['スピード', (d) => d.speed],
-  ['旋回', (d) => d.turn],
-  ['成長', (d) => d.growth],
-  ['ダッシュ効率', (d) => 2 - d.boostCost],
+  ['スピード', 'スピード', (d) => d.speed],
+  ['旋回', '<ruby>旋回<rp>(</rp><rt>せんかい</rt><rp>)</rp></ruby>', (d) => d.turn],
+  ['成長', '<ruby>成長<rp>(</rp><rt>せいちょう</rt><rp>)</rp></ruby>', (d) => d.growth],
+  ['ダッシュ効率', 'ダッシュ<ruby>効率<rp>(</rp><rt>こうりつ</rt><rp>)</rp></ruby>', (d) => 2 - d.boostCost],
 ];
 
 let mainPreview = null;
@@ -271,7 +281,6 @@ function renderSharks() {
     list.innerHTML = '';
     // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ
     // 黙って戻す（下の recenter）。1面だけだと端で必ず止まってしまう。
-    // ダイヤル以外では 0面と2面を CSS が隠すので、見た目は今までどおり5体
     for (let copy = 0; copy < DIAL_COPIES; copy++) {
       SHARKS.forEach((d, i) => {
         const b = document.createElement('button');
@@ -284,8 +293,8 @@ function renderSharks() {
             ${icon(ICON[d.id], '!text-[22px]')}
           </span>
           <span class="min-w-0">
-            <span class="tile-name block font-display font-extrabold text-base leading-tight">${esc(d.name)}</span>
-            <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${esc(d.tag)}</span>
+            <span class="tile-name block font-display font-extrabold text-base leading-tight">${d.ruby || esc(d.name)}</span>
+            <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${d.rubyTag || esc(d.tag)}</span>
           </span>`;
         b.onclick = () => selectShark(d);
         list.appendChild(b);
@@ -299,20 +308,16 @@ function renderSharks() {
 }
 
 // スマホ横画面のサメ選択はダイヤル。中央で止まったサメがそのまま選ばれる。
-// 条件は CSS のダイヤルブロックと一字一句そろえること（ずれると片方だけ効く）
 const isDial = () => matchMedia('(max-height: 500px)').matches;
 const DIAL_COPIES = 3;   // 一周させるための面の数。中央の面を基準にする
 
-// スキル札のタップで効果説明を開閉する。説明は札の上に浮かせる（札自体は
-// 大きくならない）ので、他所を触ったら閉じないと画面に居座ってしまう。
-// 中身は選択のたびに作り直されるため、個々の札ではなく document に一度だけ張る
+// スキル札のタップで効果説明を開閉する。
 document.addEventListener('click', (e) => {
   const tag = $('#preview-tag');
   tag.classList.toggle('show-desc', !!e.target.closest('.tag-skill') && !tag.classList.contains('show-desc'));
 });
 
-// カチンコを鳴らす。押すたびに腕が一瞬持ち上がって閉じる。
-// クラスを付け直す前に一度レイアウトを読むのは、連打しても毎回頭から再生させるため
+// カチンコを鳴らす。
 function clap(b) {
   if (!b || b.disabled) return;
   b.classList.remove('clapping');
@@ -343,11 +348,7 @@ function centeredTile(list) {
   return best;
 }
 
-/**
- * 端まで来たら中央の面へ黙って引き戻す。面の高さちょうどだけ動かすので
- * スナップ位置も選択も変わらず、利用者からは無限に回っているように見える。
- * scroll-behavior を一時的に切るのは、この移動をアニメーションさせないため
- */
+/** 端まで来たら中央の面へ黙って引き戻す。 */
 function recenter(list) {
   const copy = list.scrollHeight / DIAL_COPIES;
   const t = list.scrollTop;
@@ -360,8 +361,6 @@ function recenter(list) {
 }
 
 function mountDial(list) {
-  // scrollend はまだ全ブラウザに無いので、止まったことは時間で見る。
-  // スナップのアニメーション中に拾うと1つ手前で確定してしまうため少し待つ
   let idle;
   list.addEventListener('scroll', () => {
     if (!isDial()) return;
@@ -385,25 +384,23 @@ function selectShark(d) {
     n.style.background = on ? '#f3b553' : '';
     n.style.boxShadow = on ? '6px 6px 0 0 #2d2d2d' : '';
     n.style.transform = on ? 'translateX(-6px)' : '';
-    // ダイヤル表示の「選択中」はクラスで持つ。inline の transform とは別物で、
-    // 未選択側を引っ込める見せ方は style.css が受け持つ
     n.classList.toggle('is-sel', on);
   });
 
   $('#preview-tag').innerHTML = `
     <div class="shrink-0 bg-paper ink-3 hard rounded-lg px-4 py-2 -rotate-1">
       <div class="tag-en font-mono text-[10px] tracking-[0.3em] text-ink/55">${esc(d.en)}</div>
-      <div class="tag-name font-display font-extrabold text-2xl leading-tight">${esc(d.name)}</div>
-      <div class="tag-motif text-[11px] text-ink/60">${esc(d.motif)}</div>
+      <div class="tag-name font-display font-extrabold text-2xl leading-tight">${d.ruby || esc(d.name)}</div>
+      <div class="tag-motif text-[11px] text-ink/60"><ruby>モチーフ<rp>(</rp><rt>もちーふ</rt><rp>)</rp></ruby>：${d.rubyMotif || esc(d.motif)}</div>
     </div>
     <div class="tag-skill flex-1 min-w-0 bg-navy text-paper ink-3 hard rounded-lg px-4 py-3 rotate-1">
       <div class="flex items-center gap-2 mb-1">
         ${icon(ICON[d.id], '!text-xl text-yellow')}
-        <span class="font-display font-extrabold">${esc(d.skill.name)}</span>
+        <span class="font-display font-extrabold">${d.skill.rubyName || esc(d.skill.name)}</span>
         <span class="kbd-badge ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
       </div>
       <div class="tag-more">
-        <p class="tag-desc text-[12px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
+        <p class="tag-desc text-[12px] leading-relaxed text-paper/85">${d.skill.rubyDesc || esc(d.skill.desc)}</p>
         <div class="tag-cd font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
       </div>
     </div>`;
@@ -413,10 +410,10 @@ function selectShark(d) {
 
 /** 能力バー4本。サメ選択と図鑑の詳細で同じものを出す */
 function statBars(d) {
-  return STAT_KEYS.map(([label, f]) => {
+  return STAT_KEYS.map(([plain, rubyLabel, f]) => {
     const pct = clamp((f(d) - 0.55) / 0.95, 0.1, 1) * 100;
     return `<div class="bg-paper ink-3 hard rounded-lg px-3 py-2">
-      <div class="font-mono text-[9px] tracking-[0.18em] text-ink/60 mb-1.5">${label}</div>
+      <div class="font-mono text-[9px] tracking-[0.18em] text-ink/60 mb-1.5">${rubyLabel}</div>
       <div class="h-3 bg-ink/12 ink-2 relative overflow-hidden">
         <div class="h-full bg-teal" style="width:${pct}%"></div>
       </div>
@@ -425,8 +422,6 @@ function statBars(d) {
 }
 
 // ---------- 名前 ----------
-// モードの切り替えは無い。常にロケ地の部屋へ入り、空席はボットが埋める。
-// サーバが居なければそのままボットだけの部屋になる（＝これまでのソロ）。
 const nameInput = $('#player-name');
 nameInput.value = save.name;
 const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10) || 'PLAYER';
@@ -434,7 +429,6 @@ const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10
 $('#start-btn').onclick = () => play();
 
 // ---------- 図鑑 ----------
-// 一覧は立ち絵と名前だけ。中身はカードを開いた先の大画面にまとめてある。
 let dexBuilt = false;
 function renderDex() {
   if (dexBuilt) return;
@@ -452,7 +446,7 @@ function renderDex() {
              class="w-full h-full object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.22)]">
       </div>
       <div class="dex-name w-full border-t-4 border-ink px-3 py-2.5">
-        <h3 class="font-display font-extrabold text-lg leading-tight">${esc(d.name)}</h3>
+        <h3 class="font-display font-extrabold text-lg leading-tight">${d.ruby || esc(d.name)}</h3>
       </div>`;
     card.onclick = () => openDex(d);
     wrap.appendChild(card);
@@ -476,26 +470,26 @@ function openDex(d) {
         <div class="min-w-0">
           <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${esc(d.en)}</div>
           <div class="flex items-baseline gap-2 flex-wrap">
-            <h3 class="font-display font-extrabold text-3xl md:text-4xl leading-tight">${esc(d.name)}</h3>
-            <span class="text-[11px] font-bold bg-yellow ink-2 rounded px-2 py-0.5">${esc(d.tag)}</span>
+            <h3 class="font-display font-extrabold text-3xl md:text-4xl leading-tight">${d.ruby || esc(d.name)}</h3>
+            <span class="text-[11px] font-bold bg-yellow ink-2 rounded px-2 py-0.5">${d.rubyTag || esc(d.tag)}</span>
           </div>
-          <div class="text-[12px] text-ink/55 mt-1">モチーフ：${esc(d.motif)}</div>
+          <div class="text-[12px] text-ink/55 mt-1"><ruby>モチーフ<rp>(</rp><rt>もちーふ</rt><rp>)</rp></ruby>：${d.rubyMotif || esc(d.motif)}</div>
 
-          <p class="mt-5 text-[15px] leading-[1.9] font-bold">${esc(d.intro)}</p>
+          <p class="mt-5 text-[15px] leading-[1.9] font-bold">${d.rubyIntro || esc(d.intro)}</p>
 
           <div class="bg-navy text-paper ink-3 rounded-lg p-4 mt-5">
             <div class="flex items-center gap-2 mb-1">
               ${icon(ICON[d.id], '!text-xl text-yellow')}
-              <span class="font-display font-extrabold">${esc(d.skill.name)}</span>
+              <span class="font-display font-extrabold">${d.skill.rubyName || esc(d.skill.name)}</span>
               <span class="kbd-badge ml-auto font-mono text-[10px] bg-yellow text-ink px-1.5 py-0.5 rounded">${d.skill.key}</span>
             </div>
-            <p class="text-[12.5px] leading-relaxed text-paper/85">${esc(d.skill.desc)}</p>
+            <p class="text-[12.5px] leading-relaxed text-paper/85">${d.skill.rubyDesc || esc(d.skill.desc)}</p>
             <div class="font-mono text-[10px] text-mint mt-1.5">CD ${d.skill.cd}s</div>
           </div>
 
           <div class="relative border-4 border-ink rounded-lg p-4 pt-5 mt-7">
             <span class="absolute -top-3 left-4 bg-yellow ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">CHOFU TIPS</span>
-            <p class="text-[12.5px] leading-relaxed text-ink/80">${esc(d.lore)}</p>
+            <p class="text-[12.5px] leading-relaxed text-ink/80">${d.rubyLore || esc(d.lore)}</p>
           </div>
         </div>
     </div>`;
@@ -519,9 +513,6 @@ let net = null;
 let myName = 'YOU';   // リーダーボードに自分の行を足すときに使う
 const dropNet = () => { net?.close(); net = null; };
 
-// 二重起動よけ。play() は connect() を最大 2.5 秒待つので、その間に
-// もう一度押されると startGame が二重に走り、前の回のリスナと rAF ループが
-// 取り残されたまま回り続ける。#start-btn の disabled だけでは #retry を塞げない
 let starting = false;
 async function play() {
   if (starting) return;
@@ -530,7 +521,7 @@ async function play() {
     save.shark = selShark.id; save.name = playerName(); persist();
     dropNet();
     $('#start-btn').disabled = true;
-    // 繋がらなければ黙ってボット部屋。ここで手を止める理由が無い
+    // 繋がらなければ黙ってボット部屋。
     try { net = await connect({ map: selMap.id, shark: selShark.id, name: save.name }); }
     catch { net = null; }
     $('#start-btn').disabled = false;
@@ -558,8 +549,6 @@ function paintHud(h) {
   }
   hudMass.textContent = h.mass.toLocaleString();
   hudRank.textContent = `#${h.rank} / ${h.alive}`;
-  // トップとの比を線形で取ると、ボットが15秒で500超に届く一方こちらは30スタートなので
-  // バーが下限に張り付いて動かない。対数にして序盤の伸びを見せる
   const top = Math.max(h.board[0]?.mass || 1, 2);
   hudBar.style.width = clamp(Math.log(Math.max(h.mass, 1)) / Math.log(top), 0.04, 1) * 100 + '%';
   if (h.humans) $('#hud-online').textContent = `ONLINE · ${h.humans} PLAYER${h.humans > 1 ? 'S' : ''}`;
@@ -568,7 +557,6 @@ function paintHud(h) {
       <span class="font-bold truncate">${rank}. ${b.human && !b.me ? '◆ ' : ''}${esc(b.name)}</span>
       <span class="font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
     </li>`;
-  // トップ5固定なので、上位に入るまで自分の行が一度も出ない。圏外なら最下段に足す
   hudBoard.innerHTML = h.board.map((b, i) => row(b, i + 1)).join('')
     + (h.board.some((b) => b.me) ? ''
       : row({ name: myName, mass: h.mass, me: true, human: true }, h.rank, 'mt-1.5 border-t-2 border-ink/25 pt-1'));
@@ -576,7 +564,6 @@ function paintHud(h) {
   hudCd.textContent = Math.ceil(h.cd);
   hudReel.style.animation = h.boosting ? 'spin .35s linear infinite' : 'spin 4s linear infinite';
   hudReel.style.filter = h.boost ? '' : 'grayscale(1) brightness(.75)';
-  // 残量ぶんは素通し、使った分を暗く塗る。息切れ中は赤で潰す
   const spent = h.winded ? 'rgba(186,26,26,.66)' : 'rgba(11,32,34,.74)';
   hudStam.style.background = `conic-gradient(transparent ${h.stam}turn, ${spent} 0)`;
 }
@@ -585,12 +572,6 @@ $('#resume').onclick = () => ctl?.resume();
 $('#quit').onclick = () => { dropNet(); show('title'); };
 $('#retry').onclick = () => play();
 
-// ゲーム中の HUD は click ではなく pointerdown で拾う。
-// 操舵の指が画面に付いている間は指が2本になり、iOS はマルチタッチ中の
-// タップに click を合成しないので、click 頼みだと「動かしながらスキル」が
-// まったく効かなかった。ついでに押した瞬間に出るぶん反応も早くなる。
-// preventDefault は長押しの選択・コピーのポップアップ止め（CSS 側とセット）で、
-// click が消えるぶんカチンコはここから直接鳴らす
 const hudKey = (el, key, sound) => el.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   if (sound) clap(el);
@@ -599,10 +580,6 @@ const hudKey = (el, key, sound) => el.addEventListener('pointerdown', (e) => {
 hudKey($('#hud-skill'), 'e', true);
 hudKey($('#hud-pause'), 'Escape', false);
 
-// DASH。game.js にボタンの存在を教えず、Space の経路をそのまま再利用する
-// （スキルが上でやっているのと同じ手）。game.js 側に状態が増えない。
-// pointercancel も拾うのは、通知などで pointer を奪われたときに
-// pointerup が来ず、ブーストが押しっぱなしで張り付くため
 const hudDash = $('#hud-dash');
 const dashKey = (type) => window.dispatchEvent(new KeyboardEvent(type, { key: ' ' }));
 hudDash.addEventListener('pointerdown', (e) => { e.preventDefault(); dashKey('keydown'); });
@@ -610,23 +587,23 @@ hudDash.addEventListener('pointerup', () => dashKey('keyup'));
 hudDash.addEventListener('pointercancel', () => dashKey('keyup'));
 
 function showResult(r) {
-  dropNet();                       // 死んだら部屋を出る（ホストなら次の人へ委譲される）
+  dropNet();
   const best = Math.max(save.best, r.mass);
   const isBest = r.mass > save.best;
   save.best = best; persist();
 
   show('result');
-  $('#res-sub').innerHTML = `${esc(selMap.name)} ／ ${esc(selShark.name)}`
-    + (r.cause ? `<br><span class="text-danger">${esc(r.cause)}に接触</span>` : '');
+  $('#res-sub').innerHTML = `${selMap.ruby || esc(selMap.name)} ／ ${selShark.ruby || esc(selShark.name)}`
+    + (r.cause ? `<br><span class="text-danger">${esc(r.cause)}に<ruby>接触<rp>(</rp><rt>せっしょく</rt><rp>)</rp></ruby></span>` : '');
   $('#res-stats').innerHTML = [
-    ['到達サイズ', r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
-    ['撃破数', r.kills, 'KILLS'],
-    ['生存時間', fmtTime(r.time), 'SURVIVED'],
+    ['<ruby>到達<rp>(</rp><rt>とうたつ</rt><rp>)</rp></ruby>サイズ', r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
+    ['<ruby>撃破数<rp>(</rp><rt>げきはすう</rt><rp>)</rp></ruby>', r.kills, 'KILLS'],
+    ['<ruby>生存時間<rp>(</rp><rt>せいぞんじかん</rt><rp>)</rp></ruby>', fmtTime(r.time), 'SURVIVED'],
   ].map(([label, val, sub], i) => `
     <div class="res-stat ${i === 0 ? 'bg-yellow' : 'bg-paper'} ink-3 hard rounded-lg p-2 sm:p-3 text-center ${['', '-rotate-1', 'rotate-1'][i]}">
       <div class="font-mono text-[9px] tracking-[0.2em] text-ink/60">${label}</div>
       <div class="res-stat-v font-mono font-bold text-xl sm:text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
-  $('#res-tip').textContent = TIPS[(Math.random() * TIPS.length) | 0];
+  $('#res-tip').innerHTML = TIPS[(Math.random() * TIPS.length) | 0];
 }

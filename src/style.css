@@ -687,12 +687,10 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #howto-list {
     column-count: 2;
     column-gap: 1.75rem;
-    font-size: 13px;
-    line-height: 1.65;
+    font-size: 12.5px;
+    line-height: 1.45;
   }
-  /* 3段組みも試したが逆に伸びた（281px > 2段の278px）。項目数が6で高さが不揃いなため、
-     列を増やすと1項目あたりの行数が増えて最長列が勝つ。2段が底 */
-  #howto-list > li { break-inside: avoid; margin: 0 0 0.5rem; }
+  #howto-list > li { break-inside: avoid; margin: 0 0 0.35rem; }
 
   /* ---- 横画面のリザルト ----
      積み上げでは CUT!+戦績 190px / Tips+操作列 240px に対し、使える高さが
@@ -764,3 +762,100 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 @media (max-height: 500px) {
   #dex-list { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 }
+
+/* ==========================================================================
+   Accessibility: Furigana / Ruby Typography & Toggle
+   ========================================================================== */
+
+/* Ruby base styling */
+ruby {
+  ruby-align: center;
+  ruby-position: over;
+}
+
+rt {
+  font-size: 0.52em;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: inherit;
+  user-select: none;
+  opacity: 0.95;
+  transform: translateY(-0.15em);
+}
+
+rp {
+  display: none;
+}
+
+/* Default (Furigana OFF): Hide ruby elements cleanly without taking space */
+html:not(.furigana-on) rt {
+  display: none;
+}
+
+/* Furigana ON: Display ruby texts cleanly */
+html.furigana-on rt {
+  display: ruby-text;
+}
+
+/* Buttons and badge ruby tweaks */
+.btn rt {
+  font-size: 0.46em;
+  font-weight: 800;
+  transform: translateY(-0.2em);
+}
+
+/* SVG map ruby label */
+.map-ruby {
+  display: none;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--color-yellow);
+  stroke: var(--color-ink);
+  stroke-width: 3;
+  paint-order: stroke;
+  user-select: none;
+}
+html.furigana-on .map-ruby {
+  display: block;
+}
+
+/* Furigana Toggle Button in Bottom Letterbox */
+.furigana-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  border: 2px solid var(--color-ink);
+  box-shadow: 2px 2px 0 0 var(--color-ink);
+  cursor: pointer;
+  transition: transform 0.08s ease-out, background-color 0.15s ease-out, box-shadow 0.08s ease-out;
+  user-select: none;
+  z-index: 50;
+  line-height: 1.2;
+}
+.furigana-toggle:hover {
+  background: var(--color-yellow);
+}
+.furigana-toggle:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 0 var(--color-ink);
+}
+html.furigana-on .furigana-toggle {
+  background: var(--color-yellow);
+}
+html.furigana-on .furigana-toggle #furigana-state {
+  color: var(--color-danger);
+}
+
+@media (max-height: 500px) {
+  .furigana-toggle {
+    padding: 0.1rem 0.45rem;
+    font-size: 10px;
+  }
+}
+
