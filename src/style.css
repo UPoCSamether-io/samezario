@@ -740,13 +740,7 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
     align-items: end;
   }
   #res-actions .btn {
-    margin-top: 10px;
-  }
-  #res-actions .btn > .cap {
-    height: 0.45rem;
-  }
-  #res-actions .btn::before {
-    height: 0.45rem;
+    margin-top: 13px;
   }
   #res-actions #retry {
     grid-column: 1 / -1;
