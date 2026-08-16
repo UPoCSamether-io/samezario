@@ -1,0 +1,134 @@
+name: Load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      clients:
+        description: Number of WebSocket clients
+        required: true
+        default: "24"
+        type: number
+      seconds:
+        description: Measurement duration in seconds
+        required: true
+        default: "20"
+        type: number
+      maps:
+        description: Comma-separated map IDs
+        required: true
+        default: chofu
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  websocket-load-test:
+    name: WebSocket load test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NODE_VERSION: 24.18.0
+      PORT: "5199"
+      TARGET_DELIVERY_RATE: "13 snapshots/s"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 24.18.0 with npm cache
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies (npm ci)
+        run: npm ci
+
+      - name: Build production bundle (npm run build)
+        run: npm run build
+
+      - name: Record measurement conditions
+        shell: bash
+        run: |
+          mkdir -p loadtest-results
+          {
+            echo "node_version=${NODE_VERSION}"
+            echo "runner=${RUNNER_OS}/${RUNNER_ARCH}"
+            echo "clients=${{ inputs.clients }}"
+            echo "seconds=${{ inputs.seconds }}"
+            echo "maps=${{ inputs.maps }}"
+            echo "server_port=${PORT}"
+            echo "target_delivery_rate=${TARGET_DELIVERY_RATE}"
+            echo "commit=${GITHUB_SHA}"
+          } | tee loadtest-results/conditions.txt
+
+      - name: Start WebSocket relay server
+        shell: bash
+        run: |
+          PORT="${PORT}" node server/index.mjs > loadtest-results/server.log 2>&1 &
+          echo "SERVER_PID=$!" >> "${GITHUB_ENV}"
+          for attempt in {1..30}; do
+            if curl --fail --silent "http://127.0.0.1:${PORT}/" > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server did not become ready" >&2
+          cat loadtest-results/server.log >&2
+          exit 1
+
+      - name: Measure delivery rate (scripts/loadtest.mjs)
+        id: loadtest
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/loadtest.mjs \
+            --clients "${{ inputs.clients }}" \
+            --seconds "${{ inputs.seconds }}" \
+            --maps "${{ inputs.maps }}" \
+            --url "ws://127.0.0.1:${PORT}/ws" \
+            2>&1 | tee loadtest-results/loadtest.log
+
+      - name: Stop WebSocket relay server
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${SERVER_PID:-}" ]]; then
+            kill "${SERVER_PID}" 2>/dev/null || true
+            wait "${SERVER_PID}" 2>/dev/null || true
+          fi
+
+      - name: Write load-test summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## WebSocket load test"
+            echo
+            echo "| Condition | Value |"
+            echo "| --- | --- |"
+            echo "| Node.js | ${NODE_VERSION} |"
+            echo "| Runner | ${RUNNER_OS}/${RUNNER_ARCH} |"
+            echo "| Clients | ${{ inputs.clients }} |"
+            echo "| Duration | ${{ inputs.seconds }} seconds |"
+            echo "| Maps | ${{ inputs.maps }} |"
+            echo "| Pass threshold | ${TARGET_DELIVERY_RATE} |"
+            echo "| Result | ${{ steps.loadtest.outcome }} |"
+            echo
+            if [[ -f loadtest-results/loadtest.log ]]; then
+              echo '```text'
+              cat loadtest-results/loadtest.log
+              echo '```'
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload load-test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: load-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: loadtest-results/
+          if-no-files-found: error
+          retention-days: 30

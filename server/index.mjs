@@ -12,7 +12,7 @@
 // Render を2往復していたのが、今は1往復で閉じる。
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { MAPS } from '../src/data.js';
@@ -28,10 +28,15 @@ const SNAP_EVERY = 2;          // 何ティックごとに配るか（30Hz / 2 =
 const rooms = new Map();       // roomId("chofu#1") -> room
 let seq = 0;
 
+const SIM_LAG = Number(process.env.SIM_LAG) || 0;
+
 const send = (ws, m) => {
   // 100秒分も滞留しているならその線は読まれていない。溜め続けるとヒープが持たない
   if (ws.bufferedAmount > 1 << 20) return ws.terminate();
-  if (ws.readyState === 1) ws.send(JSON.stringify(m));
+  if (ws.readyState === 1) {
+    if (SIM_LAG > 0) setTimeout(() => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); }, SIM_LAG);
+    else ws.send(JSON.stringify(m));
+  }
 };
 
 /**
@@ -45,7 +50,11 @@ const sendAll = (members, m, pick) => {
   for (const ws of members) {
     if (pick && !pick(ws)) continue;
     if (ws.bufferedAmount > 1 << 20) { ws.terminate(); continue; }
-    if (ws.readyState === 1) ws.send((buf ??= Buffer.from(JSON.stringify(m))));
+    if (ws.readyState === 1) {
+      const data = (buf ??= Buffer.from(JSON.stringify(m)));
+      if (SIM_LAG > 0) setTimeout(() => { if (ws.readyState === 1) ws.send(data); }, SIM_LAG);
+      else ws.send(data);
+    }
   }
 };
 const clean = (s) => String(s ?? '').replace(/[\p{C}]/gu, '').trim().slice(0, 10) || 'PLAYER';
@@ -124,7 +133,7 @@ function wire(ws) {
     // 受け付けるのは操作だけ。差出人は ws.id で、自称は一切見ない
     switch (m.t) {
       case 'in':
-        room.world.input(ws.id, { aim: m.a, boost: m.b });
+        room.world.input(ws.id, { aim: m.a, boost: m.b, x: m.x, y: m.y });
         break;
       case 'sk': {
         const s = room.world.sharks.find((o) => o.nid === ws.id);
@@ -203,7 +212,8 @@ const cacheFor = (p) =>
       : 'public, max-age=86400');
 
 export async function serveStatic(req, res) {
-  const p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+  // URL paths always use forward slashes, including when the server runs on Windows.
+  const p = posix.normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
   if (p === '/health') { res.writeHead(200, { 'content-type': 'text/plain' }).end('OK'); return; }
   if (p.includes('..')) { res.writeHead(403).end(); return; }
   const file = join(DIST, p === '/' ? 'index.html' : p);
@@ -214,11 +224,16 @@ export async function serveStatic(req, res) {
       'cache-control': cacheFor(p),
     }).end(buf);
   } catch {
-    // 見つからない URL は index.html を返す（SPA）。中身は HTML なので毎回確かめさせる
-    try {
-      res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-cache' })
-        .end(await readFile(join(DIST, 'index.html')));
-    } catch { res.writeHead(404).end('build first: npm run build'); }
+    // 見つからない URL は index.html を返す（SPA）。中身は HTML なので毎回確かめさせる。
+    //
+    // 読んでから書く。writeHead() を .end() のレシーバに置くと、await readFile が
+    // 転ぶ前にヘッダが出てしまい、下の catch の writeHead が ERR_HTTP_HEADERS_SENT を
+    // 投げる。request ハンドラの中の未捕捉例外はプロセスを落とすので、dist が無い箱では
+    // 「知らない URL を誰か1人が叩くと全部屋の全員が切断される」になっていた。
+    let html;
+    try { html = await readFile(join(DIST, 'index.html')); }
+    catch { res.writeHead(404).end('build first: npm run build'); return; }
+    res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-cache' }).end(html);
   }
 }
 

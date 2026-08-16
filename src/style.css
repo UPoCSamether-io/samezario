@@ -25,7 +25,7 @@
    片方だけ変えると帯に文字が潜る状態だった。
    スマホ横（高さ 390px 級）では 56px×2 が縦の 29% を食うので薄くする */
 :root {
-  --bar: 3.5rem;
+  --bar: clamp(1.25rem, 5.5vh, 3.5rem);
   --bar-pad: calc(var(--bar) + 12px);
 }
 @media (max-height: 500px) {
@@ -743,9 +743,8 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #res-tip-pane > div { padding: 0.6rem 0.75rem; }
   #res-tip { font-size: 12px; line-height: 1.6; }
 
-  #res-actions { padding: 0.6rem 1.25rem 0.9rem 0; gap: 0.4rem; }
-  #res-actions .btn > div:last-child { padding-top: 0.35rem; padding-bottom: 0.35rem; }
-  #res-actions #retry > div:last-child { font-size: 1.05rem; }
+  #res-actions { padding: 0.4rem 1.25rem 0.75rem 0; gap: 0.35rem; }
+  #res-actions .btn > div:last-child { padding-top: 0.35rem; padding-bottom: 0.35rem; font-size: 11px; }
 }
 
 /* ロケ地の情報パネル。横持ちでは本文が 197px しか映らない（実測 844x390）。

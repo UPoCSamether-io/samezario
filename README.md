@@ -9,12 +9,32 @@ npm run build
 npm start        # 本番。dist を配りつつ /ws を受ける（PORT で変更可 / 既定 5174）
 npm test         # 盤面 / 権威サーバ / 幾何 / 操舵のチェック
 
-# 負荷測定（Render と同じ CPU 制限をローカルで再現する）
+# 負荷測定（本番と同じ CPU 制限をローカルで再現する）
 npm run build
 docker run --rm --cpus=0.5 --memory=512m -p 5199:5199 -v "$PWD":/app -w /app \
   -e PORT=5199 node:24-alpine node server/index.mjs
 node scripts/loadtest.mjs --clients 24 --seconds 20
 ```
+
+## 検証
+
+ローカルと GitHub Actions は Node.js `24.18.0` を基準にする。CI と同じ検証は次の順で実行する。
+
+```bash
+npm ci
+git diff --exit-code -- package-lock.json
+npm run build
+npm test
+```
+
+`npm test` はゲームロジックのほか、`server/relay.test.mjs` の WebSocket 中継テストも実行する。
+GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull request の両方で起動し、
+依存関係の npm キャッシュを利用する。このチェックを master の required status check に指定できる。
+
+負荷測定は通常の pull request CI には含めない。GitHub の Actions 画面で `Load test` を選び、
+`Run workflow` からクライアント数・測定秒数・マップを指定して手動起動する。測定条件、
+合格基準（最低配信レート 13 snapshots/s）、実測ログ、サーバーログは30日間 artifact に保存され、
+実測結果は Job Summary にも表示される。
 
 ## 構成
 
@@ -35,8 +55,9 @@ node scripts/loadtest.mjs --clients 24 --seconds 20
 | — | プレイエリアの外周は `data.js` の `path`（実際のエリア輪郭）そのもの。内外判定は `Path2D` + `isPointInPath`。`size` は一辺ではなく**実効面積の平方根**で、ゲーム側が輪郭の面積が `size²` になるよう拡大する |
 | `scripts/seal-arms.mjs` | エリア輪郭から細すぎる腕を落とすワンショット道具（`node scripts/seal-arms.mjs --emit`）。原本の path もここ |
 | `scripts/loadtest.mjs` | 人数分ぶら下がって配信レートを測る。判定は「スナップショットが 15Hz 届くか」 |
+| `scripts/ec2-deploy.sh` | EC2(t3.micro) 上で流す初回セットアップ兼デプロイ。何度流してもいい |
 | `hash-lab.html` | 基準写真から dHash を作り、しきい値の分離帯を見る道具（`npm run dev` → `/hash-lab.html`） |
-| `docs/` | 仕様書・設計ドキュメント（`specifications.txt` 等） |
+| `docs/` | 仕様書・設計ドキュメント（`specifications.txt` 等）。デプロイ手順は `deploy-ec2.md` |
 
 ## 調整ポイント
 
@@ -154,11 +175,13 @@ dHash の経験則は、同じ被写体の別撮影が距離 6〜12、無関係�
 
 | CPU | 8人（1部屋） | 24人（3部屋） | 40人（5部屋） |
 | --- | --- | --- | --- |
-| 0.1（Render 無料） | **13.8** | 6.3 | — |
-| 0.25 | — | 13.9 | 10.7 |
-| 0.5（Render Starter） | 15.1 | 15.1 | **14.5** |
+| 0.1 | **13.8** | 6.3 | — |
+| 0.25（t3.micro の定常 0.2 に近い） | — | 13.9 | 10.7 |
+| 0.5 | 15.1 | 15.1 | **14.5** |
 
-**無料枠の 0.1 vCPU で回るのは1部屋（8人）まで。** 数十人なら 0.5 CPU。
+**0.1 vCPU で回るのは1部屋（8人）まで。** 数十人なら 0.5 CPU。
+本番の t3.micro は定常 0.2 vCPU ＝ 1〜3部屋。ただしクレジットを貯めておけば
+2 vCPU 全開で 2.4時間バーストするので、デモの数時間は 40人でも落ちない（`docs/deploy-ec2.md`）。
 メモリは 40人でも 32MB で、512MB はどの段でも余る。詰まるのは常に CPU。
 
 天井の正体はゲームの計算ではなく **WebSocket の1メッセージあたりのコスト（約0.22ms）**。

@@ -61,9 +61,14 @@ assert.notEqual(`${p1[1]},${p1[2]}`, `${p2[1]},${p2[2]}`, 'サメが動いてい
 // 4. 操作が効く。ダッシュを押すと、次のスナップショットで旗（bit 2）が立つ
 //    角度の収束ではなく旗で見るのは、寄るまでの時間が体格と壁で変わるため
 const BOOST = 2;
-a.ws.send(JSON.stringify({ t: 'in', a: 0, b: 1 }));
+const prevRow = lastRow(take(a), a.hello.id);
+const targetX = prevRow ? prevRow[1] + 5 : 500;
+const targetY = prevRow ? prevRow[2] + 5 : 500;
+a.ws.send(JSON.stringify({ t: 'in', a: 0, b: 1, x: targetX, y: targetY }));
 await settle();
-assert.ok(lastRow(take(a), a.hello.id)[5] & BOOST, 'A のダッシュがサーバに届く');
+const newRow = lastRow(take(a), a.hello.id);
+assert.ok(newRow[5] & BOOST, 'A のダッシュがサーバに届く');
+
 
 // 5. 差出人は線で決まる。他人の id を騙っても、点くのは自分の旗だけ
 b.ws.send(JSON.stringify({ t: 'in', a: 0, b: 1, id: a.hello.id }));

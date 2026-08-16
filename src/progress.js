@@ -16,7 +16,7 @@ const KEY = 'samezario.save';   // index.html のタイトル用インライン�
 
 // v は将来スキーマを変えたとき、壊れた古いキャッシュを捨てるための版。
 // spots[spotId] = { at, score, shared }
-const DEFAULTS = {
+const createDefaults = () => ({
   v: 1,
   unlocked: ['chofu'],
   best: 0,
@@ -24,19 +24,22 @@ const DEFAULTS = {
   name: '',
   points: 0,
   spots: {},
-};
+});
+
+const DEFAULTS = createDefaults();
 
 function read() {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || '{}');
-    return v && typeof v === 'object' ? v : {};
+    if (!v || typeof v !== 'object' || v.v !== DEFAULTS.v) return {};
+    return v;
   } catch {
     return {};   // 壊れたセーブは黙って初期値へ。ここで例外を出すと起動しない
   }
 }
 
 // 参照を配るので、これ自体は差し替えず中身を書き換える（main.js が握っている）
-export const save = Object.assign({}, DEFAULTS, read());
+export const save = Object.assign(createDefaults(), read());
 
 export const persist = () => localStorage.setItem(KEY, JSON.stringify(save));
 

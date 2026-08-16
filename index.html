@@ -400,28 +400,26 @@
         <div id="res-cap" class="clapper-stripes h-7 border-b-4 border-ink shrink-0"></div>
         <!-- pb-1 は戦績カードの回転（±1deg）のはみ出しを飲む余白。0 だとスクロール量が
              1px だけ増え、収まっているのに縦スクロールバーが出る -->
-        <div id="res-main" class="p-7 pb-1 max-sm:p-4 max-sm:pb-1 min-h-0 overflow-auto thin-scroll">
-          <div id="res-head" class="text-center mb-6 max-sm:mb-4">
-            <h2 class="font-display font-black text-5xl max-sm:text-4xl -rotate-2 inline-block bg-ink text-yellow px-8 py-2 rounded-lg hard neon">CUT!</h2>
-            <p id="res-sub" class="mt-3 font-bold text-sm text-ink/70"></p>
+        <div id="res-main" class="p-6 pb-1 max-sm:p-4 max-sm:pb-1 min-h-0 overflow-auto thin-scroll">
+          <div id="res-head" class="text-center mb-4 max-sm:mb-3">
+            <h2 class="font-display font-black text-4xl sm:text-5xl -rotate-2 inline-block bg-ink text-yellow px-6 sm:px-8 py-1.5 sm:py-2 rounded-lg hard neon">CUT!</h2>
+            <p id="res-sub" class="mt-2 font-bold text-xs sm:text-sm text-ink/70"></p>
           </div>
-          <div class="grid grid-cols-3 gap-3" id="res-stats"></div>
+          <div class="grid grid-cols-3 gap-2.5 sm:gap-3" id="res-stats"></div>
         </div>
-        <div id="res-tip-pane" class="px-7 pt-4 max-sm:px-4 max-sm:pt-2 shrink-0">
-          <div class="bg-navy text-paper ink-3 rounded-lg p-4 max-sm:p-3 relative">
+        <div id="res-tip-pane" class="px-6 pt-3 max-sm:px-4 max-sm:pt-1.5 shrink-0">
+          <div class="bg-navy text-paper ink-3 rounded-lg p-3 sm:p-3.5 max-sm:p-2.5 relative">
             <span class="absolute -top-3 left-4 bg-yellow text-ink ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">CHOFU TIPS</span>
-            <p id="res-tip" class="text-sm max-sm:text-[13px] leading-relaxed mt-1"></p>
+            <p id="res-tip" class="text-xs sm:text-sm max-sm:text-[12px] leading-relaxed mt-0.5"></p>
           </div>
         </div>
-        <div id="res-actions" class="p-7 pt-4 max-sm:p-4 max-sm:pt-3 shrink-0 flex flex-col gap-3">
+        <div id="res-actions" class="p-6 pt-2 pb-6 max-sm:p-4 max-sm:pt-2 max-sm:pb-4 shrink-0 grid grid-cols-3 gap-2 sm:gap-3">
           <button class="btn primary" id="retry"><div class="cap clapper-stripes"></div>
-            <div class="py-2.5 font-display font-extrabold text-xl">もう一度撮る</div></button>
-          <div class="grid grid-cols-2 gap-3">
-            <button class="btn" data-go="map"><div class="cap clapper-stripes"></div>
-              <div class="py-2 font-display font-bold text-sm">ロケ地を変える</div></button>
-            <button class="btn" data-go="title"><div class="cap clapper-stripes"></div>
-              <div class="py-2 font-display font-bold text-sm">タイトルへ</div></button>
-          </div>
+            <div class="py-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap">もう一度撮る</div></button>
+          <button class="btn" data-go="map"><div class="cap clapper-stripes"></div>
+            <div class="py-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap">ロケ地を変える</div></button>
+          <button class="btn" data-go="title"><div class="cap clapper-stripes"></div>
+            <div class="py-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap">タイトルへ</div></button>
         </div>
       </div>
     </div>

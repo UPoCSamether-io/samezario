@@ -167,7 +167,7 @@ console.log(`
 配信間隔（目標 66ms。p99 と最大が「たまに固まる」）
   p50 ${f(pct(gaps, 0.5), 0)}ms   p95 ${f(pct(gaps, 0.95), 0)}ms   p99 ${f(pct(gaps, 0.99), 0)}ms   最大 ${f(gaps[gaps.length - 1], 0)}ms
 
-帯域（TCP の実バイト＝回線に流れた量。Render 無料枠は月 5GB）
+帯域（TCP の実バイト＝回線に流れた量。AWS の外向きは月 100GB まで無料）
   1人あたり ${f(bytes / live.length / dur / 1024)} KB/s
   この人数で ${f((bytes / dur) * 3600 / 1024 / 1024 / 1024, 2)} GB/時
 `);

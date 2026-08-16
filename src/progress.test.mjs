@@ -66,4 +66,12 @@ assert.deepEqual([...save.unlocked].sort(), [...new Set([...opened, 'chofu'])].s
   assert.equal(raw.spots[jindaiji.spot.id].shared, true);
 }
 
+// 壊れたセーブやスキーマバージョン違いは初期値にフォールバックすること
+{
+  store['samezario.save'] = JSON.stringify({ v: 999, points: 99999, unlocked: ['tamagawa'] });
+  const mod = await import('./progress.js?v=invalid-schema');
+  assert.equal(mod.save.points, 0);
+  assert.deepEqual(mod.save.unlocked, ['chofu']);
+}
+
 console.log('progress ok');

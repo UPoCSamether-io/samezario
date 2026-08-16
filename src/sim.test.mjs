@@ -186,4 +186,123 @@ for (const map of MAPS) {
   server.destroy(); client.destroy();
 }
 
+// ---------------------------------------------------------------------------
+// 8. クライアント主導座標の反映とサニティチェック（サーバー側）
+{
+  const w = createWorld({ map: chofu, authority: true });
+  const s = w.addPlayer({ nid: 'p1', sharkId: 'cinema', name: 'P' });
+  const origX = s.x, origY = s.y;
+
+  // 正常な微小移動（10px 移動）は反映される
+  w.input('p1', { aim: 0, boost: false, x: origX + 10, y: origY });
+  assert.equal(s.x, origX + 10, '正常範囲の座標入力は反映される');
+
+  // 異常なテレポート（1000px 先）は棄却される
+  const currentX = s.x;
+  w.input('p1', { aim: 0, boost: false, x: currentX + 1000, y: origY });
+  assert.equal(s.x, currentX, '異常な距離のテレポートは棄却される');
+
+  // エリア外の座標も棄却される
+  w.input('p1', { aim: 0, boost: false, x: w.arena.bb.x1 + 900, y: w.arena.bb.y1 + 900 });
+  assert.equal(s.x, currentX, 'エリア外の座標は棄却される');
+  w.destroy();
+}
+
+// 9. 自機 (me) の3段階スナップショット補正
+{
+  const c = createWorld({ map: chofu, authority: false });
+  const me = c.addPlayer({ nid: 'me', sharkId: 'cinema', name: 'ME' });
+  me.x = 500; me.y = 500; me.ex = 0; me.ey = 0;
+
+  // ① デッドゾーン (< 25px): 微小な遅れによる差は補正せずジッターゼロ (ex=0, ey=0)
+  c.applySnapshot({
+    t: 'snap',
+    s: [[me.nid, 515, 510, me.angle, me.mass, 1]],
+  }, 'me');
+  assert.equal(me.ex, 0, 'デッドゾーン内では ex=0');
+  assert.equal(me.ey, 0, 'デッドゾーン内では ey=0');
+  assert.equal(me.x, 500, 'クライアント座標は維持される');
+
+  // ② 累積微小誤差 (25px <= d < 120px): 緩やかに溶かすため微小な ex/ey が設定される
+  c.applySnapshot({
+    t: 'snap',
+    s: [[me.nid, 550, 500, me.angle, me.mass, 1]],
+  }, 'me');
+  assert.ok(me.ex > 0 && me.ex <= 50 * 0.3, `累積誤差では緩やかな ex が設定される: ${me.ex}`);
+  assert.equal(me.x, 500, '即時ワープはしない');
+
+  // ③ 致命的ずれ (d >= 120px): 即座にスナップ補正
+  c.applySnapshot({
+    t: 'snap',
+    s: [[me.nid, 800, 500, me.angle, me.mass, 1]],
+  }, 'me');
+  assert.equal(me.x, 800, '致命的なずれでは即時スナップされる');
+  assert.equal(me.ex, 0, 'スナップ後は ex=0');
+  c.destroy();
+}
+
+// ---------------------------------------------------------------------------
+// 10. 攻撃的なボット。
+//
+// 衝突はサイズ無関係（突っ込んだ側が死ぬ）なので、ボットは自分より大きい人にも
+// 仕掛けてよい。以前は「自分より小さい相手」しか狙わず、成長した人は永久に
+// 標的にならなかった。ここが戻ると審査の3分で誰も襲ってこない海になる
+{
+  const w = createWorld({ map: chofu });
+  const me = w.addPlayer({ nid: 'p1', sharkId: 'chofu', name: '人' });
+  const bot = w.addPlayer({ nid: 'b9', sharkId: 'chofu', name: '鮫', isBot: true });
+
+  // 湧き場所は毎回ランダムなので、壁が絡まない直線を探してそこへ並べる。
+  // 壁回避は狩りより優先なので、壁際で始めると「詰めない」が正しい答えになってしまう
+  let x0 = null, y0 = null;
+  for (let i = 0; i < 4000 && x0 === null; i++) {
+    const p = w.arena.spot();
+    let clear = true;
+    for (let d = -650; d <= 500 && clear; d += 50) clear = w.arena.inside(p.x + d, p.y);
+    if (clear) { x0 = p.x; y0 = p.y; }
+  }
+  assert.ok(x0 !== null, '壁の絡まない直線が見つからない');
+
+  // 人は右へ等速で逃げ、ボットは 500px 後ろ。人はボットの倍の質量（＝旧AIなら見向きもしない）。
+  // 素の速度は同じなので、ダッシュして追わない限り差は縮まらない
+  me.x = x0; me.y = y0;
+  bot.x = x0 - 500; bot.y = y0;
+  [me, bot].forEach((s) => { s.iframe = 0; s.path = [{ x: s.x, y: s.y }]; });
+  me.angle = me.aim = 0; me.mass = bot.mass * 2;
+  bot.angle = bot.aim = 0;
+  bot.mood = 1; bot.moodT = 99;             // 狩る個体に固定（mood は毎回引き直される）
+
+  const d0 = Math.hypot(me.x - bot.x, me.y - bot.y);
+  // 餌は毎回空にする。残しておくと「たまたま人の近くの餌へ寄った」でも通ってしまい、
+  // 狩っているのか餌を拾っているのか区別できない
+  for (let i = 0; i < 30; i++) { w.food.length = 0; me.aim = 0; me.boost = false; w.step(1 / 30); }
+  const d1 = Math.hypot(me.x - bot.x, me.y - bot.y);
+  assert.ok(d1 < d0 - 80, `ボットが人へ間合いを詰めていない: ${d0.toFixed(0)} → ${d1.toFixed(0)}`);
+  assert.ok(bot.boost, '間合い内でダッシュしていない（航跡＝キル帯を敷けない）');
+  // 餌ではなく人そのものへ向いていること
+  const off = Math.abs(((Math.atan2(me.y - bot.y, me.x - bot.x) - bot.aim + Math.PI) % (Math.PI * 2)
+    + Math.PI * 2) % (Math.PI * 2) - Math.PI);
+  assert.ok(off < 0.6, `ボットの狙いが人からずれている: ${(off * 57.3).toFixed(0)}°`);
+  w.destroy();
+}
+
+// 11. 狩る個体でも壁回避が最優先であること。
+//     獲物が壁の外側にいるとき、追ってエリアの外へ出てはいけない
+{
+  const w = createWorld({ map: chofu });
+  const bait = w.addPlayer({ nid: 'b8', sharkId: 'chofu', name: '囮', isBot: true });
+  const bot = w.addPlayer({ nid: 'b9', sharkId: 'chofu', name: '鮫', isBot: true });
+  bot.mood = 1; bot.moodT = 99; bot.iframe = 0;
+  bait.iframe = 0;
+  // 囮はエリア外へ置く。ボットは壁で死なず押し戻されるだけなので、そこに留まり続ける
+  bait.x = w.arena.bb.x1 + 600; bait.y = w.arena.bb.y1 + 600;
+  for (let i = 0; i < 300; i++) {
+    bait.x = w.arena.bb.x1 + 600; bait.y = w.arena.bb.y1 + 600;
+    w.step(1 / 30);
+  }
+  assert.ok(w.arena.inside(bot.x, bot.y), 'ボットが獲物を追って壁の外へ出た');
+  w.destroy();
+}
+
 console.log('sim ok');
+
