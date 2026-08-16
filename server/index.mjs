@@ -215,11 +215,16 @@ export async function serveStatic(req, res) {
       'cache-control': cacheFor(p),
     }).end(buf);
   } catch {
-    // 見つからない URL は index.html を返す（SPA）。中身は HTML なので毎回確かめさせる
-    try {
-      res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-cache' })
-        .end(await readFile(join(DIST, 'index.html')));
-    } catch { res.writeHead(404).end('build first: npm run build'); }
+    // 見つからない URL は index.html を返す（SPA）。中身は HTML なので毎回確かめさせる。
+    //
+    // 読んでから書く。writeHead() を .end() のレシーバに置くと、await readFile が
+    // 転ぶ前にヘッダが出てしまい、下の catch の writeHead が ERR_HTTP_HEADERS_SENT を
+    // 投げる。request ハンドラの中の未捕捉例外はプロセスを落とすので、dist が無い箱では
+    // 「知らない URL を誰か1人が叩くと全部屋の全員が切断される」になっていた。
+    let html;
+    try { html = await readFile(join(DIST, 'index.html')); }
+    catch { res.writeHead(404).end('build first: npm run build'); return; }
+    res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-cache' }).end(html);
   }
 }
 
