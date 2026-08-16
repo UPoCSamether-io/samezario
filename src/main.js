@@ -99,9 +99,29 @@ function startAttract() {
 function stopAttract() { attract?.stop(); attract = null; }
 startAttract();  // 起動時は show() を通らずタイトルが表示されている
 
+// ---------- 初回だけ挟む遊び方 ----------
+// 「ダッシュの航跡に触れたらカット」「サイズは無関係」という中核ルールは遊び方にしか
+// 書いていないのに、そこへはタイトルからしか行けなかった。はじめてのゲームスタートだけ
+// ロケ地選択の手前に挟んで、ルールを知らないまま開戦しないようにする。
+// 一度でも閉じたら印を付け、以後は今までどおりタイトル → ロケ地へ直行する。
+const howtoGo = $('#howto-go'), howtoGoLabel = $('#howto-go-label');
+
+/** 遊び方を閉じたあとの行き先。初回の寄り道なら読み終わりがそのまま次の一歩になる */
+function aimHowto(next) {
+  howtoGo.dataset.go = next;
+  howtoGoLabel.textContent = next === 'title' ? 'とじる' : 'ロケ地を選ぶ →';
+}
+
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-go]');
-  if (b) show(b.dataset.go);
+  if (!b) return;
+  let to = b.dataset.go;
+  // 横取りするのはタイトルの「ゲームスタート」だけ。リザルトの「ロケ地を変える」は
+  // すでに一度は通ったあとなので素通りさせる
+  if (to === 'map' && cur === 'title' && !save.seenHowto) { aimHowto('map'); to = 'howto'; }
+  else if (to === 'howto') aimHowto('title');   // メニューから開いた分は読み終えてもタイトルへ
+  if (b === howtoGo && !save.seenHowto) { save.seenHowto = true; persist(); }
+  show(to);
 });
 
 // ---------- サメのプレビュー ----------
