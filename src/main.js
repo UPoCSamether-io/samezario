@@ -317,9 +317,9 @@ function spotCard(m) {
         ${rubify(`｜一致度《いっちど》 ${rec.score}% ・ ${rec.shared ? 'シェア｜済《ず》み' : 'シェア｜未《み》'}`)}
       </div>` : ''}
       <button data-unlock="${m.id}"
-              class="mt-3 w-full bg-yellow text-ink ink-2 rounded hard-sm px-3 py-2 font-display font-extrabold text-sm
-                     flex items-center justify-center gap-1.5 transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
-        ${icon('photo_camera', '!text-lg')}${label}
+              class="mt-3 w-full bg-yellow text-ink ink-2 rounded hard-sm px-2.5 py-2 font-display font-extrabold text-[13px] sm:text-sm
+                     flex items-center justify-center gap-1.5 transition-transform hover:-translate-y-0.5 active:translate-y-0.5 whitespace-nowrap">
+        ${icon('photo_camera', '!text-lg shrink-0')}<span class="whitespace-nowrap">${label}</span>
       </button>
       <p class="mt-1.5 font-mono text-[10px] text-paper/45">${rubify(`｜現地《げんち》（｜半径《はんけい》${s.radius}m）で｜撮影《さつえい》してください`)}</p>
     </div>`;
@@ -420,12 +420,12 @@ function paintIdle(err = '') {
 
       <div class="mt-5 flex flex-col gap-3">
         <button class="btn primary" id="unlock-go"><div class="cap clapper-stripes"></div>
-          <div class="py-2.5 font-display font-extrabold text-lg flex items-center justify-center gap-2">
-            ${icon('photo_camera', '!text-2xl')}${done ? rubify('もう｜一度《いちど》｜撮《と》る') : rubify('｜写真《しゃしん》を｜撮《と》る')}
+          <div class="py-2.5 font-display font-extrabold text-base sm:text-lg flex items-center justify-center gap-2 whitespace-nowrap">
+            ${icon('photo_camera', '!text-2xl shrink-0')}<span class="whitespace-nowrap">${done ? rubify('もう｜一度《いちど》｜撮《と》る') : rubify('｜写真《しゃしん》を｜撮《と》る')}</span>
           </div></button>
         <a class="btn block text-center" href="${gmaps(s)}" target="_blank" rel="noopener">
           <div class="cap clapper-stripes"></div>
-          <div class="py-2 font-display font-bold text-sm">${rubify('｜地図《ちず》でスポットを｜開《ひら》く')}</div></a>
+          <div class="py-2 font-display font-bold text-sm whitespace-nowrap">${rubify('｜地図《ちず》でスポットを｜開《ひら》く')}</div></a>
       </div>
       <p class="mt-3 font-mono text-[10px] leading-relaxed text-ink/45">
         ${rubify('｜写真《しゃしん》は｜端末《たんまつ》の｜中《なか》だけで｜照合《しょうごう》し、どこにも｜送《おく》りません。｜位置情報《いちじょうほう》はこの｜判定《はんてい》にだけ｜使《つか》います。')}
@@ -496,8 +496,8 @@ function paintSuccess(r, gained) {
         <!-- シェアは何度でも押せる（加点だけがスポットごと1回）。押せなくすると、
              共有シートを取り違えて閉じた人がもう一度送る手立てを失う -->
         <button class="btn" id="unlock-share"><div class="cap clapper-stripes"></div>
-          <div class="py-2.5 font-display font-extrabold flex items-center justify-center gap-2">
-            ${icon('share', '!text-xl')}${rec?.shared ? rubify('もう｜一度《いちど》シェア') : `シェアして +${s.share}pt`}
+          <div class="py-2.5 font-display font-extrabold flex items-center justify-center gap-2 whitespace-nowrap">
+            ${icon('share', '!text-xl shrink-0')}<span class="whitespace-nowrap">${rec?.shared ? rubify('もう｜一度《いちど》シェア') : `シェアして +${s.share}pt`}</span>
           </div></button>
         ${shareNote ? `
         <p class="-mt-1 text-center text-[12px] leading-relaxed font-bold ${shareNote.ok ? 'text-teal-deep' : 'text-danger shake'}">

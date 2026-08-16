@@ -792,6 +792,7 @@ html:not(.kids-mode) rt {
 html.kids-mode ruby {
   ruby-align: center;
   ruby-position: over;
+  white-space: nowrap;
 }
 html.kids-mode rt {
   font-size: 0.58em;
@@ -799,5 +800,6 @@ html.kids-mode rt {
   line-height: 1;
   letter-spacing: 0;
   user-select: none;
+  white-space: nowrap;
 }
 
