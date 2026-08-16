@@ -6,7 +6,7 @@
 export const SHARKS = [
   {
     id: 'cinema',
-    name: '映画サメ',
+    name: '｜映画《えいが》サメ',
     en: 'CINEMA',
     tag: 'バランス',
     color: '#3f6fb5', accent: '#8fb6e8',
