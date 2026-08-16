@@ -1,7 +1,7 @@
 import { SHARKS, MAPS, TIPS } from './data.js';
 import { startGame } from './game.js';
 import { connect } from './net.js';
-import { centroidOfPath } from './geo.js';
+import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
 import { save, persist, isUnlocked, isCleared, clearSpot, markShared } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
@@ -100,9 +100,29 @@ function startAttract() {
 function stopAttract() { attract?.stop(); attract = null; }
 startAttract();  // 起動時は show() を通らずタイトルが表示されている
 
+// ---------- 初回だけ挟む遊び方 ----------
+// 「ダッシュの航跡に触れたらカット」「サイズは無関係」という中核ルールは遊び方にしか
+// 書いていないのに、そこへはタイトルからしか行けなかった。はじめてのゲームスタートだけ
+// ロケ地選択の手前に挟んで、ルールを知らないまま開戦しないようにする。
+// 一度でも閉じたら印を付け、以後は今までどおりタイトル → ロケ地へ直行する。
+const howtoGo = $('#howto-go'), howtoGoLabel = $('#howto-go-label');
+
+/** 遊び方を閉じたあとの行き先。初回の寄り道なら読み終わりがそのまま次の一歩になる */
+function aimHowto(next) {
+  howtoGo.dataset.go = next;
+  howtoGoLabel.textContent = next === 'title' ? 'とじる' : 'ロケ地を選ぶ →';
+}
+
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-go]');
-  if (b) show(b.dataset.go);
+  if (!b) return;
+  let to = b.dataset.go;
+  // 横取りするのはタイトルの「ゲームスタート」だけ。リザルトの「ロケ地を変える」は
+  // すでに一度は通ったあとなので素通りさせる
+  if (to === 'map' && cur === 'title' && !save.seenHowto) { aimHowto('map'); to = 'howto'; }
+  else if (to === 'howto') aimHowto('title');   // メニューから開いた分は読み終えてもタイトルへ
+  if (b === howtoGo && !save.seenHowto) { save.seenHowto = true; persist(); }
+  show(to);
 });
 
 // ---------- サメのプレビュー ----------
@@ -162,13 +182,16 @@ function dimmed(hex) {
 // 小さい画面で名前を消して鍵だけ残すと中心から外れて見えるため。
 // 名前が消える画面では鍵を重心そのものへ寄せる
 const LABEL_DY = -22, LOCK_DY = 26;
+// ただし多摩川のような細長いエリアでは、重心の 22px 上がもう隣のエリアの中になる。
+// ずらした先が輪郭の外なら重心そのものへ戻す（名前や鍵が他所の海に浮かないように）
+const offsetIn = (m, cen, dy) => (insidePath(m.path, cen.x, cen.y + dy) ? dy : 0);
 // 条件は style.css の .map-label を消すブロックと一字一句そろえること
 const compactMap = matchMedia('(max-height: 500px)');
 
 /** 鍵の高さを決める。名前が出ているときはその下、消えているときは重心の上 */
 function placeLocks() {
   $$('.map-lock').forEach((lk) => {
-    lk.setAttribute('y', +lk.dataset.cy + (compactMap.matches ? 0 : LOCK_DY));
+    lk.setAttribute('y', +lk.dataset.cy + (compactMap.matches ? 0 : +lk.dataset.dy));
   });
 }
 compactMap.addEventListener('change', placeLocks);
@@ -193,7 +216,7 @@ function renderMaps(keep = null) {
 
     const t = svgEl('text', {
       class: 'map-label' + (open ? '' : ' locked'),
-      x: cen.x, y: cen.y + LABEL_DY,
+      x: cen.x, y: cen.y + offsetIn(m, cen, LABEL_DY),
     });
     t.textContent = m.name;
     labels.appendChild(t);
@@ -202,6 +225,7 @@ function renderMaps(keep = null) {
     if (!open) {
       const lock = svgEl('text', { class: 'map-lock', x: cen.x });
       lock.dataset.cy = cen.y;      // y は placeLocks が画面に合わせて決める
+      lock.dataset.dy = offsetIn(m, cen, LOCK_DY);
       lock.textContent = 'lock';
       labels.appendChild(lock);
     }

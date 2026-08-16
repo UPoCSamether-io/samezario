@@ -7,14 +7,16 @@
 // 判定をサーバへ移したら replace() にサーバの返したスナップショットを渡せばよく、
 // 呼び出し側は変わらない。
 //
-// shark / name / best は進捗ではなく「前回の選択」なので、main.js が直接書いて persist()
-// する（従来どおり）。混ぜないよう、この2系統だけは意識して分けてある。
+// shark / name / best / seenHowto は進捗ではなく「前回の選択」や既読の印なので、
+// main.js が直接書いて persist() する（従来どおり）。混ぜないよう、この2系統だけは意識して分けてある。
 
 import { SHARKS } from './data.js';
 
 const KEY = 'samezario.save';   // index.html のタイトル用インラインスクリプトも同じキーを読む
 
 // v は将来スキーマを変えたとき、壊れた古いキャッシュを捨てるための版。
+// 項目を足すだけなら上げない。read() が版違いを丸ごと捨てるので、上げると
+// 解放もポイントも消える（足りない項目は下の Object.assign が既定値で埋める）。
 // spots[spotId] = { at, score, shared }
 const createDefaults = () => ({
   v: 1,
@@ -24,6 +26,7 @@ const createDefaults = () => ({
   name: '',
   points: 0,
   spots: {},
+  seenHowto: false,   // 遊び方を一度でも閉じたか。初回だけ自動で挟むための印
 });
 
 const DEFAULTS = createDefaults();

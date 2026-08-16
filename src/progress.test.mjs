@@ -74,4 +74,17 @@ assert.deepEqual([...save.unlocked].sort(), [...new Set([...opened, 'chofu'])].s
   assert.deepEqual(mod.save.unlocked, ['chofu']);
 }
 
+// 遊び方の既読。初回だけ自動で挟むかの判断がこれ1つに乗っているので、
+// 既定が「未読」であることと、書いたら残ることを見る（書き手は main.js）
+{
+  store['samezario.save'] = JSON.stringify({ v: 1, points: 7, unlocked: ['chofu'] });
+  const mod = await import('./progress.js?v=no-howto-field');
+  assert.equal(mod.save.seenHowto, false, '既定は未読');
+  assert.equal(mod.save.points, 7, '項目を足しただけで古いセーブを捨てない');
+
+  mod.save.seenHowto = true;
+  mod.persist();
+  assert.equal(JSON.parse(store['samezario.save']).seenHowto, true);
+}
+
 console.log('progress ok');
