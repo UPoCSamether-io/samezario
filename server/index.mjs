@@ -12,7 +12,7 @@
 // Render を2往復していたのが、今は1往復で閉じる。
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { MAPS } from '../src/data.js';
@@ -203,7 +203,8 @@ const cacheFor = (p) =>
       : 'public, max-age=86400');
 
 export async function serveStatic(req, res) {
-  const p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+  // URL paths always use forward slashes, including when the server runs on Windows.
+  const p = posix.normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
   if (p === '/health') { res.writeHead(200, { 'content-type': 'text/plain' }).end('OK'); return; }
   if (p.includes('..')) { res.writeHead(403).end(); return; }
   const file = join(DIST, p === '/' ? 'index.html' : p);
