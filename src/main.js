@@ -394,7 +394,7 @@ function paintStep(step) {
     <div class="p-8 max-sm:p-5 text-center">
       <div class="relative w-16 h-16 mx-auto">
         <div class="absolute inset-0 rounded-full ink-3" style="animation:spin 1.8s linear infinite;
-             background:conic-gradient(from 0deg,#2a7b7c 0 25%,#1b5a5b 0 50%,#2a7b7c 0 75%,#1b5a5b 0)"></div>
+             background:conic-gradient(from 0deg,var(--color-teal) 0 25%,var(--color-teal-deep) 0 50%,var(--color-teal) 0 75%,var(--color-teal-deep) 0)"></div>
         <div class="absolute inset-0 grid place-items-center text-paper">${icon(ico, '!text-2xl')}</div>
       </div>
       <p class="mt-4 font-display font-extrabold text-lg">${text}…</p>
@@ -476,6 +476,8 @@ async function go() {
     clearSpot(m, r.score);
     renderMaps(m);          // 鍵が外れた地図に描き直す（パネルの裏で済ませておく）
     paintSuccess(r, save.points - before);
+  } catch {
+    paintIdle('判定できませんでした。もう一度お試しください。');
   } finally {
     running = false;
   }
