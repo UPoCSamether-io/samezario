@@ -119,14 +119,14 @@ export function locate(timeout = 8000) {
 const fail = (code) => Object.assign(new Error(code), { code });
 
 /**
- * 長辺 MAX_EDGE へ縮めて JPEG に統一する。
+ * 長辺 maxEdge へ縮めて向きを焼き込んだ canvas を作る。normalize と photoHash の共通処理。
  * EXIF の回転をここで焼き込むのが肝。iPhone の縦持ち写真は「横向きの画素 + 回転フラグ」で
  * 保存されるので、素の drawImage だと基準画像と90度ずれてハッシュがまったく合わない
  * （docs/07 4.3。この案件で最も多い事故）。
  */
-export async function normalize(blob) {
+async function toCanvas(blob, maxEdge = MAX_EDGE) {
   const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-  const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
+  const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
   const w = Math.max(1, Math.round(bmp.width * scale));
   const h = Math.max(1, Math.round(bmp.height * scale));
   const canvas = document.createElement('canvas');
@@ -136,6 +136,12 @@ export async function normalize(blob) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bmp, 0, 0, w, h);
   bmp.close();
+  return canvas;
+}
+
+/** 長辺 MAX_EDGE へ縮めて JPEG に統一する（サーバへ送る用）。 */
+export async function normalize(blob) {
+  const canvas = await toCanvas(blob);
   const out = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', JPEG_Q));
   if (!out) throw fail('BAD_IMAGE');
   return out;   // 実測でおおむね 150〜350KB
@@ -143,17 +149,17 @@ export async function normalize(blob) {
 
 /**
  * 写真 → 64bit dHash。基準画像も必ずこの関数を通すこと（hash-lab.html も同じ道を通る）。
- * 正規化の経路が撮影側と基準側でずれると、同じ被写体でも一致しなくなる。
+ * normalize() が作る JPEG は送信用で、ハッシュ化には要らない回り道（エンコード→デコード）
+ * になるので、toCanvas() の結果から直接 9×8 に縮めて読む。
  */
 export async function photoHash(blob) {
-  const bmp = await createImageBitmap(await normalize(blob), { imageOrientation: 'from-image' });
+  const src = await toCanvas(blob);
   const canvas = document.createElement('canvas');
   canvas.width = HASH_W; canvas.height = HASH_H;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(bmp, 0, 0, HASH_W, HASH_H);
-  bmp.close();
+  ctx.drawImage(src, 0, 0, HASH_W, HASH_H);
 
   const { data } = ctx.getImageData(0, 0, HASH_W, HASH_H);
   const gray = new Float64Array(HASH_W * HASH_H);
@@ -194,6 +200,9 @@ export async function verifyPhoto(spot, photo, pos) {
   const hash = await photoHash(photo);
   const refs = (spot.hashes || []).map(fromHex);
   const { ok, dist, blind } = matchAny(hash, refs, spot.threshold);
+  // 基準写真が空のスポットは位置だけで通ってしまう「blind」状態。本番前に気づけるよう
+  // コンソールに残す（data.js に hashes を足せばこの分岐は自然に出なくなる）
+  if (blind) console.warn(`[verify] ${spot.id}: 基準写真が未登録のため位置のみで判定しました`);
   return ok
     ? { ok: true, score: blind ? 100 : matchScore(dist), blind }
     : { ok: false, code: 'NO_MATCH', score: matchScore(dist) };
@@ -227,9 +236,16 @@ export async function runUnlock(spot, onStep = () => {}) {
   }
 }
 
-/** 失敗の理由を、次に何をすればいいか分かる日本語にする */
+/**
+ * 失敗の理由を、次に何をすればいいか分かる日本語にする。
+ * CANCELLED（撮影を開かず戻った）は異常系ではないので、呼び出し側はそもそも
+ * explain() を呼ばずに静かに前の画面へ戻すのが本来だが、誤って呼ばれても
+ * 「失敗」扱いのメッセージを出さないよう空文字を返す。
+ */
 export function explain(r) {
   switch (r.code) {
+    case 'CANCELLED':
+      return '';
     case 'TOO_FAR':
       return `スポットまであと約 ${r.meters}m。もう少し近づいてから撮ってください。`;
     case 'NO_MATCH':

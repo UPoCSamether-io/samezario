@@ -9,24 +9,26 @@
        4. 「data.js に貼る」の中身を src/data.js の該当スポットの hashes / threshold へ写す
      照合本体と同じ /src/verify.js の photoHash を通すので、正規化の経路がずれない
      （経路がずれると同じ被写体でも一致しなくなる。docs/07 4.3）。
-     dist には入らない（vite の入口は index.html だけ） -->
+     dist には入らない（vite の入口は index.html だけ）が、`npm run dev` の Vite サーバは
+     通すので src/style.css の @theme を読み込んで色を借りられる（色の直書きをしないため）。 -->
 
+<link rel="stylesheet" href="/src/style.css">
 <style>
-  body { background: #f4efea; color: #2d2d2d; font: 14px/1.6 system-ui, sans-serif; margin: 0; padding: 24px; }
+  body { background: var(--color-paper); color: var(--color-ink); font: 14px/1.6 system-ui, sans-serif; margin: 0; padding: 24px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
-  p.lead { margin: 0 0 16px; color: #2d2d2daa; }
-  #drop { border: 4px dashed #2d2d2d55; border-radius: 12px; padding: 28px; text-align: center; cursor: pointer; }
-  #drop.over { border-color: #2a7b7c; background: #2a7b7c12; }
+  p.lead { margin: 0 0 16px; color: color-mix(in srgb, var(--color-ink) 67%, transparent); }
+  #drop { border: 4px dashed color-mix(in srgb, var(--color-ink) 33%, transparent); border-radius: 12px; padding: 28px; text-align: center; cursor: pointer; }
+  #drop.over { border-color: var(--color-teal); background: color-mix(in srgb, var(--color-teal) 7%, transparent); }
   table { border-collapse: collapse; margin-top: 20px; width: 100%; }
-  th, td { border: 2px solid #2d2d2d; padding: 4px 8px; text-align: left; vertical-align: middle; }
-  th { background: #2d2d2d; color: #f4efea; font-size: 12px; letter-spacing: .08em; }
-  td.num { font: 700 13px "Space Grotesk", monospace; text-align: right; }
-  img.thumb { width: 64px; height: 48px; object-fit: cover; border: 2px solid #2d2d2d; display: block; }
-  code { font: 700 13px "Space Grotesk", monospace; }
-  .ok { background: #2a7b7c22; } .ng { background: #ba1a1a18; }
-  button.tag { font: 700 13px monospace; border: 2px solid #2d2d2d; background: #f4efea; cursor: pointer; padding: 2px 8px; }
-  #matrix td { font: 12px "Space Grotesk", monospace; text-align: right; padding: 2px 6px; }
-  #out { white-space: pre-wrap; background: #213052; color: #f4efea; padding: 14px; border-radius: 8px; margin-top: 12px; }
+  th, td { border: 2px solid var(--color-ink); padding: 4px 8px; text-align: left; vertical-align: middle; }
+  th { background: var(--color-ink); color: var(--color-paper); font-size: 12px; letter-spacing: .08em; }
+  td.num { font: 700 13px var(--font-mono); text-align: right; }
+  img.thumb { width: 64px; height: 48px; object-fit: cover; border: 2px solid var(--color-ink); display: block; }
+  code { font: 700 13px var(--font-mono); }
+  .ok { background: color-mix(in srgb, var(--color-teal) 13%, transparent); } .ng { background: color-mix(in srgb, var(--color-danger) 9%, transparent); }
+  button.tag { font: 700 13px monospace; border: 2px solid var(--color-ink); background: var(--color-paper); cursor: pointer; padding: 2px 8px; }
+  #matrix td { font: 12px var(--font-mono); text-align: right; padding: 2px 6px; }
+  #out { white-space: pre-wrap; background: var(--color-navy); color: var(--color-paper); padding: 14px; border-radius: 8px; margin-top: 12px; }
   .verdict { font-weight: 700; }
 </style>
 
@@ -57,10 +59,14 @@ for (const [ev, fn] of [
 ]) $('#drop').addEventListener(ev, fn);
 
 async function add(files) {
+  const skipped = [];
   for (const f of files) {
-    if (!f.type.startsWith('image/')) continue;
+    if (!f.type.startsWith('image/')) { skipped.push(f.name); continue; }
     shots.push({ name: f.name, url: URL.createObjectURL(f), hash: await photoHash(f), good: true });
   }
+  // MIME が image/ で始まらないファイル（.heic の再エクスポートなど）は取り込めない。
+  // 黙って捨てると「入れたのに増えない」で気づけないので、その場で名指しする
+  if (skipped.length) alert(`画像として読めなかったので除外しました:\n${skipped.join('\n')}`);
   draw();
 }
 
@@ -77,22 +83,24 @@ function draw() {
   }
 
   $('#mtitle').hidden = shots.length < 2;
-  $('#matrix').innerHTML = shots.length < 2 ? '' :
-    `<tr><th></th>${shots.map((_, i) => `<th>${i + 1}</th>`).join('')}</tr>` + shots.map((a, i) => `
-      <tr><th>${i + 1} ${a.good ? '○' : '×'}</th>${shots.map((b) => {
-        const d = hamming(a.hash, b.hash);
-        const same = a.good === b.good;
-        return `<td style="background:${a === b ? '#ddd' : same && a.good ? '#2a7b7c22' : same ? '#fff' : '#ba1a1a18'}">${d}</td>`;
-      }).join('')}</tr>`).join('');
 
-  const good = shots.filter((s) => s.good), bad = shots.filter((s) => !s.good);
-  const pairs = (xs, ys, self) => {
-    const out = [];
-    xs.forEach((a, i) => ys.forEach((b, j) => { if (!self || i < j) out.push(hamming(a.hash, b.hash)); }));
-    return out;
-  };
-  const within = pairs(good, good, true);       // ○ 同士 = 同じ被写体の別撮影
-  const across = pairs(good, bad, false);       // ○×間 = 無関係な写真
+  // 行列の描画と ○同士/○×間 の集計を同じループの中で1回のhammingから作る。
+  // 別々に計算していると、判定グループの分け方を変えたときに片方だけ直し忘れる
+  const within = [], across = [];   // ○同士 = 同じ被写体の別撮影 / ○×間 = 無関係な写真
+  const rows = shots.map((a, i) => `
+      <tr><th>${i + 1} ${a.good ? '○' : '×'}</th>${shots.map((b, j) => {
+        const d = hamming(a.hash, b.hash);
+        if (i < j) {
+          if (a.good && b.good) within.push(d);
+          else if (a.good !== b.good) across.push(d);
+        }
+        const same = a.good === b.good;
+        return `<td style="background:${i === j ? '#ddd' : same && a.good ? 'color-mix(in srgb, var(--color-teal) 13%, transparent)' : same ? '#fff' : 'color-mix(in srgb, var(--color-danger) 9%, transparent)'}">${d}</td>`;
+      }).join('')}</tr>`).join('');
+  $('#matrix').innerHTML = shots.length < 2 ? '' :
+    `<tr><th></th>${shots.map((_, i) => `<th>${i + 1}</th>`).join('')}</tr>` + rows;
+
+  const good = shots.filter((s) => s.good);
   const hi = within.length ? Math.max(...within) : null;
   const lo = across.length ? Math.min(...across) : null;
 
