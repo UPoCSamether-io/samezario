@@ -349,7 +349,17 @@ for (const map of MAPS) {
   const nearBot = w.addPlayer({ nid: 'b_near', sharkId: 'chofu', name: '近鮫', isBot: true });
   const hunter = w.addPlayer({ nid: 'b_hunter', sharkId: 'chofu', name: '狩鮫', isBot: true });
 
-  const cx = w.arena.home.x, cy = w.arena.home.y;
+  // 壁回避が絡まない十分な広さのある点を探す
+  let cx = null, cy = null;
+  for (let i = 0; i < 4000 && cx === null; i++) {
+    const p = w.arena.spot();
+    let clear = true;
+    for (let d = -500; d <= 500 && clear; d += 50) {
+      if (!w.arena.inside(p.x + d, p.y) || !w.arena.inside(p.x, p.y + d)) clear = false;
+    }
+    if (clear) { cx = p.x; cy = p.y; }
+  }
+  cx = cx ?? w.arena.home.x; cy = cy ?? w.arena.home.y;
   hunter.x = cx; hunter.y = cy; hunter.angle = 0; hunter.aim = 0; hunter.mood = 1; hunter.moodT = 99; hunter.iframe = 0;
   // 近いボット（距離300、X軸方向）
   nearBot.x = cx + 300; nearBot.y = cy; nearBot.angle = 0; nearBot.aim = 0; nearBot.mass = 50; nearBot.iframe = 0;
@@ -376,7 +386,16 @@ for (const map of MAPS) {
   const smallTarget = w.addPlayer({ nid: 'p_target', sharkId: 'chofu', name: '標的', isBot: false });
   const hunter = w.addPlayer({ nid: 'b_hunter2', sharkId: 'chofu', name: '狩鮫2', isBot: true });
 
-  const cx = w.arena.home.x, cy = w.arena.home.y;
+  let cx = null, cy = null;
+  for (let i = 0; i < 4000 && cx === null; i++) {
+    const p = w.arena.spot();
+    let clear = true;
+    for (let d = -500; d <= 500 && clear; d += 50) {
+      if (!w.arena.inside(p.x + d, p.y) || !w.arena.inside(p.x, p.y + d)) clear = false;
+    }
+    if (clear) { cx = p.x; cy = p.y; }
+  }
+  cx = cx ?? w.arena.home.x; cy = cy ?? w.arena.home.y;
   hunter.x = cx; hunter.y = cy; hunter.mood = 1; hunter.moodT = 99; hunter.iframe = 0;
   smallTarget.x = cx + 400; smallTarget.y = cy; smallTarget.mass = 50; smallTarget.iframe = 0; // HUNT_DASH(520) 内
 
