@@ -603,6 +603,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   }
 }
 
+/* スキルのアイコン。.material-symbols-rounded の 1.75rem を上書きするだけなので
+   text-* ユーティリティではなくここで持つ（上の Google フォントのコメントと同じ理由）。
+   クラスだと画面が短いときの縮小を !important 合戦にしないと書けない */
+#hud-skill-icon { font-size: 34px; }
+
 /* 横持ちスマホ。固定幅のままだと 300+250+ミニマップ150 が画面幅の半分を食う。
    幅ではなく coarse+高さで見るのは、横持ちスマホが「幅広・縦短」だから。
    667/844/932 はどれも 640px を超えるので、幅条件では一度も発動しない
@@ -673,6 +678,15 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 @media (pointer: coarse) and (max-height: 500px) {
   #hud-skill, #hud-dash { width: 84px; height: 84px; }
   #hud-actions > #hud-skill { margin-bottom: 2.5rem; }
+
+  /* 84px のボタンで中身に使えるのは 84 − 枠8 − 帯24 = 52.2px。
+     34px のアイコン + 11px の名前では、名前が幅 76px に収まらず2行になり
+     （スポットライト 27.6px、急流ブースト 33.6px）、合計 67〜73px が
+     overflow-hidden に切られていた（実測 844x390）。ふりがなで 19.8px に
+     伸びた「旋回飛行」は1行でも溢れる。
+     名前を1行に収まる大きさまで落とし、その分アイコンも一段小さくする */
+  #hud-skill-icon { font-size: 24px; }
+  #hud-skill-name { font-size: 10px; padding: 0; }
 }
 
 /* 縦持ちガード。.io 系は左右の視界が生命線で、縦だと横からの寄りに反応できない。
