@@ -34,9 +34,12 @@ const safeSend = (ws, msg) => {
 function setupClient(c) {
   clearInterval(c.beat);
   c.alive = false;
+  c.last = 0;                 // 再接続をまたぐ穴は「サーバが固まった」ではないので間隔に混ぜない
+  c.reconnectAt = c.joined ? Date.now() : 0;
   const ws = new WebSocket(URL_);
   c.ws = ws;
   ws.on('error', (e) => { c.err = e.message; });
+  ws.on('close', () => { c.bytesPrev += ws._socket?.bytesRead ?? 0; });
   ws.on('open', () => {
     safeSend(ws, JSON.stringify({
       t: 'join', map: c.map, shark: SHARKS[c.i % SHARKS.length], name: 'L' + c.i,
@@ -48,6 +51,7 @@ function setupClient(c) {
     try { m = JSON.parse(raw); } catch { return; }
     if (m.t === 'hello') {
       c.nid = m.id;
+      if (c.reconnectAt) c.rejoins.push(Date.now() - c.reconnectAt);
       c.joined = Date.now();
       c.alive = true;
       clearInterval(c.beat);
@@ -107,14 +111,19 @@ function setupClient(c) {
   });
 }
 
+// 入退室を繰り返す係。この子たちの受信レートは当然痩せるので、盤面の重さを測る
+// 母集団からは外し、代わりに「入り直すのに何秒かかったか」を出す。
+const CHURN_MS = Number(arg('churn-ms', 0));
+const CHURN_FROM = CHURN_MS ? Math.max(1, Math.round(N * 0.75)) : N;
+
 for (let i = 0; i < N; i++) {
   const mapKey = MAP_KEYS[i % MAP_KEYS.length];
   const arena = arenas.get(mapKey) || arenas.get('chofu');
   const c = {
-    i, map: mapKey, arena,
+    i, map: mapKey, arena, churn: i >= CHURN_FROM,
     x: arena.home.x, y: arena.home.y, angle: Math.random() * 6.28,
-    snaps: 0, bytes: 0, gaps: [], last: 0, joined: 0, err: null,
-    alive: false, deaths: 0, rejoining: false,
+    snaps: 0, bytesPrev: 0, gaps: [], last: 0, joined: 0, err: null,
+    alive: false, deaths: 0, rejoining: false, rejoins: [], reconnectAt: 0,
   };
   clients.push(c);
   setupClient(c);
@@ -126,7 +135,10 @@ for (let i = 0; i < 30 && clients.filter((c) => c.joined).length < N; i++) {
 }
 await new Promise((r) => setTimeout(r, 1500));
 const live = clients.filter((c) => c.joined && c.ws.readyState === 1 && c.ws._socket);
-for (const c of live) { c.snaps = 0; c.gaps = []; c.base = c.ws._socket.bytesRead; }
+for (const c of live) {
+  c.snaps = 0; c.gaps = []; c.rejoins = [];
+  c.bytesPrev = -c.ws._socket.bytesRead;   // 以降 close のたびに加算されるので、開始時点を0に合わせる
+}
 
 const t0 = Date.now();
 let aliveSamples = [];
@@ -134,15 +146,27 @@ const sampler = setInterval(() => {
   aliveSamples.push(live.filter((c) => c.alive).length);
 }, 500);
 
+const churners = live.filter((c) => c.churn);
+const churn = CHURN_MS && churners.length ? setInterval(() => {
+  const c = churners[Math.floor(Math.random() * churners.length)];
+  if (c.rejoining) return;
+  clearInterval(c.beat);
+  try { c.ws.close(); } catch {}
+  setupClient(c);
+}, CHURN_MS) : null;
+
 await new Promise((r) => setTimeout(r, SECONDS * 1000));
 clearInterval(sampler);
+if (churn) clearInterval(churn);
 const dur = (Date.now() - t0) / 1000;
 
 for (const c of clients) { clearInterval(c.beat); c.ws.close(); }
 
-const rates = live.map((c) => c.snaps / dur).sort((a, b) => a - b);
-const gaps = live.flatMap((c) => c.gaps).sort((a, b) => a - b);
-const bytes = live.reduce((s, c) => s + ((c.ws._socket?.bytesRead ?? c.base) - c.base), 0);
+const steady = live.filter((c) => !c.churn);
+const rates = steady.map((c) => c.snaps / dur).sort((a, b) => a - b);
+const gaps = steady.flatMap((c) => c.gaps).sort((a, b) => a - b);
+const rejoins = live.flatMap((c) => c.rejoins).sort((a, b) => a - b);
+const bytes = live.reduce((s, c) => s + c.bytesPrev + (c.ws.readyState === 1 ? (c.ws._socket?.bytesRead ?? 0) : 0), 0);
 const failed = clients.length - live.length;
 const occupancy = {};
 for (const c of live) occupancy[c.room] = (occupancy[c.room] || 0) + 1;
@@ -159,7 +183,7 @@ console.log(`
 部屋        ${sizes.length}（人数の内訳 ${sizes.join('/')}）
 計測        ${f(dur)} 秒
 
-スナップショット受信レート（目標 15/s。落ちていれば盤面がスローになっている）
+スナップショット受信レート（居座り ${steady.length} 匹。目標 15/s。落ちていれば盤面がスローになっている）
   最悪      ${f(rates[0], 2)} /s
   下位5%    ${f(pct(rates, 0.05), 2)} /s
   中央      ${f(pct(rates, 0.5), 2)} /s
@@ -167,6 +191,9 @@ console.log(`
 配信間隔（目標 66ms。p99 と最大が「たまに固まる」）
   p50 ${f(pct(gaps, 0.5), 0)}ms   p95 ${f(pct(gaps, 0.95), 0)}ms   p99 ${f(pct(gaps, 0.99), 0)}ms   最大 ${f(gaps[gaps.length - 1], 0)}ms
 
+${rejoins.length ? `入り直し（close → hello。${rejoins.length} 回 / 入退室係 ${churners.length} 匹）
+  p50 ${f(pct(rejoins, 0.5), 0)}ms   p95 ${f(pct(rejoins, 0.95), 0)}ms   最大 ${f(rejoins[rejoins.length - 1], 0)}ms
+` : ''}
 帯域（TCP の実バイト＝回線に流れた量。AWS の外向きは月 100GB まで無料）
   1人あたり ${f(bytes / live.length / dur / 1024)} KB/s
   この人数で ${f((bytes / dur) * 3600 / 1024 / 1024 / 1024, 2)} GB/時
