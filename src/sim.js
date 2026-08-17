@@ -430,7 +430,11 @@ export function createWorld({ map, authority = true, diffs = false }) {
       for (const o of sharks) {
         if (o === s || !o.alive || o.iframe > 0) continue;
         let d2 = (o.x - s.x) ** 2 + (o.y - s.y) ** 2;
-        if (!o.isBot) d2 *= 0.25;        // 人は距離半分ぶん魅力的に見える
+        if (!o.isBot) {
+          // 小型(mass<=60)は1.0(ボットと同等)、成長(mass>=180)で0.25へ滑らかに補正
+          const t = clamp((o.mass - 60) / 120, 0, 1);
+          d2 *= 1.0 - t * 0.75;
+        }
         if (d2 < pd2) { pd2 = d2; prey = o; }
       }
     }

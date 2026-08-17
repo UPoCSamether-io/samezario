@@ -342,5 +342,34 @@ for (const map of MAPS) {
   w.destroy();
 }
 
+// 13. 小型プレイヤーへのヘイト緩和（スポーン保護）
+{
+  const w = createWorld({ map: chofu });
+  const smallHuman = w.addPlayer({ nid: 'p_small', sharkId: 'chofu', name: '小人', isBot: false });
+  const nearBot = w.addPlayer({ nid: 'b_near', sharkId: 'chofu', name: '近鮫', isBot: true });
+  const hunter = w.addPlayer({ nid: 'b_hunter', sharkId: 'chofu', name: '狩鮫', isBot: true });
+
+  const cx = w.arena.home.x, cy = w.arena.home.y;
+  hunter.x = cx; hunter.y = cy; hunter.angle = 0; hunter.aim = 0; hunter.mood = 1; hunter.moodT = 99; hunter.iframe = 0;
+  // 近いボット（距離300、X軸方向）
+  nearBot.x = cx + 300; nearBot.y = cy; nearBot.angle = 0; nearBot.aim = 0; nearBot.mass = 50; nearBot.iframe = 0;
+  // やや遠い小型人間（距離400、Y軸方向、mass=50）
+  smallHuman.x = cx; smallHuman.y = cy + 400; smallHuman.angle = 0; smallHuman.aim = 0; smallHuman.mass = 50; smallHuman.iframe = 0;
+
+  w.food.length = 0;
+  w.step(1 / 30);
+
+  // hunter の狙いが nearBot 方向（正のX軸、300px先）へ向いていること
+  assert.ok(hunter.aim !== undefined, 'hunter が行動していること');
+  assert.ok(Math.abs(hunter.aim) < 0.2, `hunter はより近いボットを優先して狙う（aim=${hunter.aim}）`);
+
+  // 成長した人間（mass=200）なら距離補正（0.25）が働き、より遠くても優先して狙うこと
+  smallHuman.mass = 200;
+  w.step(1 / 30);
+  assert.ok(hunter.aim > 0.5, `hunter は成長した人間を優先して狙う（aim=${hunter.aim}）`);
+  w.destroy();
+}
+
 console.log('sim ok');
+
 
