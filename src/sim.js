@@ -417,6 +417,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
   // ---------- ボットAI ----------
   const HUNT_R2 = 900 * 900;   // 狩りの間合い。二乗のまま比べる
   const HUNT_DASH = 520;       // ここまで寄ったらダッシュ＝航跡を相手の前に敷く
+  const SAFE_MASS = 120;       // 初心者保護の質量閾値
 
   function botThink(s, dt) {
     s.moodT -= dt;
@@ -431,9 +432,13 @@ export function createWorld({ map, authority = true, diffs = false }) {
         if (o === s || !o.alive || o.iframe > 0) continue;
         let d2 = (o.x - s.x) ** 2 + (o.y - s.y) ** 2;
         if (!o.isBot) {
-          // 小型(mass<=60)は1.0(ボットと同等)、成長(mass>=180)で0.25へ滑らかに補正
-          const t = clamp((o.mass - 60) / 120, 0, 1);
-          d2 *= 1.0 - t * 0.75;
+          // 初心者保護: SAFE_MASS(120)未満は距離4倍(見逃し)、成長(mass>=250)で0.25へ滑らかに補正
+          if (o.mass < SAFE_MASS) {
+            d2 *= 4.0;
+          } else {
+            const t = clamp((o.mass - SAFE_MASS) / 130, 0, 1);
+            d2 *= 1.0 - t * 0.75;
+          }
         }
         if (d2 < pd2) { pd2 = d2; prey = o; }
       }
@@ -469,8 +474,9 @@ export function createWorld({ map, authority = true, diffs = false }) {
     // ただし狩り中は間合いを詰める —— 190px で必ず逃げると、仕掛けた直後に
     // 自分から離れてしまい一度も刺せない。
     // 頭から4節は見ない：そこは当たっても死なない（resolve の衝突判定と同じ i=4）
-    const near = hunt ? 120 : 190;
-    const nearW = hunt ? 130 : 170;
+    const aggressiveHunt = hunt && (!prey || prey.mass >= SAFE_MASS);
+    const near = aggressiveHunt ? 120 : 190;
+    const nearW = aggressiveHunt ? 130 : 170;
     for (const o of sharks) {
       if (o === s || !o.alive) continue;
       if (Math.hypot(o.x - s.x, o.y - s.y) <= o.reach + near + 70) {
@@ -497,8 +503,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
     }
 
     s.aim = want;
-    // 獲物に寄ったらダッシュ。ただし小型の獲物（mass < 70）には急襲ダッシュやスキル連打を控えて手加減する
-    const aggressiveHunt = hunt && (!prey || prey.mass >= 70);
+    // 獲物に寄ったらダッシュ。ただし初心者・小型の獲物（mass < SAFE_MASS）には急襲ダッシュやスキル連打を控えて手加減する
     s.boost = !s.winded && (hunt ? (aggressiveHunt && hunt < HUNT_DASH) : s.mood > 0.9);
     // 追い詰めている間はスキルも切る（シネマの減速・多摩川の急流がそのまま決め手になる）
     if (s.cd <= 0 && Math.random() < (aggressiveHunt && hunt < HUNT_DASH ? 0.05 : 0.004)) world.useSkill(s);
