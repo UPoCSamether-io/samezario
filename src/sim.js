@@ -388,7 +388,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
   function die(s, killer, how) {
     s.alive = false;
     s.wake.length = 0;   // 死んだ本人の航跡が幽霊として残らないように
-    const cause = killer ? `${killer.name} の${how === 'wake' ? '航跡' : '胴体'}` : '外壁';
+    const cause = killer ? `${killer.name} の${how === 'wake' ? '泳いだ跡' : '胴体'}` : '外壁';
     events.push({ k: 'die', shark: s, cause });
     if (world.diffs) deaths.push([s.nid, cause]);
 

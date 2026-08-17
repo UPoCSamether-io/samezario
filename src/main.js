@@ -5,7 +5,7 @@ import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
 import { save, persist, isUnlocked, isCleared, clearSpot, markShared } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
-import { rubify, plainText, esc } from './ruby.js';
+import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
@@ -87,20 +87,10 @@ function paintTitleShark() {
   img.alt = plainText(selShark.name);
 }
 
-// ---------- こどもモード（ふりがな） ----------
-const kidsToggle = $('#kids-toggle');
-function applyKidsMode(on) {
-  document.documentElement.classList.toggle('kids-mode', on);
-  if (kidsToggle) kidsToggle.checked = on;
-}
-applyKidsMode(!!save.kids);
-if (kidsToggle) {
-  kidsToggle.addEventListener('change', (e) => {
-    save.kids = e.target.checked;
-    persist();
-    applyKidsMode(save.kids);
-  });
-}
+// ふりがなは常時表示。以前は「こどもモード」トグル（既定OFF）で出し分けていたが、
+// 既定が OFF だと読めない子には最初から読めず、設定を見つけて押せる子はそもそも
+// 読める、という順序の問題があった。rt は読める人の邪魔にならないサイズに抑える
+// （style.css の ruby / rt）ので、常に出しておくほうが目的に合う。
 
 // ---------- タイトル背面のデモ再生 ----------
 // 本編と同じ startGame を attract で回す。操作は受け付けず、主役が死んだら
@@ -126,7 +116,7 @@ const howtoGo = $('#howto-go'), howtoGoLabel = $('#howto-go-label');
 /** 遊び方を閉じたあとの行き先。初回の寄り道なら読み終わりがそのまま次の一歩になる */
 function aimHowto(next) {
   howtoGo.dataset.go = next;
-  howtoGoLabel.innerHTML = next === 'title' ? 'とじる' : rubify('｜ロケ地《ろけち》を｜選《えら》ぶ →');
+  howtoGoLabel.innerHTML = next === 'title' ? 'とじる' : rubify('ロケ｜地《ち》を｜選《えら》ぶ →');
 }
 
 document.addEventListener('click', (e) => {
@@ -155,11 +145,7 @@ function tickPreviews(t) {
     const dpr = Math.min(2, devicePixelRatio || 1);
     const w = c.clientWidth, h = c.clientHeight;
     if (!w || !h) continue;
-    // 高さも見ること。幅だけ比べていると、幅が変わらず高さだけ変わったとき
-    // （立ち絵の枠は横幅が親いっぱいで、縦だけレイアウトで動く）バッキングストアが
-    // 古い高さのまま残る。CSS 側の箱に合わせて引き伸ばされてサメが潰れ、
-    // さらに clearRect が w×h ぶんしか消さないので、はみ出した部分に前の絵が
-    // 焼き付いて消えなくなる（実機で「タスクを終了するまで直らない」状態）
+    // 高さも見ること。
     if (c.width !== w * dpr || c.height !== h * dpr) { c.width = w * dpr; c.height = h * dpr; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
@@ -204,13 +190,11 @@ const offsetIn = (m, cen, dy) => (insidePath(m.path, cen.x, cen.y + dy) ? dy : 0
 // 条件は style.css の .map-label を消すブロックと一字一句そろえること
 const compactMap = matchMedia('(max-height: 500px)');
 
-/** 鍵の高さを決める。名前が出ているときはその下、消えているときは重心の上 */
 function placeLocks() {
   $$('.map-lock').forEach((lk) => {
     lk.setAttribute('y', +lk.dataset.cy + (compactMap.matches ? 0 : +lk.dataset.dy));
   });
 }
-compactMap.addEventListener('change', placeLocks);
 
 /** 地図を描き直す。keep を渡すとそのエリアを選んだままにする（解放直後に使う） */
 function renderMaps(keep = null) {
@@ -223,13 +207,24 @@ function renderMaps(keep = null) {
       d: m.path, fill: open ? m.color : dimmed(m.color), tabindex: '0', role: 'radio',
       'aria-label': `${plainText(m.name)}${open ? '' : '（未解放）'}`,
     });
-    // フォーカス＝選択。Tab で回すと情報パネルが追いかけるので、
-    // キーボードにも「今どこを見ているか」が選択リングだけで伝わる
     p.onclick = p.onfocus = () => selectMap(m);
     areas.appendChild(p);
 
     const cen = centroidOfPath(m.path);
 
+    // ふりがな。SVG <text> は <ruby> を持てないので、読みを別の <text> として
+    // エリア名の上に置く。ルビ記法が無い名前は読みが名前と同じになるので出さない
+    const kana = kanaText(m.name);
+    if (kana !== plainText(m.name)) {
+      const r = svgEl('text', {
+        class: 'map-ruby' + (open ? '' : ' locked'),
+        x: cen.x, y: cen.y + offsetIn(m, cen, LABEL_DY) - 26,
+      });
+      r.textContent = kana;
+      labels.appendChild(r);
+    }
+
+    // エリア名ラベル
     const t = svgEl('text', {
       class: 'map-label' + (open ? '' : ' locked'),
       x: cen.x, y: cen.y + offsetIn(m, cen, LABEL_DY),
@@ -237,7 +232,7 @@ function renderMaps(keep = null) {
     t.textContent = plainText(m.name);
     labels.appendChild(t);
 
-    // 未解放マークの南京錠。ラベルは text-anchor:middle で幅が読めないので、横ではなく真下に置く
+    // 未解放マークの南京錠。
     if (!open) {
       const lock = svgEl('text', { class: 'map-lock', x: cen.x });
       lock.dataset.cy = cen.y;      // y は placeLocks が画面に合わせて決める
@@ -254,14 +249,14 @@ function selectMap(m) {
   selMap = m;
   const open = isUnlocked(m);
   $$('.map-area').forEach((n, i) => n.setAttribute('aria-checked', MAPS[i] === m));
-  // 選択リングは別レイヤ。隣のエリアの下に潜らせないため、塗りより上に重ねて描く
+  // 選択リングは別レイヤ。
   $('#map-ring').setAttribute('d', m.path);
   $('#map-next').disabled = !open;
   // 押せない理由をボタン自身に出す。ラベルが「サメ選択 →」のままだと袋小路に見える。
   // 長い文言は折り返してボタンが伸び、ツールバーごと下の地図を押し下げていた
   // （実測 667x375 で3行・56→76px・地図が 20px 縮んでずれる）。
   // 短くしたうえで style.css 側で nowrap にし、行数を常に1に固定する
-  $('#map-next-label').innerHTML = open ? rubify('｜サメ選択《さめせんたく》 →') : rubify('まだ｜遊《あそ》べません');
+  $('#map-next-label').innerHTML = open ? rubify('サメ｜選択《せんたく》 →') : rubify('まだ｜遊《あそ》べません');
   // 並びは重要な順。パネルは横持ちで本文 197px しか映らず（実測 844x390）、下に置いたものは
   // 読まれない。従来の順（blurb → HISTORY）だと史実が丸ごと折り返しの下に沈んでいた。
   // 史実とロック解除の導線がこの画面の主役、blurb は雰囲気づけなので最後に回す
@@ -591,10 +586,10 @@ let selShark = SHARKS.find((s) => s.id === save.shark) || SHARKS[0];
 paintTitleShark();   // 起動直後のタイトルは show() を通らないのでここで描く
 
 const STAT_KEYS = [
-  ['スピード', (d) => d.speed],
-  ['旋回', (d) => d.turn],
-  ['成長', (d) => d.growth],
-  ['ダッシュ効率', (d) => 2 - d.boostCost],
+  ['スピード', 'スピード', (d) => d.speed],
+  ['曲がりやすさ', '<ruby>曲<rp>(</rp><rt>ま</rt><rp>)</rp></ruby>がりやすさ', (d) => d.turn],
+  ['成長', '<ruby>成長<rp>(</rp><rt>せいちょう</rt><rp>)</rp></ruby>', (d) => d.growth],
+  ['スタミナ', 'スタミナ', (d) => 2 - d.boostCost],
 ];
 
 let mainPreview = null;
@@ -603,9 +598,7 @@ function renderSharks() {
     mainPreview = mountPreview($('#preview'), selShark);
     const list = $('#shark-list');
     list.innerHTML = '';
-    // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ
-    // 黙って戻す（下の recenter）。1面だけだと端で必ず止まってしまう。
-    // ダイヤル以外では 0面と2面を CSS が隠すので、見た目は今までどおり5体
+    // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ戻す
     for (let copy = 0; copy < DIAL_COPIES; copy++) {
       SHARKS.forEach((d, i) => {
         const b = document.createElement('button');
@@ -633,20 +626,16 @@ function renderSharks() {
 }
 
 // スマホ横画面のサメ選択はダイヤル。中央で止まったサメがそのまま選ばれる。
-// 条件は CSS のダイヤルブロックと一字一句そろえること（ずれると片方だけ効く）
 const isDial = () => matchMedia('(max-height: 500px)').matches;
 const DIAL_COPIES = 3;   // 一周させるための面の数。中央の面を基準にする
 
-// スキル札のタップで効果説明を開閉する。説明は札の上に浮かせる（札自体は
-// 大きくならない）ので、他所を触ったら閉じないと画面に居座ってしまう。
-// 中身は選択のたびに作り直されるため、個々の札ではなく document に一度だけ張る
+// スキル札のタップで効果説明を開閉する。
 document.addEventListener('click', (e) => {
   const tag = $('#preview-tag');
   tag.classList.toggle('show-desc', !!e.target.closest('.tag-skill') && !tag.classList.contains('show-desc'));
 });
 
-// カチンコを鳴らす。押すたびに腕が一瞬持ち上がって閉じる。
-// クラスを付け直す前に一度レイアウトを読むのは、連打しても毎回頭から再生させるため
+// カチンコを鳴らす。
 function clap(b) {
   if (!b || b.disabled) return;
   b.classList.remove('clapping');
@@ -670,18 +659,14 @@ function centeredTile(list) {
   let best = null, bestGap = Infinity;
   for (const el of list.children) {
     const r = el.getBoundingClientRect();
-    if (!r.height) continue;                       // 隠してある面は数えない
+    if (!r.height) continue;
     const gap = Math.abs(r.top + r.height / 2 - mid);
     if (gap < bestGap) { bestGap = gap; best = el; }
   }
   return best;
 }
 
-/**
- * 端まで来たら中央の面へ黙って引き戻す。面の高さちょうどだけ動かすので
- * スナップ位置も選択も変わらず、利用者からは無限に回っているように見える。
- * scroll-behavior を一時的に切るのは、この移動をアニメーションさせないため
- */
+/** 端まで来たら中央の面へ黙って引き戻す。 */
 function recenter(list) {
   const copy = list.scrollHeight / DIAL_COPIES;
   const t = list.scrollTop;
@@ -694,8 +679,6 @@ function recenter(list) {
 }
 
 function mountDial(list) {
-  // scrollend はまだ全ブラウザに無いので、止まったことは時間で見る。
-  // スナップのアニメーション中に拾うと1つ手前で確定してしまうため少し待つ
   let idle;
   list.addEventListener('scroll', () => {
     if (!isDial()) return;
@@ -719,8 +702,6 @@ function selectShark(d) {
     n.style.background = on ? '#f3b553' : '';
     n.style.boxShadow = on ? '6px 6px 0 0 #2d2d2d' : '';
     n.style.transform = on ? 'translateX(-6px)' : '';
-    // ダイヤル表示の「選択中」はクラスで持つ。inline の transform とは別物で、
-    // 未選択側を引っ込める見せ方は style.css が受け持つ
     n.classList.toggle('is-sel', on);
   });
 
@@ -747,10 +728,10 @@ function selectShark(d) {
 
 /** 能力バー4本。サメ選択と図鑑の詳細で同じものを出す */
 function statBars(d) {
-  return STAT_KEYS.map(([label, f]) => {
+  return STAT_KEYS.map(([plain, rubyLabel, f]) => {
     const pct = clamp((f(d) - 0.55) / 0.95, 0.1, 1) * 100;
     return `<div class="bg-paper ink-3 hard rounded-lg px-3 py-2">
-      <div class="font-mono text-[9px] tracking-[0.18em] text-ink/60 mb-1.5">${label}</div>
+      <div class="font-mono text-[9px] tracking-[0.18em] text-ink/60 mb-1.5">${rubyLabel}</div>
       <div class="h-3 bg-ink/12 ink-2 relative overflow-hidden">
         <div class="h-full bg-teal" style="width:${pct}%"></div>
       </div>
@@ -759,8 +740,6 @@ function statBars(d) {
 }
 
 // ---------- 名前 ----------
-// モードの切り替えは無い。常にロケ地の部屋へ入り、空席はボットが埋める。
-// サーバが居なければそのままボットだけの部屋になる（＝これまでのソロ）。
 const nameInput = $('#player-name');
 nameInput.value = save.name;
 const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10) || 'PLAYER';
@@ -768,7 +747,6 @@ const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10
 $('#start-btn').onclick = () => play();
 
 // ---------- 図鑑 ----------
-// 一覧は立ち絵と名前だけ。中身はカードを開いた先の大画面にまとめてある。
 let dexBuilt = false;
 function renderDex() {
   if (dexBuilt) return;
@@ -853,9 +831,6 @@ let net = null;
 let myName = 'YOU';   // リーダーボードに自分の行を足すときに使う
 const dropNet = () => { net?.close(); net = null; };
 
-// 二重起動よけ。play() は connect() を最大 2.5 秒待つので、その間に
-// もう一度押されると startGame が二重に走り、前の回のリスナと rAF ループが
-// 取り残されたまま回り続ける。#start-btn の disabled だけでは #retry を塞げない
 let starting = false;
 async function play() {
   if (starting) return;
@@ -864,7 +839,6 @@ async function play() {
     save.shark = selShark.id; save.name = playerName(); persist();
     dropNet();
     $('#start-btn').disabled = true;
-    // 繋がらなければ黙ってボット部屋。ここで手を止める理由が無い
     try { net = await connect({ map: selMap.id, shark: selShark.id, name: save.name }); }
     catch { net = null; }
     $('#start-btn').disabled = false;
@@ -892,8 +866,6 @@ function paintHud(h) {
   }
   hudMass.textContent = h.mass.toLocaleString();
   hudRank.textContent = `#${h.rank} / ${h.alive}`;
-  // トップとの比を線形で取ると、ボットが15秒で500超に届く一方こちらは30スタートなので
-  // バーが下限に張り付いて動かない。対数にして序盤の伸びを見せる
   const top = Math.max(h.board[0]?.mass || 1, 2);
   hudBar.style.width = clamp(Math.log(Math.max(h.mass, 1)) / Math.log(top), 0.04, 1) * 100 + '%';
   if (h.humans) $('#hud-online').textContent = `ONLINE · ${h.humans} PLAYER${h.humans > 1 ? 'S' : ''}`;
@@ -902,7 +874,6 @@ function paintHud(h) {
       <span class="font-bold truncate">${rank}. ${b.human && !b.me ? '◆ ' : ''}${esc(b.name)}</span>
       <span class="font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
     </li>`;
-  // トップ5固定なので、上位に入るまで自分の行が一度も出ない。圏外なら最下段に足す
   hudBoard.innerHTML = h.board.map((b, i) => row(b, i + 1)).join('')
     + (h.board.some((b) => b.me) ? ''
       : row({ name: myName, mass: h.mass, me: true, human: true }, h.rank, 'mt-1.5 border-t-2 border-ink/25 pt-1'));
@@ -910,7 +881,6 @@ function paintHud(h) {
   hudCd.textContent = Math.ceil(h.cd);
   hudReel.style.animation = h.boosting ? 'spin .35s linear infinite' : 'spin 4s linear infinite';
   hudReel.style.filter = h.boost ? '' : 'grayscale(1) brightness(.75)';
-  // 残量ぶんは素通し、使った分を暗く塗る。息切れ中は赤で潰す
   const spent = h.winded ? 'rgba(186,26,26,.66)' : 'rgba(11,32,34,.74)';
   hudStam.style.background = `conic-gradient(transparent ${h.stam}turn, ${spent} 0)`;
 }
@@ -919,12 +889,6 @@ $('#resume').onclick = () => ctl?.resume();
 $('#quit').onclick = () => { dropNet(); show('title'); };
 $('#retry').onclick = () => play();
 
-// ゲーム中の HUD は click ではなく pointerdown で拾う。
-// 操舵の指が画面に付いている間は指が2本になり、iOS はマルチタッチ中の
-// タップに click を合成しないので、click 頼みだと「動かしながらスキル」が
-// まったく効かなかった。ついでに押した瞬間に出るぶん反応も早くなる。
-// preventDefault は長押しの選択・コピーのポップアップ止め（CSS 側とセット）で、
-// click が消えるぶんカチンコはここから直接鳴らす
 const hudKey = (el, key, sound) => el.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   if (sound) clap(el);
@@ -933,27 +897,33 @@ const hudKey = (el, key, sound) => el.addEventListener('pointerdown', (e) => {
 hudKey($('#hud-skill'), 'e', true);
 hudKey($('#hud-pause'), 'Escape', false);
 
-// DASH。game.js にボタンの存在を教えず、Space の経路をそのまま再利用する
-// （スキルが上でやっているのと同じ手）。game.js 側に状態が増えない。
-// pointercancel も拾うのは、通知などで pointer を奪われたときに
-// pointerup が来ず、ブーストが押しっぱなしで張り付くため
 const hudDash = $('#hud-dash');
 const dashKey = (type) => window.dispatchEvent(new KeyboardEvent(type, { key: ' ' }));
 hudDash.addEventListener('pointerdown', (e) => { e.preventDefault(); dashKey('keydown'); });
 hudDash.addEventListener('pointerup', () => dashKey('keyup'));
 hudDash.addEventListener('pointercancel', () => dashKey('keyup'));
 
+// 死因は sim.js が素のテキストで組む（「ノーラン鮫 の胴体」「外壁」など）。
+// sim は描画の都合を持たないので、ルビ記法への置き換えは表示側のここでやる。
+// 固定語だけが対象で、サメの名前はそのまま rubify のエスケープに任せる。
+const CAUSE_RUBY = {
+  外壁: '｜外壁《がいへき》',
+  胴体: '｜胴体《どうたい》',
+  泳いだ跡: '｜泳《およ》いだ｜跡《あと》',
+};
+const rubifyCause = (c) => rubify(c.replace(/泳いだ跡|外壁|胴体/g, (w) => CAUSE_RUBY[w]));
+
 function showResult(r) {
-  dropNet();                       // 死んだら部屋を出る（ホストなら次の人へ委譲される）
+  dropNet();
   const best = Math.max(save.best, r.mass);
   const isBest = r.mass > save.best;
   save.best = best; persist();
 
   show('result');
   $('#res-sub').innerHTML = `${rubify(selMap.name)} ／ ${rubify(selShark.name)}`
-    + (r.cause ? `<br><span class="text-danger">${esc(r.cause)}${rubify('に｜接触《せっしょく》')}</span>` : '');
+    + (r.cause ? `<br><span class="text-danger">${rubifyCause(r.cause)}${rubify('に｜接触《せっしょく》')}</span>` : '');
   $('#res-stats').innerHTML = [
-    [rubify('｜到達《とうたつ》サイズ'), r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
+    [rubify('｜大《おお》きさ'), r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],
     [rubify('｜撃破数《げきはすう》'), r.kills, 'KILLS'],
     [rubify('｜生存時間《せいぞんじかん》'), fmtTime(r.time), 'SURVIVED'],
   ].map(([label, val, sub], i) => `

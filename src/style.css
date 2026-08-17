@@ -172,24 +172,39 @@
 .map-label {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 30px;                /* viewBox 単位。地図と一緒に伸び縮みする */
+  font-size: 46px;                /* viewBox 単位。地図と一緒に伸び縮みする */
   text-anchor: middle;
   dominant-baseline: middle;
   fill: var(--color-paper);
   stroke: var(--color-ink);
-  stroke-width: 5;
+  stroke-width: 8;
   paint-order: stroke;            /* 縁取りは文字の下に敷く。上に乗せると細る */
   user-select: none;
 }
-.map-label.locked { fill: rgb(244 239 234 / .55); stroke-width: 4; }
-.map-lock {
-  font-family: 'Material Symbols Rounded';
-  font-size: 40px;                /* viewBox 単位。地図と一緒に伸び縮みする */
+.map-label.locked { fill: rgb(244 239 234 / .65); stroke-width: 7; }
+
+.map-ruby {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 24px;
   text-anchor: middle;
   dominant-baseline: middle;
-  fill: rgb(244 239 234 / .55);
+  fill: var(--color-yellow);
   stroke: var(--color-ink);
-  stroke-width: 4;
+  stroke-width: 5;
+  paint-order: stroke;
+  user-select: none;
+}
+.map-ruby.locked { fill: rgb(243 181 83 / .65); stroke-width: 4.5; }
+
+.map-lock {
+  font-family: 'Material Symbols Rounded';
+  font-size: 52px;                /* viewBox 単位。地図と一緒に伸び縮みする */
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: rgb(244 239 234 / .6);
+  stroke: var(--color-ink);
+  stroke-width: 6;
   paint-order: stroke;
   user-select: none;
 }
@@ -469,10 +484,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 
   /* エリア名は地図が小さいと図形からはみ出して読めない。名前は右の掲示板に
      大きく出ているので地図からは落とし、代わりに鍵だけを大きく残す。
+     ふりがなは名前に付くものなので一緒に落とす（名前が無いと宙に浮く）。
      鍵は重心の下（main.js の LOCK_DY）に置いてあるので、名前を消したぶん
      重心そのものへ戻す。y 属性を直接動かす — SVG 要素への CSS transform は
      ブラウザによって transform-box の解釈が割れるので、位置合わせには使わない */
-  .map-label { display: none; }
+  .map-label, .map-ruby { display: none; }
   .map-lock { font-size: 84px; }
 
   /* ---- サメ選択のダイヤル ----
@@ -726,12 +742,12 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #howto-list {
     column-count: 2;
     column-gap: 1.75rem;
-    font-size: 13px;
-    line-height: 1.65;
+    font-size: 12.5px;
+    line-height: 1.45;
   }
   /* 3段組みも試したが逆に伸びた（281px > 2段の278px）。項目数が6で高さが不揃いなため、
      列を増やすと1項目あたりの行数が増えて最長列が勝つ。2段が底 */
-  #howto-list > li { break-inside: avoid; margin: 0 0 0.5rem; }
+  #howto-list > li { break-inside: avoid; margin: 0 0 0.35rem; }
 
   /* ---- 横画面のリザルト ----
      積み上げでは CUT!+戦績 190px / Tips+操作列 240px に対し、使える高さが
@@ -739,34 +755,58 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
      どれもスクロールなしで収まる。max-w を広げるのは、そのための幅を作るため */
   #res-panel {
     display: grid;
-    grid-template-columns: 1fr minmax(0, 46%);
+    grid-template-columns: 1fr minmax(0, 48%);
     grid-template-rows: auto auto 1fr;
     max-width: min(94vw, 880px);
   }
   #res-cap      { grid-area: 1 / 1 / auto / span 2; }
   #res-main     { grid-area: 2 / 1 / span 2 / auto; align-self: center; }
   #res-tip-pane { grid-area: 2 / 2; }
-  #res-actions  { grid-area: 3 / 2; justify-content: end; }
+  #res-actions  { grid-area: 3 / 2; }
 
   /* 縦を詰める。CUT! は主役なので消さず、一段だけ小さくする。
      右カラムは Tips と操作列の2段で、320px 級の高さでも両方を出しきる必要がある。
      文字と余白をここで一段落とす（縦や広い画面は従来のまま） */
-  #res-main { padding: 1rem 1.25rem; overflow: visible; }
-  #res-head { margin-bottom: 0.75rem; }
-  #res-head h2 { font-size: 2rem; padding: 0.25rem 1.5rem; }
-  #res-head #res-sub { margin-top: 0.5rem; }
+  #res-main { padding: 0.75rem 1rem; overflow: visible; }
+  #res-head { margin-bottom: 0.5rem; }
+  #res-head h2 { font-size: 1.85rem; padding: 0.2rem 1.25rem; }
+  #res-head #res-sub { margin-top: 0.35rem; font-size: 11px; }
 
-  /* 2カラムにすると戦績の3枚は 88px 級まで痩せる。到達サイズは5桁+カンマ = 6文字なので、
-     30px のままだとカードから溢れて「12,48」で切れる（実測 640x360）。字を先に詰める */
-  .res-stat { padding: 0.5rem 0.35rem; }
-  .res-stat-v { font-size: 1.375rem; }
+  /* 2カラムにすると戦績の3枚は 88px 級まで痩せる。値は5桁+カンマ = 6文字あるので、
+     30px のままだとカードから溢れて「12,48」で切れる（実測 640x360）。字を先に詰める。
+     ふりがなを常時出すようになって rt のぶん高さも増えたので、padding も一段落とす */
+  .res-stat { padding: 0.4rem 0.3rem; }
+  .res-stat-v { font-size: 1.25rem; }
 
-  #res-tip-pane { padding: 1rem 1.25rem 0 0; }
-  #res-tip-pane > div { padding: 0.6rem 0.75rem; }
-  #res-tip { font-size: 12px; line-height: 1.6; }
+  #res-tip-pane { padding: 0.5rem 1rem 0 0; }
+  #res-tip-pane > div { padding: 0.45rem 0.65rem; }
+  #res-tip { font-size: 11px; line-height: 1.45; }
 
-  #res-actions { padding: 0.4rem 1.25rem 0.75rem 0; gap: 0.35rem; }
-  #res-actions .btn > div:last-child { padding-top: 0.35rem; padding-bottom: 0.35rem; font-size: 11px; }
+  #res-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    row-gap: 0.85rem;
+    column-gap: 0.5rem;
+    padding: 0.25rem 1rem 0.6rem 0;
+    align-items: end;
+  }
+  #res-actions .btn {
+    margin-top: 13px;
+  }
+  #res-actions #retry {
+    grid-column: 1 / -1;
+  }
+  #res-actions .btn > div:last-child {
+    display: block;
+    text-align: center;
+    padding: 0.35rem 0.25rem 0.25rem;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  #res-actions .btn rt {
+    font-size: 0.42em;
+    transform: translateY(-0.15em);
+  }
 }
 
 /* ロケ地の情報パネル。横持ちでは本文が 197px しか映らない（実測 844x390）。
@@ -804,24 +844,40 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #dex-list { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 }
 
-/* ================= こどもモード（ふりがな / ルビ） =================
-   html:not(.kids-mode) のときは rt を非表示にし、通常テキストとして描画する。
-   .kids-mode のときはフォントサイズ 0.58em、太字で読みやすくし、
-   行間が極端に広がりすぎないよう調整する */
-html:not(.kids-mode) rt {
-  display: none;
-}
-html.kids-mode ruby {
+/* ================= ふりがな（ルビ） =================
+   常時表示。トグルで出し分けていたのをやめた理由は、既定 OFF だと
+   「読めない子には最初から読めない」ためで、切り替えを見つけられる子は
+   そもそも読める。読める人にとって rt は視線の邪魔になりにくいサイズに抑える。
+
+   nowrap は必須。ruby の途中で改行されると親文字とよみがずれて別行に落ちる */
+ruby {
   ruby-align: center;
   ruby-position: over;
   white-space: nowrap;
 }
-html.kids-mode rt {
-  font-size: 0.58em;
-  font-weight: 700;
+
+rt {
+  display: ruby-text;
+  font-size: 0.52em;
   line-height: 1;
+  font-weight: 700;
   letter-spacing: 0;
+  color: inherit;
   user-select: none;
+  opacity: 0.95;
   white-space: nowrap;
+  transform: translateY(-0.15em);
+}
+
+/* rp はルビ非対応環境でだけ () として出る保険。対応環境では隠す */
+rp {
+  display: none;
+}
+
+/* ボタンは文字が詰まっているので、よみをさらに小さく寄せる */
+.btn rt {
+  font-size: 0.45em;
+  font-weight: 800;
+  transform: translateY(-0.2em);
 }
 

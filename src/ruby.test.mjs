@@ -12,15 +12,15 @@ test('esc: 特殊文字をエスケープする', () => {
 test('rubify: 正常系（全角・半角パイプ、複数ルビ）', () => {
   assert.equal(
     rubify('｜布多天神社《ふだてんじんじゃ》'),
-    '<ruby>布多天神社<rt>ふだてんじんじゃ</rt></ruby>'
+    '<ruby>布多天神社<rp>(</rp><rt>ふだてんじんじゃ</rt><rp>)</rp></ruby>'
   );
   assert.equal(
     rubify('|深大寺《じんだいじ》'),
-    '<ruby>深大寺<rt>じんだいじ</rt></ruby>'
+    '<ruby>深大寺<rp>(</rp><rt>じんだいじ</rt><rp>)</rp></ruby>'
   );
   assert.equal(
     rubify('｜調布《ちょうふ》の｜深大寺《じんだいじ》 山門'),
-    '<ruby>調布<rt>ちょうふ</rt></ruby>の<ruby>深大寺<rt>じんだいじ</rt></ruby> 山門'
+    '<ruby>調布<rp>(</rp><rt>ちょうふ</rt><rp>)</rp></ruby>の<ruby>深大寺<rp>(</rp><rt>じんだいじ</rt><rp>)</rp></ruby> 山門'
   );
   assert.equal(rubify('ルビなしテキスト'), 'ルビなしテキスト');
   assert.equal(rubify(''), '');
@@ -30,7 +30,7 @@ test('rubify: 正常系（全角・半角パイプ、複数ルビ）', () => {
 test('rubify: エスケープとルビの混在・安全性', () => {
   assert.equal(
     rubify('｜A&B《えー&びー》 <tag>'),
-    '<ruby>A&amp;B<rt>えー&amp;びー</rt></ruby> &lt;tag&gt;'
+    '<ruby>A&amp;B<rp>(</rp><rt>えー&amp;びー</rt><rp>)</rp></ruby> &lt;tag&gt;'
   );
 });
 

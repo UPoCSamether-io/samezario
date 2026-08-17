@@ -87,17 +87,18 @@ assert.deepEqual([...save.unlocked].sort(), [...new Set([...opened, 'chofu'])].s
   assert.equal(JSON.parse(store['samezario.save']).seenHowto, true);
 }
 
-// こどもモード。古いセーブデータ（kids 未定義）で既定値 false に落ち、
-// 変更後に persist() すると永続化されること
+// 後から足したフィールドを持たない古いセーブデータ。既定値に落ちつつ、
+// 既存の値は保たれること（かつて kids で見ていたのと同じ経路。ふりがなを
+// 常時表示にしてフィールドごと消したので seenHowto で代表させる）
 {
   store['samezario.save'] = JSON.stringify({ v: 1, points: 10, unlocked: ['chofu'] });
-  const mod = await import('./progress.js?v=no-kids-field');
-  assert.equal(mod.save.kids, false, '既定は false（大人向け）');
+  const mod = await import('./progress.js?v=missing-newer-field');
+  assert.equal(mod.save.seenHowto, false, '未定義のフィールドは既定値に落ちる');
   assert.equal(mod.save.points, 10, '古いセーブを壊さない');
 
-  mod.save.kids = true;
+  mod.save.seenHowto = true;
   mod.persist();
-  assert.equal(JSON.parse(store['samezario.save']).kids, true);
+  assert.equal(JSON.parse(store['samezario.save']).seenHowto, true);
 }
 
 console.log('progress ok');
