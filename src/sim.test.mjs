@@ -287,7 +287,7 @@ for (const map of MAPS) {
   me.x = x0; me.y = y0;
   bot.x = x0 - 500; bot.y = y0;
   [me, bot].forEach((s) => { s.iframe = 0; s.path = [{ x: s.x, y: s.y }]; });
-  me.angle = me.aim = 0; me.mass = bot.mass * 2;
+  me.angle = me.aim = 0; me.mass = 80;
   bot.angle = bot.aim = 0;
   bot.mood = 1; bot.moodT = 99;             // 狩る個体に固定（mood は毎回引き直される）
 
@@ -370,6 +370,26 @@ for (const map of MAPS) {
   w.destroy();
 }
 
+// 14. 小型獲物に対する急襲・ダッシュ抑制
+{
+  const w = createWorld({ map: chofu });
+  const smallTarget = w.addPlayer({ nid: 'p_target', sharkId: 'chofu', name: '標的', isBot: false });
+  const hunter = w.addPlayer({ nid: 'b_hunter2', sharkId: 'chofu', name: '狩鮫2', isBot: true });
+
+  const cx = w.arena.home.x, cy = w.arena.home.y;
+  hunter.x = cx; hunter.y = cy; hunter.mood = 1; hunter.moodT = 99; hunter.iframe = 0;
+  smallTarget.x = cx + 400; smallTarget.y = cy; smallTarget.mass = 50; smallTarget.iframe = 0; // HUNT_DASH(520) 内
+
+  w.food.length = 0;
+  w.step(1 / 30);
+
+  // 獲物が小型の場合は間合い内でもブースト急襲を行わない
+  assert.strictEqual(hunter.boost, false, '小型の獲物に対してはブースト急襲を行わない');
+  w.destroy();
+}
+
 console.log('sim ok');
+
+
 
 

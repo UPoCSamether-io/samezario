@@ -497,10 +497,11 @@ export function createWorld({ map, authority = true, diffs = false }) {
     }
 
     s.aim = want;
-    // 獲物に寄ったらダッシュ。速いだけでなく、キル帯そのものである航跡を相手の前へ敷ける
-    s.boost = !s.winded && (hunt ? hunt < HUNT_DASH : s.mood > 0.9);
+    // 獲物に寄ったらダッシュ。ただし小型の獲物（mass < 70）には急襲ダッシュやスキル連打を控えて手加減する
+    const aggressiveHunt = hunt && (!prey || prey.mass >= 70);
+    s.boost = !s.winded && (hunt ? (aggressiveHunt && hunt < HUNT_DASH) : s.mood > 0.9);
     // 追い詰めている間はスキルも切る（シネマの減速・多摩川の急流がそのまま決め手になる）
-    if (s.cd <= 0 && Math.random() < (hunt && hunt < HUNT_DASH ? 0.05 : 0.004)) world.useSkill(s);
+    if (s.cd <= 0 && Math.random() < (aggressiveHunt && hunt < HUNT_DASH ? 0.05 : 0.004)) world.useSkill(s);
   }
 
   // ---------- 判定 ----------
