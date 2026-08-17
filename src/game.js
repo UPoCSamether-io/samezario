@@ -40,6 +40,18 @@ function stripeTile() {
   return c;
 }
 
+// 水中のドット。60px ごとに fillRect を撒くと、引きの絵ほど重くなる —— 撒く数は
+// 見えている面積、つまり 1/zoom² で増え、育ちきると 1フレーム 363 → 3458 回になる
+// （zoom は 1.05 → 0.34 まで引く）。タイル1枚を敷き詰めれば、大きさに関係なく 1回で済む。
+function dotTile() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 60;                 // = 旧 G。ドットの間隔を変えないための値
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(244,239,234,.10)';
+  g.fillRect(0, 0, 4, 4);
+  return c;
+}
+
 /**
  * attract: タイトル背面のデモ再生。操作を受け付けず、主役が死んでも湧き直す。
  * net: オンライン対戦（src/net.js）。盤面の正はサーバで、ここが持っているのは
@@ -65,6 +77,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   const { arena, sharks, food, W } = world;
   const outline = arenaOutline(arena);
   const stripes = ctx.createPattern(stripeTile(), 'repeat');
+  const dots = ctx.createPattern(dotTile(), 'repeat');
 
   const fx = [];
   const cam = { x: arena.home.x, y: arena.home.y, zoom: 1, shake: 0 };
@@ -403,17 +416,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.fillStyle = map.water;
     ctx.fill(outline);
 
-    // 水中のドットグリッド（エリアの中だけ）
-    ctx.save();
-    ctx.clip(outline);
-    const G = 60;
-    ctx.fillStyle = 'rgba(244,239,234,.10)';
-    for (let x = Math.floor(vx0 / G) * G; x < vx1; x += G) {
-      for (let y = Math.floor(vy0 / G) * G; y < vy1; y += G) {
-        ctx.fillRect(x, y, 4, 4);
-      }
-    }
-    ctx.restore();
+    // 水中のドット（エリアの中だけ）。タイルは world 座標に敷かれるので、
+    // 旧ループと同じく 60 の倍数に並び、カメラと一緒に流れる
+    ctx.fillStyle = dots;
+    ctx.fill(outline);
 
     ctx.strokeStyle = INK;
     ctx.lineWidth = 6 / cam.zoom;
