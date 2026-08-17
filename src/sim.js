@@ -114,7 +114,8 @@ export function makeArena(map) {
     return { x: (bb.x0 + bb.x1) / 2, y: (bb.y0 + bb.y1) / 2 };
   })();
 
-  // 外接矩形の 47〜83% しか中身がないので、湧かせる座標は棄却サンプリングで取る
+  // 外接矩形の 34〜80% しか中身がない（いちばん薄いのは細長い多摩川）ので、
+  // 湧かせる座標は棄却サンプリングで取る
   const spot = () => {
     for (let i = 0; i < 60; i++) {
       const x = rand(bb.x0, bb.x1), y = rand(bb.y0, bb.y1);

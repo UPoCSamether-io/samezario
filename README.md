@@ -44,17 +44,23 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 | `src/main.js` | 画面遷移、各画面の描画、HUD更新、セーブ（localStorage） |
 | `src/game.js` | ブラウザ側。入力・カメラ・Canvas描画と、サーバの答えの先読み |
 | `src/shark-art.js` | サメの見た目。ゲーム内とプレビューで共有 |
-| `src/data.js` | サメ5種 / マップ4種 / 調布Tips のマスターデータ |
+| `src/data.js` | サメ5種 / マップ5種 / 現地スポット / 調布Tips のマスターデータ |
+| `src/verify.js` | 現地写真の照合。撮影・現在地・dHash・ジオフェンス。**DOM を触らない判定部は Node から試せる** |
+| `src/progress.js` | セーブデータ。解放とポイントを書ける唯一の場所 |
+| `src/ruby.js` | ルビ（ふりがな）パーサーとプレーンテキスト抽出。**DOM を触らない純粋関数群** |
+| `src/share.js` | 解放結果のシェア。共有文の組み立てと Web Share API → コピー → X の順の一本道。**DOM を触らないので Node から試せる** |
 | `src/sim.js` | 盤面そのもの。移動・成長・衝突・ボットAI・餌・スナップショット。**DOM を触らないのでサーバとブラウザが同じものを回す** |
 | `src/net.js` | 対戦サーバとの線。JSON を投げて受けるだけ |
 | `server/index.mjs` | 対戦の権威サーバ。部屋ごとに `sim.js` の world を 30Hz で回し、15Hz で配る |
 | `src/style.css` | デザイントークン（Retro Pop Cinema）と共通クラス |
-| `public/img/` | アセット画像（サメスプライト等）。エリアマップは `data.js` の SVG パスに置き換え済みで、`chofu_map.png` は取り直し用の原本 |
-| — | プレイエリアの外周は `data.js` の `path`（実際のエリア輪郭）そのもの。内外判定は `Path2D` + `isPointInPath`。`size` は一辺ではなく**実効面積の平方根**で、ゲーム側が輪郭の面積が `size²` になるよう拡大する |
-| `scripts/seal-arms.mjs` | エリア輪郭から細すぎる腕を落とすワンショット道具（`node scripts/seal-arms.mjs --emit`）。原本の path もここ |
+| `public/img/` | アセット画像（サメスプライト等）。エリアマップは `data.js` の SVG パスに置き換え済みで、`chofu_map.png`（5エリアを色で塗り分けた図）は取り直し用の原本 |
+| — | プレイエリアの外周は `data.js` の `path`（実際のエリア輪郭）そのもの。内外判定は `Path2D` + `isPointInPath`。`size` は一辺ではなく**実効面積の平方根**で、ゲーム側が輪郭の面積が `size²` になるよう拡大する。**選択画面での見た目の大きさと遊べる広さは一致しない**（多摩川は図では最小だがワールドでは最長）——倍率と通路の幅の実測値は `docs/stage_design_plan.md` §4 |
+| `scripts/trace-areas.py` | 色分けしたエリア図から輪郭を起こす（`python3 scripts/trace-areas.py`）。エリア間の白い区切り線は両側で分け合わせるので、隙間なく敷き詰まる。出力は次の seal-arms へ |
+| `scripts/seal-arms.mjs` | エリア輪郭から細すぎる腕を落とすワンショット道具（`node scripts/seal-arms.mjs --emit`）。取り出したままの path もここ |
 | `scripts/loadtest.mjs` | 人数分ぶら下がって配信レートを測る。判定は「スナップショットが 15Hz 届くか」 |
-| `docs/` | 仕様書・設計ドキュメント（`specifications.txt` 等）。デプロイ手順は `deploy-ec2.md` |
 | `scripts/ec2-deploy.sh` | EC2(t3.micro) 上で流す初回セットアップ兼デプロイ。何度流してもいい |
+| `hash-lab.html` | 基準写真から dHash を作り、しきい値の分離帯を見る道具（`npm run dev` → `/hash-lab.html`） |
+| `docs/` | 仕様書・設計ドキュメント（`specifications.md` 等）。デプロイ手順は `deploy-ec2.md` |
 
 ## 調整ポイント
 
@@ -73,11 +79,89 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 `def.aspect` は当たり判定の寸法（体長）なので手で書かない。原画を差し替えたら
 `python3 scripts/sprite-aspect.py` で測り直して `data.js` へ写す。
 
+## 現地写真によるエリア解放
+
+未解放のエリアは、**そのエリアの現地スポットで写真を撮ると開く**（`docs/specifications.md` 4.2）。
+判定は「**位置は厳密に、画像はゆるく**」の二段構え —— ジオフェンスが「現地に行った」ことを担保し、
+画像照合は「指定アングルで撮った」体験と、遠隔地からの適当な写真の排除を受け持つ。
+
+| エリア | スポット | ジオフェンス | 取得 |
+| --- | --- | --- | --- |
+| 調布駅・布田（初期解放） | 布多天神社 | 150m | +50pt（解放ではなくボーナス） |
+| 深大寺 | 深大寺 山門 | 150m | +300pt |
+| 多摩川 | 調布市郷土博物館 | 150m | +100pt |
+| 調布飛行場 | 味の素スタジアム前 モニュメント | 200m | +100pt |
+| つつじヶ丘・仙川 | 実篤公園 旧武者小路実篤邸 | 150m | +100pt |
+
+座標・解説文・進行の設計は `UPoC_Samether.io`（U☆PoC 側リポジトリ）の
+`data/stages.master.json` と `docs/05〜07` から。エリアの形はこちらの手描き5エリアのままで、
+**スポットは既存エリアの解放条件として載せている**（8駅エリアへの分割はしていない）。
+
+流れは `src/verify.js` の `runUnlock` が一本道で持つ:
+
+```
+撮影  <input type="file" capture="environment">   OS のカメラに丸投げ（getUserMedia は使わない）
+  ↓
+測位  getCurrentPosition 1回だけ                  常時トラッキングはしない
+  ↓
+判定  verifyPhoto()  ① Haversine ≦ 半径           位置は厳密に
+                     ② dHash のハミング距離 ≦ しきい値   画像はゆるく
+  ↓
+記録  progress.js の clearSpot()                  ポイントと解放はここだけが書く
+```
+
+- **写真は端末から出ない。** 照合はブラウザの中で完結し、アップロードも保存もしない。
+  位置情報もこの判定にだけ使う。
+- **`?demo=1` で位置と照合を飛ばす。** 会場が調布市外のときの保険（`isDemo()`）。
+- **カメラと位置情報は https か localhost でしか動かない**（Secure Context）。
+  実機で試すなら Cloudflare Tunnel などの HTTPS トンネル越しに。
+- ポイントは照合成功で `spot.points`、SNSシェアで `spot.share`。どちらもスポットごとに1回だけで、
+  加算は `progress.js` の `clearSpot` / `markShared` の2つしか書けない
+  （差分加算を書かない ＝ 二重加算を構造で潰す。`UPoC_Samether.io/docs/06`）。
+
+### 解放結果のシェア
+
+解放できたら成功画面からシェアできる。文面と共有先の選び方は `src/share.js` の
+`shareUnlock` が一本道で持つ（`verify.js` の `verifyPhoto` と同じ役どころで、
+「共有できたか」を決めるのはここひとつ）。
+
+```
+① navigator.share       共有シート。canShare({files}) が通る端末では撮った写真も候補に載せる
+     ↓ 非対応
+② clipboard.writeText   共有文（本文 + URL）をコピー
+     ↓ 権限が無い / Secure Context でない
+③ X の投稿画面          window.open（ポップアップが塞がれたら文面を画面に出して手で拾わせる）
+```
+
+- 共有文は **ロケ地名・短い歴史紹介（`spot.desc` の先頭一文）・ハッシュタグ**。
+  URL は `share()` に別で渡す（文面に混ぜると端末によって二重に出る）。
+- **写真は共有シートに候補として載るだけ**で、送信先を選ぶのは利用者。こちらから送信も保存もしない。
+  `canShare` が写真を拒む端末では文だけで共有し、丸ごと失敗させない。
+- **シートを閉じただけ（`AbortError`）は成功にしない。** 加点も知らせも出さず、押す前の画面に戻る。
+  失敗（それ以外の例外）とは別扱い（`classifyError`）。
+- **同じスポットを何度でもシェアできる。** 加点だけが `markShared` によりスポットごとに1回。
+
+### 基準写真の入れ方
+
+`src/data.js` の `spot.hashes` が空の間は、**位置だけで解放できる**（撮った写真は問わない）。
+基準写真が用意できたら:
+
+1. `npm run dev` → `/hash-lab.html` にそのスポットの写真をまとめて放り込む
+   （別時間帯・別の人で 10〜20枚。隣の建物など「不正解」も数枚）
+2. 各行を ○ / × に分け、「○同士の最大距離 < しきい値 < ○×間の最小距離」になる値を読む
+3. 出力された `hashes` / `threshold` を `data.js` の該当スポットへ写す
+
+dHash の経験則は、同じ被写体の別撮影が距離 6〜12、無関係な画像が 22〜32。初期値は 14。
+基準写真は照合本体と同じ `photoHash()` を通すこと（正規化の経路がずれると一致しなくなる）。
+
+判定をブラウザに置いている以上、参照ハッシュとしきい値は配布物から読める。秘匿したくなったら
+`verify.js` の `verifyPhoto` の中身を `POST /api/verify` に差し替える（式は同じなので、
+詰めたしきい値はそのまま持ち越せる）。
+
 ## 未実装
 
-- **写真照合によるマップ解放**（`docs/specifications.txt` 4.2）。基準画像がまだないため、ロケ地画面は
-  ロック表示と説明のみ。SSIM の実装は基準写真が揃ってから。
 - 音（BGM / SE）。
+- 基準写真そのもの（上記のとおり、無い間は位置だけで解放できる状態で動く）。
 
 ## オンライン対戦
 
@@ -137,3 +221,15 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 2. **餌の格子分割**（1tick 0.50 → 0.16ms）。捕食判定が サメ14 × 餌1260 の総当たりだった
 3. **格子を計数ソートに**（0.16 → 0.11ms）。マスごとの配列を毎tick作り直すのが今度は 46% を占めた
 4. **航跡走査の早期棄却**と、**スナップショットを部屋で1回だけ作る**（人数ぶん JSON 化していた）
+
+## こどもモード（ふりがな対応）
+
+小学生や子ども向けに、漢字の上に読み仮名（ルビ）を表示する**こどもモード**を用意しています（Issue #18）。
+
+- **切替**: タイトル画面の「🧒 こどもモード（ふりがな）」トグルスイッチからいつでも切り替え可能（設定は `localStorage` に保存）。
+- **仕組み**:
+  - `src/data.js` 内の地名・サメ解説・スポット名等に `｜親文字《よみ》` 形式のルビ記法を埋め込み。
+  - `src/ruby.js` の `rubify()` が HTML `<ruby>親文字<rt>よみ</rt></ruby>` に展開。
+  - SVG `<text>`（地図ラベル）や `alt` 属性、共有文などには `plainText()` で親文字のみを展開。
+  - 通常モード時は CSS（`html:not(.kids-mode) rt { display: none; }`）でルビを非表示にし、こどもモード有効時のみ見やすくルビを表示。
+

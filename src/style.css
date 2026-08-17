@@ -375,6 +375,18 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 .bob { animation: bob 3.6s ease-in-out infinite; }
 @keyframes bob { 0%,100% { transform: translateY(0) rotate(-1deg) } 50% { transform: translateY(-14px) rotate(1deg) } }
 
+/* エリア解放の判子。大きく振りかぶって押し、勢い余って少し戻る。
+   回転を最後まで残すのは、まっすぐ収まると「印刷された見出し」に見えてしまうため */
+.stamp { animation: stamp .5s cubic-bezier(.2, .9, .3, 1.4) both; }
+@keyframes stamp {
+  0%   { opacity: 0; transform: scale(2.4) rotate(-14deg) }
+  60%  { opacity: 1; transform: scale(.94) rotate(-3deg) }
+  100% { opacity: 1; transform: scale(1) rotate(-3deg) }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stamp { animation: none; transform: rotate(-3deg) }
+}
+
 .shake { animation: shake .4s linear; }
 @keyframes shake {
   0%,100% { transform: none } 20% { transform: translate(-6px,3px) }
@@ -448,6 +460,14 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #map-scale > div:last-child { height: 0.7rem; font-size: 8px; }
   #map-scale > div:last-child span { top: 0; }
 
+  /* エリア名は地図が小さいと図形からはみ出して読めない。名前は右の掲示板に
+     大きく出ているので地図からは落とし、代わりに鍵だけを大きく残す。
+     ふりがなは名前に付くものなので一緒に落とす（名前が無いと宙に浮く）。
+     鍵は重心の下（main.js の LOCK_DY）に置いてあるので、名前を消したぶん
+     重心そのものへ戻す。y 属性を直接動かす — SVG 要素への CSS transform は
+     ブラウザによって transform-box の解釈が割れるので、位置合わせには使わない */
+  .map-label, .map-ruby { display: none; }
+  .map-lock { font-size: 84px; }
 
   /* ---- サメ選択のダイヤル ----
      一覧をそのまま縮めると 1.8枚しか見えず、選ぶのにスクロールが要る。
@@ -638,6 +658,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    「案内は出ているのに世界は動いている」または「横なのに止まる」になる */
 @media (orientation: portrait) and (pointer: coarse) {
   #rotate-hint { display: grid; }
+  /* ただしエリア解放のパネルを開いている間は縦のまま使わせる。現地でスポットの前に
+     立っている人に、撮る前後だけ横持ちを強いる理由が無い（カメラ自体は OS の画面で、
+     向きに縛られない）。パネルは1カラムなので縦でもそのまま収まる。
+     クラスは main.js の openUnlock / closeUnlock が付け外しする */
+  html.unlocking #rotate-hint { display: none; }
 }
 
 /* ロケ地のツールバー。ボタンの文言は解放状況で入れ替わるので、折り返すと
@@ -698,6 +723,8 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
     font-size: 12.5px;
     line-height: 1.45;
   }
+  /* 3段組みも試したが逆に伸びた（281px > 2段の278px）。項目数が6で高さが不揃いなため、
+     列を増やすと1項目あたりの行数が増えて最長列が勝つ。2段が底 */
   #howto-list > li { break-inside: avoid; margin: 0 0 0.35rem; }
 
   /* ---- 横画面のリザルト ----
@@ -723,7 +750,9 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #res-head h2 { font-size: 1.85rem; padding: 0.2rem 1.25rem; }
   #res-head #res-sub { margin-top: 0.35rem; font-size: 11px; }
 
-  /* 2カラムにすると戦績の3枚は 88px 級まで痩せる。 */
+  /* 2カラムにすると戦績の3枚は 88px 級まで痩せる。値は5桁+カンマ = 6文字あるので、
+     30px のままだとカードから溢れて「12,48」で切れる（実測 640x360）。字を先に詰める。
+     ふりがなを常時出すようになって rt のぶん高さも増えたので、padding も一段落とす */
   .res-stat { padding: 0.4rem 0.3rem; }
   .res-stat-v { font-size: 1.25rem; }
 
@@ -793,14 +822,16 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #dex-list { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 }
 
-/* ==========================================================================
-   Accessibility: Furigana / Ruby Typography (Always ON)
-   ========================================================================== */
+/* ================= ふりがな（ルビ） =================
+   常時表示。トグルで出し分けていたのをやめた理由は、既定 OFF だと
+   「読めない子には最初から読めない」ためで、切り替えを見つけられる子は
+   そもそも読める。読める人にとって rt は視線の邪魔になりにくいサイズに抑える。
 
-/* Ruby base styling */
+   nowrap は必須。ruby の途中で改行されると親文字とよみがずれて別行に落ちる */
 ruby {
   ruby-align: center;
   ruby-position: over;
+  white-space: nowrap;
 }
 
 rt {
@@ -812,18 +843,19 @@ rt {
   color: inherit;
   user-select: none;
   opacity: 0.95;
+  white-space: nowrap;
   transform: translateY(-0.15em);
 }
 
+/* rp はルビ非対応環境でだけ () として出る保険。対応環境では隠す */
 rp {
   display: none;
 }
 
-/* Buttons and badge ruby tweaks */
+/* ボタンは文字が詰まっているので、よみをさらに小さく寄せる */
 .btn rt {
   font-size: 0.45em;
   font-weight: 800;
   transform: translateY(-0.2em);
 }
-
 

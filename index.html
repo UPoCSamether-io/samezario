@@ -103,6 +103,7 @@
           </div>
         </button>
       </nav>
+
     </div>
   </section>
 
@@ -177,6 +178,22 @@
           <div class="cap clapper-stripes h-5 border-b-4 border-ink"></div>
           <div id="map-info-body" class="p-5 flex-1 overflow-auto thin-scroll"></div>
         </aside>
+      </div>
+    </div>
+
+    <!-- ================= エリア解放（現地写真の照合） =================
+         現地で撮った写真とジオフェンスでエリアを開ける。中身は状態ごとに main.js が
+         流し込む（#dex-detail と同じ被せ方で、画面遷移は挟まない）。
+         カメラと位置情報は Secure Context 限定なので、実機では https か localhost が要る -->
+    <div id="unlock" class="absolute inset-0 bg-navy/85 backdrop-blur-sm hidden place-items-center z-20 px-6 py-[var(--bar-pad)]">
+      <div class="relative w-full max-w-[560px] max-h-full bg-paper ink-4 hard-lg rounded-xl overflow-hidden flex flex-col">
+        <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
+        <button id="unlock-close" aria-label="閉じる"
+                class="absolute top-9 right-4 z-10 w-10 h-10 grid place-items-center rounded-full bg-yellow ink-2 hard-sm
+                       transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
+          <span class="material-symbols-rounded !text-xl">close</span>
+        </button>
+        <div id="unlock-body" class="min-h-0 overflow-auto thin-scroll"></div>
       </div>
     </div>
   </section>
@@ -278,9 +295,11 @@
               <div><b class="font-display"><ruby>一時停止<rp>(</rp><rt>いちじていし</rt><rp>)</rp></ruby></b><span class="keys"> — <kbd class="kbd">Esc</kbd></span><span class="touch-only"> — リーダーボード<ruby>横<rp>(</rp><rt>よこ</rt><rp>)</rp></ruby>の<span class="material-symbols-rounded !text-[15px] align-text-bottom">pause</span>ボタン</span>。<ruby>他<rp>(</rp><rt>ほか</rt><rp>)</rp></ruby>の<ruby>人<rp>(</rp><rt>ひと</rt><rp>)</rp></ruby>が<ruby>居<rp>(</rp><rt>い</rt><rp>)</rp></ruby>る<ruby>部屋<rp>(</rp><rt>へや</rt><rp>)</rp></ruby>では<ruby>世界<rp>(</rp><rt>せかい</rt><rp>)</rp></ruby>は<ruby>止<rp>(</rp><rt>と</rt><rp>)</rp></ruby>まりません。</div></li>
           </ol>
         </div>
+        <!-- 行き先とラベルは main.js が差し替える。初回のゲームスタートに挟まったときだけ
+             タイトルへ戻さず、そのままロケ地選択へ送る -->
         <div id="howto-foot" class="p-5 pt-0 shrink-0 flex justify-center">
-          <button class="btn primary !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
-            <div class="py-1.5 px-8 font-display font-extrabold text-sm">とじる</div></button>
+          <button id="howto-go" class="btn primary !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
+            <div id="howto-go-label" class="py-1.5 px-8 font-display font-extrabold text-sm">とじる</div></button>
         </div>
       </div>
     </div>
