@@ -56,9 +56,16 @@
 @utility hard-lg { box-shadow: 8px 8px 0 0 var(--color-ink); }
 @utility hard-sm { box-shadow: 2px 2px 0 0 var(--color-ink); }
 
+/* 斜め縞。repeating-linear-gradient の位相は「その要素自身の padding box の寸法」で
+   決まる（グラデーション線は箱の中心を通り、開始点は角の射影＝幅と高さの関数）ので、
+   素で書くと箱がリサイズされるたびに縞が泳ぐ。28.2843px 角のタイルに閉じ込めると
+   位相がタイル格子＝padding box の左上に固定され、寸法から独立する。
+   28.2843 = 20px（縞1周期）÷ sin45° × 2。タイル対角の投影がちょうど2周期になる
+   ので継ぎ目なく敷き詰まる。この数を変えるなら縞のピッチと一緒に変えること */
 .clapper-stripes {
   background: repeating-linear-gradient(-45deg,
     var(--color-ink) 0 10px, var(--color-paper) 10px 20px);
+  background-size: 28.2843px 28.2843px;
 }
 .dot-bg {
   background-color: var(--color-teal);
@@ -223,12 +230,25 @@
    button's own fill. Stripes lean opposite ways so they interlock when shut.
    overflow must stay visible for the raised arm; margin-top reserves its room. */
 .btn { overflow: visible; margin-top: 13px; }
+/* 腕と板は別々の箱で、しかも腕は左右 3px ずつ広い。素のグラデーションだと
+   それぞれ自分の寸法で位相が決まるため、画面幅や板の高さを変えるたびに
+   継ぎ目のシェブロンがずれる。両方を同じ 28.2843px 角のタイル格子に載せると
+   ずれ量が固定 px の定数だけになり、一度合わせればどの画面幅でも合う。
+   帯の構造（ボタン border box 上端からの y）:
+     腕の縞面 -7..-3 / 腕の下ボーダー -3..0 / 板の縞面 0..7 / 板の下ボーダー 7..10
+   x 方向の 12.0711px は机上計算ではなく実測値。腕(-45°)は y が 1 増えると境界が
+   1 左へ、板(45°)は 1 右へ動くので、両者を折り目（下ボーダーの中心）まで延長した
+   ときの境界 x が一致すれば白がつながって "<" に折れる。ずらし量を変えたくなったら
+   スクリーンショットを撮って、腕の最下段と板の最上段の白の立ち上がり x を数え、
+   折り目まで外挿した差をこの値に足すこと（目視では 8px のずれが読めない）。 */
 .btn > .cap {
   height: .625rem;
   border-bottom: 3px solid var(--color-ink);
   border-radius: 9px 9px 0 0;            /* button's inner radius: 12px - 3px border */
   background: repeating-linear-gradient(45deg,
     var(--color-ink) 0 10px, var(--color-paper) 10px 20px);
+  background-size: 28.2843px 28.2843px;
+  background-position: 0 0;
 }
 .btn::before {
   content: "";
@@ -240,6 +260,8 @@
   border-radius: 9px 9px 0 0;
   background: repeating-linear-gradient(-45deg,
     var(--color-ink) 0 10px, var(--color-paper) 10px 20px);
+  background-size: 28.2843px 28.2843px;
+  background-position: 12.0711px 7px;
   transform-origin: 8px bottom;
   transition: transform .2s cubic-bezier(.2,.9,.3,1.4);
 }
