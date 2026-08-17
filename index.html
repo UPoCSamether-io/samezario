@@ -350,7 +350,8 @@
           <button id="hud-skill" class="w-[104px] h-[104px] bg-yellow ink-4 hard-lg relative overflow-hidden group flex flex-col active:translate-x-1 active:translate-y-1 transition-transform">
             <div class="h-6 shrink-0 clapper-stripes border-b-4 border-ink origin-bottom-left group-hover:-rotate-12 transition-transform"></div>
             <div class="flex-1 grid place-content-center place-items-center pt-1">
-              <div id="hud-skill-icon" class="material-symbols-rounded !text-[34px] leading-none"></div>
+              <!-- 大きさは style.css（画面が短いときに縮めるので、id セレクタで持つ） -->
+              <div id="hud-skill-icon" class="material-symbols-rounded leading-none"></div>
               <div id="hud-skill-name" class="font-display font-extrabold text-[11px] mt-0.5 px-1 text-center leading-tight">スキル</div>
             </div>
             <div id="hud-cd" class="absolute inset-0 bg-ink/72 grid place-items-center font-mono font-bold text-2xl text-paper opacity-0 transition-opacity">0</div>

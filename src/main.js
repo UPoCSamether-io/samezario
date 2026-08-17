@@ -183,7 +183,12 @@ function dimmed(hex) {
 // data.js の label は「文字を置くために手で決めた点」で図形の中心ではなく、
 // 小さい画面で名前を消して鍵だけ残すと中心から外れて見えるため。
 // 名前が消える画面では鍵を重心そのものへ寄せる
-const LABEL_DY = -22, LOCK_DY = 26;
+// 26 では 52px の鍵の上端が名前に食い込み、「深大寺」の"大"が隠れていた
+const LABEL_DY = -22, LOCK_DY = 35;
+// ふりがなは名前のさらに上。どちらも dominant-baseline:middle なので中心どうしの距離で決まる。
+// 名前 46px と読み 24px の字面の半分（約 21+11）に縁取り（8/5 の外側 4+2.5）と隙間を足して 42。
+// -26 だと 12px ぶん重なって名前の上端に読みが乗っていた。style.css の font-size を変えたらここも変える
+const RUBY_DY = -42;
 // ただし多摩川のような細長いエリアでは、重心の 22px 上がもう隣のエリアの中になる。
 // ずらした先が輪郭の外なら重心そのものへ戻す（名前や鍵が他所の海に浮かないように）
 const offsetIn = (m, cen, dy) => (insidePath(m.path, cen.x, cen.y + dy) ? dy : 0);
@@ -218,7 +223,7 @@ function renderMaps(keep = null) {
     if (kana !== plainText(m.name)) {
       const r = svgEl('text', {
         class: 'map-ruby' + (open ? '' : ' locked'),
-        x: cen.x, y: cen.y + offsetIn(m, cen, LABEL_DY) - 26,
+        x: cen.x, y: cen.y + offsetIn(m, cen, LABEL_DY) + RUBY_DY,
       });
       r.textContent = kana;
       labels.appendChild(r);
