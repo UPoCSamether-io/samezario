@@ -282,12 +282,12 @@ for (const map of MAPS) {
   }
   assert.ok(x0 !== null, '壁の絡まない直線が見つからない');
 
-  // 人は右へ等速で逃げ、ボットは 500px 後ろ。人はボットの倍の質量（＝旧AIなら見向きもしない）。
+  // 人は右へ等速で逃げ、ボットは 500px 後ろ。人は大型プレイヤー（mass=900）。
   // 素の速度は同じなので、ダッシュして追わない限り差は縮まらない
   me.x = x0; me.y = y0;
   bot.x = x0 - 500; bot.y = y0;
   [me, bot].forEach((s) => { s.iframe = 0; s.path = [{ x: s.x, y: s.y }]; });
-  me.angle = me.aim = 0; me.mass = 150;
+  me.angle = me.aim = 0; me.mass = 900;
   bot.angle = bot.aim = 0;
   bot.mood = 1; bot.moodT = 99;             // 狩る個体に固定（mood は毎回引き直される）
 
@@ -342,7 +342,7 @@ for (const map of MAPS) {
   w.destroy();
 }
 
-// 13. 小型プレイヤーへのヘイト緩和（スポーン保護）
+// 13. 4段階凶暴度（Tiered Aggressiveness）: 小型プレイヤー（mass < 200）の索敵除外と大型プレイヤー（mass >= 800）の最優先ロックオン
 {
   const w = createWorld({ map: chofu });
   const smallHuman = w.addPlayer({ nid: 'p_small', sharkId: 'chofu', name: '小人', isBot: false });
@@ -363,27 +363,27 @@ for (const map of MAPS) {
   hunter.x = cx; hunter.y = cy; hunter.angle = 0; hunter.aim = 0; hunter.mood = 1; hunter.moodT = 99; hunter.iframe = 0;
   // 近いボット（距離300、X軸方向）
   nearBot.x = cx + 300; nearBot.y = cy; nearBot.angle = 0; nearBot.aim = 0; nearBot.mass = 50; nearBot.iframe = 0;
-  // やや遠い小型人間（距離400、Y軸方向、mass=50）
-  smallHuman.x = cx; smallHuman.y = cy + 400; smallHuman.angle = 0; smallHuman.aim = 0; smallHuman.mass = 50; smallHuman.iframe = 0;
+  // やや遠い小型人間（距離400、Y軸方向、mass=150 < 200）
+  smallHuman.x = cx; smallHuman.y = cy + 400; smallHuman.angle = 0; smallHuman.aim = 0; smallHuman.mass = 150; smallHuman.iframe = 0;
 
   w.food.length = 0;
   w.step(1 / 30);
 
-  // hunter の狙いが nearBot 方向（正のX軸、300px先）へ向いていること
+  // mass < 200 の人間は索敵除外され、hunter の狙いが nearBot 方向（正のX軸、300px先、aim=0付近）へ向くこと
   assert.ok(hunter.aim !== undefined, 'hunter が行動していること');
-  assert.ok(Math.abs(hunter.aim) < 0.2, `hunter はより近いボットを優先して狙う（aim=${hunter.aim}）`);
+  assert.ok(Math.abs(hunter.aim) < 0.2, `hunter は小型人間を除外してボットを狙う（aim=${hunter.aim}）`);
 
-  // 成長した人間（mass=200）なら距離補正（0.25）が働き、より遠くても優先して狙うこと
-  smallHuman.mass = 200;
+  // 大型人間（mass=900 >= 800）なら最優先ターゲット補正（d2 *= 0.25）が働き、より遠くても優先して狙うこと
+  smallHuman.mass = 900;
   w.step(1 / 30);
-  assert.ok(hunter.aim > 0.5, `hunter は成長した人間を優先して狙う（aim=${hunter.aim}）`);
+  assert.ok(hunter.aim > 0.5, `hunter は大型人間を最優先で狙う（aim=${hunter.aim}）`);
   w.destroy();
 }
 
-// 14. 小型獲物に対する急襲・ダッシュ抑制
+// 14. 4段階凶暴度（Tiered Aggressiveness）: 小型獲物への急襲抑制と段階的ダッシュ間合い
 {
   const w = createWorld({ map: chofu });
-  const smallTarget = w.addPlayer({ nid: 'p_target', sharkId: 'chofu', name: '標的', isBot: false });
+  const target = w.addPlayer({ nid: 'p_target', sharkId: 'chofu', name: '標的', isBot: false });
   const hunter = w.addPlayer({ nid: 'b_hunter2', sharkId: 'chofu', name: '狩鮫2', isBot: true });
 
   let cx = null, cy = null;
@@ -396,14 +396,25 @@ for (const map of MAPS) {
     if (clear) { cx = p.x; cy = p.y; }
   }
   cx = cx ?? w.arena.home.x; cy = cy ?? w.arena.home.y;
-  hunter.x = cx; hunter.y = cy; hunter.mood = 1; hunter.moodT = 99; hunter.iframe = 0;
-  smallTarget.x = cx + 400; smallTarget.y = cy; smallTarget.mass = 100; smallTarget.iframe = 0; // HUNT_DASH(520) 内
+  hunter.x = cx; hunter.y = cy; hunter.mood = 0.8; hunter.moodT = 99; hunter.iframe = 0;
 
+  // mass < 200（mass=150）の獲物に対してはダッシュ急襲を行わない（dashDist = 0）
+  target.x = cx + 250; target.y = cy; target.mass = 150; target.iframe = 0;
   w.food.length = 0;
   w.step(1 / 30);
+  assert.strictEqual(hunter.boost, false, 'mass < 200 の獲物に対してはダッシュ急襲を行わない');
 
-  // 獲物が小型の場合は間合い内でもブースト急襲を行わない
-  assert.strictEqual(hunter.boost, false, '小型の獲物に対してはブースト急襲を行わない');
+  // mass=300（200 <= mass < 450）では dashDist = 280
+  // 距離 400px（> 280px）ではダッシュしない
+  target.x = cx + 400; target.y = cy; target.mass = 300;
+  w.step(1 / 30);
+  assert.strictEqual(hunter.boost, false, 'mass=300 で 280px より遠い時はダッシュしない');
+
+  // 距離 250px（< 280px）に入った時はダッシュ急襲する
+  target.x = cx + 250; target.y = cy; target.mass = 300;
+  w.step(1 / 30);
+  assert.strictEqual(hunter.boost, true, 'mass=300 で 280px 以内の時はダッシュ急襲する');
+
   w.destroy();
 }
 
