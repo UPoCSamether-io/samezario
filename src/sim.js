@@ -416,7 +416,6 @@ export function createWorld({ map, authority = true, diffs = false }) {
 
   // ---------- ボットAI ----------
   const HUNT_R2 = 900 * 900;   // 狩りの間合い。二乗のまま比べる
-  const HUNT_DASH = 520;       // ここまで寄ったらダッシュ＝航跡を相手の前に敷く
 
   function botThink(s, dt) {
     s.moodT -= dt;
@@ -430,17 +429,33 @@ export function createWorld({ map, authority = true, diffs = false }) {
       for (const o of sharks) {
         if (o === s || !o.alive || o.iframe > 0) continue;
         let d2 = (o.x - s.x) ** 2 + (o.y - s.y) ** 2;
-        if (!o.isBot) d2 *= 0.25;        // 人は距離半分ぶん魅力的に見える
+        if (!o.isBot) {
+          // プレイヤー質量に応じた4段階凶暴度: 200未満は完全除外、800以上は最優先
+          if (o.mass < 200) continue;
+          if (o.mass < 450) {
+            d2 *= 1.0;
+          } else if (o.mass < 800) {
+            const t = (o.mass - 450) / 350;
+            d2 *= 1.0 - t * 0.5;
+          } else {
+            d2 *= 0.25;
+          }
+        }
         if (d2 < pd2) { pd2 = d2; prey = o; }
       }
     }
 
     let tx, ty, hunt = 0;
     if (prey) {
-      // 迎撃点：相手が「自分が着くまでに進む距離」だけ前に置く。
-      // 180px 固定だと速い相手の後ろを追い、遅い相手には行き過ぎる
+      // 迎撃点：相手の質量に応じて偏差リード率をスケーリング
       hunt = Math.hypot(prey.x - s.x, prey.y - s.y);
-      const lead = clamp(hunt * 0.75, 90, 420);
+      let leadFactor = 0.3;
+      if (prey.mass >= 800) {
+        leadFactor = 0.75;
+      } else if (prey.mass >= 450) {
+        leadFactor = 0.3 + ((prey.mass - 450) / 350) * 0.45;
+      }
+      const lead = clamp(hunt * leadFactor, 90, 420);
       tx = prey.x + Math.cos(prey.angle) * lead;
       ty = prey.y + Math.sin(prey.angle) * lead;
       s.goal = null;                     // 餌の目標は捨てる。狩りをやめたら引き直す
@@ -462,11 +477,16 @@ export function createWorld({ map, authority = true, diffs = false }) {
     let want = Math.atan2(ty - s.y, tx - s.x);
 
     // 胴体と航跡を回避。サイズに関係なく当たれば死ぬので相手は選ばない。
-    // ただし狩り中は間合いを詰める —— 190px で必ず逃げると、仕掛けた直後に
-    // 自分から離れてしまい一度も刺せない。
+    // ただし狩り中は標的の質量に応じて間合いを詰める
     // 頭から4節は見ない：そこは当たっても死なない（resolve の衝突判定と同じ i=4）
-    const near = hunt ? 120 : 190;
-    const nearW = hunt ? 130 : 170;
+    let near = 180, nearW = 160;
+    if (hunt && prey) {
+      if (prey.mass >= 800) {
+        near = 120; nearW = 130;
+      } else if (prey.mass >= 450) {
+        near = 140; nearW = 150;
+      }
+    }
     for (const o of sharks) {
       if (o === s || !o.alive) continue;
       if (Math.hypot(o.x - s.x, o.y - s.y) <= o.reach + near + 70) {
@@ -492,11 +512,22 @@ export function createWorld({ map, authority = true, diffs = false }) {
       want = arena.escape(s.x, s.y, s.angle, look) ?? want;
     }
 
+    let dashDist = 0, skillProb = 0.004;
+    if (hunt && prey) {
+      if (prey.mass >= 800) {
+        dashDist = 520; skillProb = 0.05;
+      } else if (prey.mass >= 450) {
+        dashDist = 420; skillProb = 0.03;
+      } else if (prey.mass >= 200) {
+        dashDist = 280; skillProb = 0.01;
+      }
+    }
+
     s.aim = want;
-    // 獲物に寄ったらダッシュ。速いだけでなく、キル帯そのものである航跡を相手の前へ敷ける
-    s.boost = !s.winded && (hunt ? hunt < HUNT_DASH : s.mood > 0.9);
+    // 獲物の質量に応じた間合いでダッシュ急襲
+    s.boost = !s.winded && (hunt ? (dashDist > 0 && hunt < dashDist) : s.mood > 0.9);
     // 追い詰めている間はスキルも切る（シネマの減速・多摩川の急流がそのまま決め手になる）
-    if (s.cd <= 0 && Math.random() < (hunt && hunt < HUNT_DASH ? 0.05 : 0.004)) world.useSkill(s);
+    if (s.cd <= 0 && Math.random() < (dashDist > 0 && hunt < dashDist ? skillProb : 0.004)) world.useSkill(s);
   }
 
   // ---------- 判定 ----------
