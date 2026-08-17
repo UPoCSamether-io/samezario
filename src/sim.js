@@ -733,7 +733,11 @@ export function createWorld({ map, authority = true, diffs = false }) {
         const d = SHARKS[di] || SHARKS[0];
         const s = sharks.find((o) => o.nid === nid);
         if (!s) {
-          sharks.push(makeShark(d, false, nm, nid));
+          // 湧かせる場所を知らないので makeShark は arena の適当な点へ置く。alive のまま
+          // 下の位置ループへ渡すと full でも復活でもない＝補間の枝に落ち、初対面のサメが
+          // 湧いた点から本当の居場所まで盤面を横断する（実測 2.4kpx / 278px per frame）。
+          // 死んだ状態で入れて、同じスナップショットの !wasAlive でワープさせる
+          sharks.push(Object.assign(makeShark(d, false, nm, nid), { alive: false }));
         } else if (s.def !== d) {
           s.def = d; s.path = [{ x: s.x, y: s.y }]; s.wake.length = 0;   // 復活して別のサメになった
         }

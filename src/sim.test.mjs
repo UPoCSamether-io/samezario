@@ -323,5 +323,24 @@ for (const map of MAPS) {
   w.destroy();
 }
 
+// 12. 初対面のサメ（他人の入室・退室で入れ替わったボット）はワープで置くこと。
+//     名簿で作った瞬間の座標は arena の適当な点なので、補間の枝に落とすと
+//     そこから本当の居場所まで盤面を横断する（実測 2.4kpx / 278px per frame）。
+//     これが「人が入退室するとラグい」の正体だった
+{
+  const w = createWorld({ map: chofu, authority: false });
+  const me = w.addPlayer({ nid: 's1', sharkId: 'chofu', name: 'ME' });
+  const X = w.arena.home.x + 2000, Y = w.arena.home.y + 1500;
+  w.applySnapshot({
+    t: 'snap',
+    r: [['s1', 'ME', 0], ['s2', 'NEW', 0]],
+    s: [['s1', me.x, me.y, 0, 40, 1], ['s2', X, Y, 0, 40, 1]],
+  }, 's1');
+  const s2 = w.sharks.find((o) => o.nid === 's2');
+  const err = Math.hypot(s2.x - X, s2.y - Y);
+  assert.ok(err < 1, `入室した他人が湧いた点に取り残されている: ${err.toFixed(0)}px`);
+  w.destroy();
+}
+
 console.log('sim ok');
 
