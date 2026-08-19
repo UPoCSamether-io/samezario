@@ -102,3 +102,68 @@ assert.deepEqual([...save.unlocked].sort(), [...new Set([...opened, 'chofu'])].s
 }
 
 console.log('progress ok');
+
+import test from 'node:test';
+
+const P = await import('./progress.js');
+
+test('addXp: 到達質量が累計XPに加算される', () => {
+  const before = P.save.xp;
+  P.addXp(120.7);
+  assert.equal(P.save.xp, before + 121);   // 丸める
+});
+
+test('level: LEVEL_XP のしきい値を超えるたびに1つ上がる', () => {
+  P.replace({ xp: 0 });
+  assert.equal(P.level(), 0);
+  P.replace({ xp: P.LEVEL_XP[0] });
+  assert.equal(P.level(), 1);
+  P.replace({ xp: P.LEVEL_XP[0] - 1 });
+  assert.equal(P.level(), 0);
+  P.replace({ xp: P.LEVEL_XP[P.LEVEL_XP.length - 1] });
+  assert.equal(P.level(), P.LEVEL_XP.length);
+});
+
+test('stageOf: era 1 はレベル0-3、era 2 はレベル3で0段階目に現れる', () => {
+  P.replace({ xp: 0 });
+  assert.equal(P.stageOf(1), 0);
+  assert.equal(P.stageOf(2), 0);
+  P.replace({ xp: P.LEVEL_XP[2] });          // レベル3
+  assert.equal(P.level(), 3);
+  assert.equal(P.stageOf(1), 3, '古代が復元完了していない');
+  assert.equal(P.stageOf(2), 0, '奈良が段階0で現れていない');
+});
+
+test('stageOf: 3を超えて増えない', () => {
+  P.replace({ xp: P.LEVEL_XP[P.LEVEL_XP.length - 1] });
+  assert.equal(P.stageOf(1), 3);
+});
+
+test('isUnlockedShark: era 0（見本）は常に解放、era 1 はレベル3で解放', () => {
+  P.replace({ xp: 0 });
+  assert.equal(P.isUnlockedShark({ era: 0 }), true);
+  assert.equal(P.isUnlockedShark({ era: 1 }), false);
+  P.replace({ xp: P.LEVEL_XP[2] });
+  assert.equal(P.isUnlockedShark({ era: 1 }), true);
+  assert.equal(P.isUnlockedShark({ era: 2 }), false);
+});
+
+test('seed: 生成済みで、0 ではない（虫食い位置が固定されること）', () => {
+  assert.equal(typeof P.save.seed, 'number');
+  assert.notEqual(P.save.seed, 0);
+});
+
+test('既存セーブの移行: xp を持たないセーブは best を引き継ぐ', async () => {
+  // 別モジュールとして読み直す。localStorage を先に古い形のセーブで埋めておく
+  store['samezario.save'] = JSON.stringify({ v: 1, unlocked: ['chofu'], best: 4321, points: 0, spots: {} });
+  const fresh = await import('./progress.js?migrate');
+  assert.equal(fresh.save.xp, 4321, 'best が引き継がれていない');
+  assert.notEqual(fresh.save.seed, 0, 'seed が生成されていない');
+});
+
+test('markScriptSeen: seenLevel が現在のレベルに揃い、赤点判定が消える', () => {
+  P.replace({ xp: P.LEVEL_XP[2], seenLevel: 0 });
+  assert.ok(P.level() > P.save.seenLevel, '赤点が点いていない');
+  P.markScriptSeen();
+  assert.equal(P.save.seenLevel, P.level());
+});

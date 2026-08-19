@@ -27,6 +27,9 @@ const createDefaults = () => ({
   points: 0,
   spots: {},
   seenHowto: false,   // 遊び方を一度でも閉じたか。初回だけ自動で挟むための印
+  xp: 0,          // 累計経験値。レベル・解放・復元段階はすべてここから導出する
+  seed: 0,        // 虫食い位置の種。初回だけ生成し、以後変えない
+  seenLevel: 0,   // 脚本を最後に開いたときのレベル。赤点の消灯判定
 });
 
 const DEFAULTS = createDefaults();
@@ -42,7 +45,13 @@ function read() {
 }
 
 // 参照を配るので、これ自体は差し替えず中身を書き換える（main.js が握っている）
-export const save = Object.assign(createDefaults(), read());
+const raw = read();
+export const save = Object.assign(createDefaults(), raw);
+
+// 既存セーブの移行。xp を持たないセーブは、これまでの最高記録を経験値として引き継ぐ。
+// v を上げると解放とポイントが消えるので、ここで埋める。
+if (!('xp' in raw)) save.xp = save.best;
+if (!save.seed) save.seed = ((Math.random() * 0xffffffff) >>> 0) || 1;
 
 export const persist = () => localStorage.setItem(KEY, JSON.stringify(save));
 
@@ -91,3 +100,35 @@ export function markShared(spot) {
     spots: { ...save.spots, [spot.id]: { ...rec, shared: true } },
   });
 }
+
+/**
+ * レベルの累計XPしきい値。差分は 100 + 50n の逓増。
+ *
+ * ponytail: 1プレイあたりの到達質量の実分布が未計測なので暫定値。
+ * save.best から分布を取って差し替える。他のロジックから独立させてあるので
+ * ここだけ差し替えれば済む。
+ */
+export const LEVEL_XP = [
+  150, 350, 600, 900, 1250, 1650, 2100, 2600, 3150,
+  3750, 4400, 5100, 5850, 6650, 7500, 8400, 9350, 10350,
+];
+
+const STAGES = 3;   // サメ1種あたりの復元段階数
+
+/** 対戦終了時の到達質量を経験値に入れる。1プレイにつき1回だけ呼ぶこと */
+export const addXp = (mass) => replace({ xp: save.xp + Math.round(mass) });
+
+export const level = () => LEVEL_XP.filter((t) => save.xp >= t).length;
+
+/** そのサメの復元段階(0..3)。era 1 はレベル0から、era 2 はレベル3から始まる */
+export const stageOf = (era) =>
+  Math.max(0, Math.min(STAGES, level() - STAGES * (era - 1)));
+
+/** era 0（映画サメ＝見本）は常に解放。それ以外は 3*era に到達で解放 */
+export const isUnlockedShark = (d) => d.era === 0 || level() >= STAGES * d.era;
+
+/** 脚本を開いた。赤点を消す */
+export const markScriptSeen = () => replace({ seenLevel: level() });
+
+/** 赤点を出すか。新しい文字が現れたのに脚本を開いていない状態 */
+export const hasNewScript = () => level() > save.seenLevel;
