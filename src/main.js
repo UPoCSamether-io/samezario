@@ -703,6 +703,9 @@ function mountDial(list) {
 }
 
 function selectShark(d) {
+  // 全呼び出し元がここを通る。ダイヤルのスクロール選択は button の disabled を
+  // 迂回できるので、押せるかどうかではなく選ばれるかどうかで止める
+  if (!isUnlockedShark(d)) return;
   selShark = d;
   if (mainPreview) mainPreview.def = d;
   // 面を3つ持っているので、位置ではなく data-i で当てる
@@ -776,6 +779,7 @@ function renderDex() {
       <div class="dex-name w-full border-t-4 border-ink px-3 py-2.5">
         <h3 class="font-display font-extrabold text-lg leading-tight">${locked ? '????' : rubify(d.name)}</h3>
       </div>`;
+    if (locked) card.setAttribute('aria-disabled', 'true');
     card.onclick = () => { if (!locked) openDex(d); };
     wrap.appendChild(card);
   }
