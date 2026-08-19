@@ -94,3 +94,37 @@ test('renderHTML: HTML特殊文字をエスケープする', () => {
   assert.ok(!html.includes('<script>'));
   assert.match(html, /&lt;script&gt;&amp;&quot;/);
 });
+
+import { scriptView } from './restore.js';
+
+test('scriptView: 段階が進むと読める文字が増える', () => {
+  const counts = [0, 1, 2, 3].map((s) => scriptView(SAMPLE, 99, s).readable);
+  for (let i = 1; i < counts.length; i++) {
+    assert.ok(counts[i] >= counts[i - 1], `段階${i} で読める文字が減っている`);
+  }
+  assert.ok(counts[3] > counts[0], '最終段階が初期段階より読める');
+});
+
+test('scriptView: 段階3で完全復元される', () => {
+  const v = scriptView(SAMPLE, 99, 3);
+  assert.equal(v.readable, v.total);
+  assert.ok(!v.html.includes('■'));
+});
+
+test('scriptView: 段階0では新出ゼロ、段階1以降は新出がある', () => {
+  assert.equal(scriptView(SAMPLE, 99, 0).added, 0);
+  assert.ok(scriptView(SAMPLE, 99, 1).added > 0, '段階1 に新出文字がない');
+  assert.ok(scriptView(SAMPLE, 99, 3).added > 0, '段階3 に新出文字がない');
+});
+
+test('scriptView: 新出文字はハイライトされて出力される', () => {
+  const v = scriptView(SAMPLE, 99, 1);
+  assert.match(v.html, /<mark class="fresh">/);
+});
+
+test('scriptView: 二人の seed を突き合わせると読める文字が増える（ジグソー）', () => {
+  const a = scriptView(SAMPLE, 1, 0);
+  const b = scriptView(SAMPLE, 2, 0);
+  assert.equal(a.readable, b.readable);        // 同じ段階なら量は同じ
+  assert.notEqual(a.html, b.html);             // 場所は違う
+});

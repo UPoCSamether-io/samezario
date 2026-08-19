@@ -98,3 +98,28 @@ export function renderHTML(toks, masked, added = new Set()) {
   }
   return out;
 }
+
+/**
+ * main.js が呼ぶ唯一の入口。段階 stage の脚本を HTML にして返す。
+ *
+ * 新出文字は「前の段階のマスク集合 − 今の段階のマスク集合」。
+ * maskSet が入れ子性を持つので、前段階をその場で計算し直すだけで求まる。
+ * 保存は要らない。
+ */
+export function scriptView(text, seed, stage) {
+  const toks = tokenize(text);
+  const keep = protectedEnds(toks);
+  const s = Math.max(0, Math.min(STAGE_RATIO.length - 1, stage | 0));
+
+  const masked = maskSet(toks, STAGE_RATIO[s], seed, keep);
+  const prev = s > 0 ? maskSet(toks, STAGE_RATIO[s - 1], seed, keep) : masked;
+  const added = new Set([...prev].filter((i) => !masked.has(i)));
+
+  const total = toks.filter((t) => t.ch !== '\n').length;
+  return {
+    html: renderHTML(toks, masked, added),
+    added: added.size,
+    total,
+    readable: total - masked.size,
+  };
+}
