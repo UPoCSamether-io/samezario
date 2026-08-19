@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { tokenize, maskSet, protectedEnds, STAGE_RATIO } from './restore.js';
+import { plainText } from './ruby.js';
 
 const SAMPLE = '｜三万年前《さんまんねんまえ》の｜調布《ちょうふ》は、｜寒《さむ》かった。\nあいだの｜行《ぎょう》。\nまだ、｜誰《だれ》も｜知《し》らない。';
 
@@ -11,6 +12,10 @@ test('tokenize: 1文字1要素になり、ルビ塊には読みと塊IDが付く
   assert.equal(toks[mi].ruby, 'さんまんねんまえ');
   assert.equal(toks[mi].block, toks[mi + 3].block);   // 三万年前 は同じ塊
   assert.equal(toks.find((t) => t.ch === 'の').ruby, null);
+});
+
+test('tokenize: ruby.js と同じ記法解釈になっている（記法が食い違ったら落ちる）', () => {
+  assert.equal(tokenize(SAMPLE).map((t) => t.ch).join(''), plainText(SAMPLE));
 });
 
 test('maskSet: 同じ seed なら何度呼んでも同じ結果になる', () => {
