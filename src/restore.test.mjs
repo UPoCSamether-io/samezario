@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { tokenize, maskSet, protectedEnds, STAGE_RATIO } from './restore.js';
+
+const SAMPLE = '｜三万年前《さんまんねんまえ》の｜調布《ちょうふ》は、｜寒《さむ》かった。\nあいだの｜行《ぎょう》。\nまだ、｜誰《だれ》も｜知《し》らない。';
+
+test('tokenize: 1文字1要素になり、ルビ塊には読みと塊IDが付く', () => {
+  const toks = tokenize(SAMPLE);
+  assert.equal(toks.map((t) => t.ch).join(''), '三万年前の調布は、寒かった。\nあいだの行。\nまだ、誰も知らない。');
+  const mi = toks.findIndex((t) => t.ch === '三');
+  assert.equal(toks[mi].ruby, 'さんまんねんまえ');
+  assert.equal(toks[mi].block, toks[mi + 3].block);   // 三万年前 は同じ塊
+  assert.equal(toks.find((t) => t.ch === 'の').ruby, null);
+});
+
+test('maskSet: 同じ seed なら何度呼んでも同じ結果になる', () => {
+  const toks = tokenize(SAMPLE);
+  const a = maskSet(toks, 0.4, 12345);
+  const b = maskSet(toks, 0.4, 12345);
+  assert.deepEqual([...a].sort(), [...b].sort());
+});
+
+test('maskSet: seed が違えば伏せる場所が違う（ジグソーの前提）', () => {
+  const toks = tokenize(SAMPLE);
+  const a = maskSet(toks, 0.4, 1);
+  const b = maskSet(toks, 0.4, 2);
+  assert.notDeepEqual([...a].sort(), [...b].sort());
+});
+
+test('maskSet: ratio が小さいほど真部分集合になる（入れ子性）', () => {
+  const toks = tokenize(SAMPLE);
+  const wide = maskSet(toks, 0.40, 7);
+  const narrow = maskSet(toks, 0.12, 7);
+  assert.ok(narrow.size < wide.size);
+  for (const i of narrow) assert.ok(wide.has(i), `添字 ${i} が広い方に含まれていない`);
+});
+
+test('maskSet: 句読点・改行は伏せない（文の骨格が消えると推測できなくなる）', () => {
+  const toks = tokenize(SAMPLE);
+  for (const i of maskSet(toks, 0.9, 3)) {
+    assert.ok(!/[\s、。「」（）〜ー・—]/.test(toks[i].ch), `記号 ${toks[i].ch} が伏せられた`);
+  }
+});
+
+test('protectedEnds + maskSet: 冒頭行と末尾行は伏せない（引きを担う行が壊れる）', () => {
+  const toks = tokenize(SAMPLE);
+  const keep = protectedEnds(toks);
+  for (const i of maskSet(toks, 0.9, 3, keep)) assert.ok(!keep.has(i));
+  assert.ok(keep.has(0), '冒頭行の先頭が保護されていない');
+  assert.ok(keep.has(toks.length - 1), '末尾行の末尾が保護されていない');
+});
+
+test('STAGE_RATIO: 4段階で単調減少し、最後は0', () => {
+  assert.deepEqual(STAGE_RATIO, [0.40, 0.25, 0.12, 0]);
+});
