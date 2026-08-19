@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { tokenize, maskSet, protectedEnds, STAGE_RATIO } from './restore.js';
+import { tokenize, maskSet, protectedEnds, STAGE_RATIO, renderHTML } from './restore.js';
 import { plainText } from './ruby.js';
 
 const SAMPLE = '｜三万年前《さんまんねんまえ》の｜調布《ちょうふ》は、｜寒《さむ》かった。\nあいだの｜行《ぎょう》。\nまだ、｜誰《だれ》も｜知《し》らない。';
@@ -57,4 +57,40 @@ test('protectedEnds + maskSet: 冒頭行と末尾行は伏せない（引きを�
 
 test('STAGE_RATIO: 4段階で単調減少し、最後は0', () => {
   assert.deepEqual(STAGE_RATIO, [0.40, 0.25, 0.12, 0]);
+});
+
+test('renderHTML: 伏せていない塊にはふりがなが付く', () => {
+  const toks = tokenize('｜調布《ちょうふ》のうみ');
+  const html = renderHTML(toks, new Set());
+  assert.match(html, /<ruby>調布<rp>\(<\/rp><rt>ちょうふ<\/rt><rp>\)<\/rp><\/ruby>/);
+  assert.match(html, /のうみ/);
+});
+
+test('renderHTML: 塊が1文字でも欠けたらふりがなを出さない（答えが漏れるため）', () => {
+  const toks = tokenize('｜調布《ちょうふ》のうみ');
+  const bi = toks.findIndex((t) => t.ch === '布');
+  const html = renderHTML(toks, new Set([bi]));
+  assert.ok(!html.includes('ちょうふ'), 'ふりがなが答えを漏らしている');
+  assert.match(html, /調/);
+  assert.match(html, /■/);
+});
+
+test('renderHTML: マスクが空なら本文がそのまま出る', () => {
+  const toks = tokenize(SAMPLE);
+  const html = renderHTML(toks, new Set());
+  assert.ok(!html.includes('■'));
+  assert.match(html, /まだ、/);
+});
+
+test('renderHTML: added の文字はハイライトされる', () => {
+  const toks = tokenize('あいうえお');
+  const html = renderHTML(toks, new Set(), new Set([2]));
+  assert.match(html, /<mark class="fresh">う<\/mark>/);
+});
+
+test('renderHTML: HTML特殊文字をエスケープする', () => {
+  const toks = tokenize('<script>&"');
+  const html = renderHTML(toks, new Set());
+  assert.ok(!html.includes('<script>'));
+  assert.match(html, /&lt;script&gt;&amp;&quot;/);
 });

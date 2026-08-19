@@ -59,3 +59,43 @@ export function maskSet(toks, ratio, seed, protect = new Set()) {
   }
   return new Set(cand.slice(0, Math.round(cand.length * ratio)));
 }
+
+const esc = (s) =>
+  String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/**
+ * 虫食いを HTML にする。
+ *
+ * ルビ塊は1文字でも欠けたら読みを落とす。残すと ｜調布《ちょうふ》 の「布」を
+ * 伏せても「ちょうふ」が答えを漏らしてしまう。
+ * added（前の段階から新しく現れた文字）は <mark> で包む。262文字のうち40字が
+ * 増えても、前の状態を覚えていない子には差分が見えないため。
+ */
+export function renderHTML(toks, masked, added = new Set()) {
+  const broken = new Set(
+    toks.map((t, i) => (t.block !== null && masked.has(i) ? t.block : null)).filter((b) => b !== null),
+  );
+  let out = '';
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (masked.has(i)) { out += '<span class="mask">■</span>'; continue; }
+
+    // 塊の頭に来たら、塊まるごと <ruby> として出す
+    if (t.block !== null && !broken.has(t.block) && (i === 0 || toks[i - 1].block !== t.block)) {
+      let base = '', fresh = false;
+      let j = i;
+      for (; j < toks.length && toks[j].block === t.block; j++) {
+        base += esc(toks[j].ch);
+        if (added.has(j)) fresh = true;
+      }
+      const ruby = `<ruby>${base}<rp>(</rp><rt>${esc(t.ruby)}</rt><rp>)</rp></ruby>`;
+      out += fresh ? `<mark class="fresh">${ruby}</mark>` : ruby;
+      i = j - 1;
+      continue;
+    }
+
+    const ch = t.ch === '\n' ? '<br>' : esc(t.ch);
+    out += added.has(i) ? `<mark class="fresh">${ch}</mark>` : ch;
+  }
+  return out;
+}
