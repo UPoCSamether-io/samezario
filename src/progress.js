@@ -48,12 +48,16 @@ function read() {
 const raw = read();
 export const save = Object.assign(createDefaults(), raw);
 
+export const persist = () => localStorage.setItem(KEY, JSON.stringify(save));
+
 // 既存セーブの移行。xp を持たないセーブは、これまでの最高記録を経験値として引き継ぐ。
 // v を上げると解放とポイントが消えるので、ここで埋める。
+//
+// 埋めたら必ず書き戻す。seed は乱数なので、保存しないまま次の起動を迎えると
+// 別の値が生まれ、マスク位置が総入れ替えになって復元途中の文章が壊れる。
 if (!('xp' in raw)) save.xp = save.best;
 if (!save.seed) save.seed = ((Math.random() * 0xffffffff) >>> 0) || 1;
-
-export const persist = () => localStorage.setItem(KEY, JSON.stringify(save));
+persist();
 
 /** 唯一の書き込み口。組み立て済みの次の状態で置き換える */
 export function replace(next) {
@@ -116,7 +120,9 @@ export const LEVEL_XP = [
 const STAGES = 3;   // サメ1種あたりの復元段階数
 
 /** 対戦終了時の到達質量を経験値に入れる。1プレイにつき1回だけ呼ぶこと */
-export const addXp = (mass) => replace({ xp: save.xp + Math.round(mass) });
+export const addXp = (mass) =>
+  // xp は自分自身に積むので、NaN が一度入ると二度と抜けない（level も stageOf も道連れ）
+  Number.isFinite(mass) && mass > 0 ? replace({ xp: save.xp + Math.round(mass) }) : save;
 
 export const level = () => LEVEL_XP.filter((t) => save.xp >= t).length;
 

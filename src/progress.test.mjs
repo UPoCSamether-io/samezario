@@ -167,3 +167,29 @@ test('markScriptSeen: seenLevel が現在のレベルに揃い、赤点判定が
   P.markScriptSeen();
   assert.equal(P.save.seenLevel, P.level());
 });
+
+test('seed: 一度生成したら次の起動でも変わらない（マスク位置が総入れ替えになる）', async () => {
+  store['samezario.save'] = JSON.stringify({ v: 1, unlocked: ['chofu'], best: 100, points: 0, spots: {} });
+  const first = await import('./progress.js?seed-1');
+  const seed = first.save.seed;
+  assert.ok(seed, 'seed が生成されていない');
+  assert.equal(JSON.parse(store['samezario.save']).seed, seed, 'seed が localStorage に書き戻されていない');
+
+  const second = await import('./progress.js?seed-2');
+  assert.equal(second.save.seed, seed, '起動のたびに seed が振り直されている');
+});
+
+test('addXp: NaN や負の質量では xp を汚さない（一度入ると回復不能なため）', () => {
+  P.replace({ xp: 500 });
+  P.addXp(NaN);
+  P.addXp(-10);
+  P.addXp(undefined);
+  assert.equal(P.save.xp, 500);
+});
+
+test('hasNewScript: レベルが seenLevel を超えたときだけ赤点が点く', () => {
+  P.replace({ xp: P.LEVEL_XP[2], seenLevel: P.LEVEL_XP.length });
+  assert.equal(P.hasNewScript(), false, '既読なのに赤点が点いている');
+  P.replace({ seenLevel: 0 });
+  assert.equal(P.hasNewScript(), true, '新出があるのに赤点が点かない');
+});
