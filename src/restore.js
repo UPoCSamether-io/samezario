@@ -1,3 +1,5 @@
+import { esc } from './ruby.js';
+
 // 脚本の虫食い。DOM を触らない純関数だけを置く（ruby.js と同じ方針で Node から直接テストできる）。
 //
 // マスク位置はプレイヤーごとの seed から決定的に作る。毎回振り直すと、
@@ -59,9 +61,6 @@ export function maskSet(toks, ratio, seed, protect = new Set()) {
   }
   return new Set(cand.slice(0, Math.round(cand.length * ratio)));
 }
-
-const esc = (s) =>
-  String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /**
  * 虫食いを HTML にする。
