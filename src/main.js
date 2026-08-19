@@ -3,7 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -587,7 +587,9 @@ async function share() {
 
 // ---------- サメ選択 ----------
 // 直前に遊んだサメ。タイトルの立ち絵とサメ選択の初期値を兼ねる（初回は映画サメ）
-let selShark = SHARKS.find((s) => s.id === save.shark) || SHARKS[0];
+// 未解放のサメが選ばれたままになることがある（LEVEL_XP を変えたときなど）。
+// 見本の映画サメへ落とす
+let selShark = SHARKS.find((s) => s.id === save.shark && isUnlockedShark(s)) || SHARKS[0];
 paintTitleShark();   // 起動直後のタイトルは show() を通らないのでここで描く
 
 const STAT_KEYS = [
@@ -606,9 +608,10 @@ function renderSharks() {
     // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ戻す
     for (let copy = 0; copy < DIAL_COPIES; copy++) {
       SHARKS.forEach((d, i) => {
+        const locked = !isUnlockedShark(d);
         const b = document.createElement('button');
         b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
-          'transition-transform hover:-translate-x-1 active:translate-y-0.5';
+          'transition-transform hover:-translate-x-1 active:translate-y-0.5' + (locked ? ' shark-locked' : '');
         b.dataset.i = i;
         b.dataset.copy = copy;
         b.innerHTML = `
@@ -619,6 +622,7 @@ function renderSharks() {
             <span class="tile-name block font-display font-extrabold text-base leading-tight">${rubify(d.name)}</span>
             <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${rubify(d.tag)}</span>
           </span>`;
+        if (locked) { b.disabled = true; b.setAttribute('aria-disabled', 'true'); }
         b.onclick = () => selectShark(d);
         list.appendChild(b);
       });
@@ -759,19 +763,20 @@ function renderDex() {
   const wrap = $('#dex-list');
   wrap.innerHTML = '';
   for (const d of SHARKS) {
+    const locked = !isUnlockedShark(d);
     const card = document.createElement('button');
     card.className = 'bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col text-left ' +
       'transition-transform hover:-translate-y-1 active:translate-y-0.5';
     card.innerHTML = `
       <div class="dex-cap clapper-stripes h-5 border-b-4 border-ink w-full"></div>
       <div class="dex-thumb w-full aspect-square p-3" style="background:${d.color}22">
-        <img src="${portrait(d)}" alt="${plainText(d.name)}" loading="lazy" decoding="async"
-             class="w-full h-full object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.22)]">
+        <img src="${portrait(d)}" alt="${locked ? '' : plainText(d.name)}" loading="lazy" decoding="async"
+             class="w-full h-full object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.22)] ${locked ? 'dex-silhouette' : ''}">
       </div>
       <div class="dex-name w-full border-t-4 border-ink px-3 py-2.5">
-        <h3 class="font-display font-extrabold text-lg leading-tight">${rubify(d.name)}</h3>
+        <h3 class="font-display font-extrabold text-lg leading-tight">${locked ? '????' : rubify(d.name)}</h3>
       </div>`;
-    card.onclick = () => openDex(d);
+    card.onclick = () => { if (!locked) openDex(d); };
     wrap.appendChild(card);
   }
 }
