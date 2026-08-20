@@ -252,6 +252,10 @@ const closeScriptHelp = () => {
 $('#script-help').onclick = openScriptHelp;
 $('#script-help-close').onclick = closeScriptHelp;
 scriptHelpSheet.onclick = (e) => { if (e.target === scriptHelpSheet) closeScriptHelp(); };
+// #dex-detail・unlockPanel と同じ Escape 対応。ただしこちらの close は
+// scriptTutorialSeen を書いて persist() するので、他の2枚と違って閉じている間の
+// Escape まで拾うと無意味な persist() が起きる。開いている間だけ拾うよう絞る
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && scriptHelpSheet.style.display === 'grid') closeScriptHelp(); });
 
 const goChapter = (delta) => {
   const cs = chapters();
