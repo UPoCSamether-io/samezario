@@ -77,7 +77,7 @@ export function renderHTML(toks, masked, added = new Set()) {
   let out = '';
   for (let i = 0; i < toks.length; i++) {
     const t = toks[i];
-    if (masked.has(i)) { out += '<span class="mask">■</span>'; continue; }
+    if (masked.has(i)) { out += '<span class="mask" aria-hidden="true">■</span>'; continue; }
 
     // 塊の頭に来たら、塊まるごと <ruby> として出す
     if (t.block !== null && !broken.has(t.block) && (i === 0 || toks[i - 1].block !== t.block)) {
