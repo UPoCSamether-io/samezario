@@ -136,5 +136,8 @@ export const isUnlockedShark = (d) => d.era === 0 || level() >= STAGES * d.era;
 /** 脚本を開いた。赤点を消す */
 export const markScriptSeen = () => replace({ seenLevel: level() });
 
-/** 赤点を出すか。新しい文字が現れたのに脚本を開いていない状態 */
-export const hasNewScript = () => level() > save.seenLevel;
+// 脚本が実際に変化しうる最大レベル。データから引くので区分を足せば自動で伸びる
+const SCRIPT_MAX = Math.max(0, ...SHARKS.filter((s) => s.script).map((s) => s.era * STAGES));
+
+/** 赤点を出すか。新しい文字が現れたのに脚本を開いていない状態（完成後は頭打ち） */
+export const hasNewScript = () => Math.min(level(), SCRIPT_MAX) > Math.min(save.seenLevel, SCRIPT_MAX);

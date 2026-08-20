@@ -113,6 +113,9 @@ const scriptSheet = $('#script-sheet');
 
 /** 脚本を開く。復元中の1本（無ければ最後に完成した1本）を描く */
 function openScript() {
+  // 既読フラグを更新する前に退避する。そうしないと、完成済みの脚本を何度開いても
+  // 直近の段階差分（+29 など）が毎回ハイライトされたままになる
+  const isNew = hasNewScript();
   const d = SHARKS.find((s) => s.script && stageOf(s.era) < 3)
          || [...SHARKS].reverse().find((s) => s.script);
 
@@ -122,14 +125,16 @@ function openScript() {
   } else {
     const stage = stageOf(d.era);
     const v = scriptView(d.script, save.seed, stage);
+    const html = isNew ? v.html : v.html.replace(/<mark class="fresh">(.*?)<\/mark>/gs, '$1');
+    const added = isNew ? v.added : 0;
     $('#script-body').innerHTML = `
       <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">LOST FILM / ${esc(d.en)}</div>
       <h2 class="font-display font-extrabold text-2xl leading-tight mt-1">${rubify(d.name)}</h2>
       <div class="font-mono text-[11px] text-ink/60 mt-2">
         ${rubify('｜復元《ふくげん》')} ${Math.round(v.readable / v.total * 100)}%
-        ${v.added ? `<span class="text-danger ml-2">+${v.added}</span>` : ''}
+        ${added ? `<span class="text-danger ml-2">+${added}</span>` : ''}
       </div>
-      <p class="script-text mt-5 leading-loose">${v.html}</p>`;
+      <p class="script-text mt-5 leading-loose">${html}</p>`;
   }
 
   scriptSheet.style.display = 'block';
@@ -1028,10 +1033,16 @@ function showResult(r) {
       <div class="res-stat-v font-mono font-bold text-xl sm:text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
-  // レベルアップは主、赤点は従。両方が同じ強さで主張すると煩くなる
+  // レベルアップは主、赤点は従。両方が同じ強さで主張すると煩くなる。
+  // 告知は「脚本が進んだ」「サメが解放された」「どちらでもない」の順で実態どおりに出し分ける
+  const unlockedShark = SHARKS.find((s) => s.era * 3 === level());
+  const news = leveled
+    ? hasNewScript() ? rubify('｜脚本《きゃくほん》に｜新《あたら》しい｜文字《もじ》が｜現《あらわ》れた')
+      : unlockedShark ? `${rubify(unlockedShark.name)}${rubify('が｜解放《かいほう》された')}`
+      : ''
+    : '';
   $('#res-level').innerHTML = leveled
-    ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">LEVEL ${level()}</span>
-       ${rubify('｜脚本《きゃくほん》に｜新《あたら》しい｜文字《もじ》が｜現《あらわ》れた')}`
+    ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">LEVEL ${level()}</span> ${news}`
     : '';
   $('#res-tip').innerHTML = rubify(TIPS[(Math.random() * TIPS.length) | 0]);
 }

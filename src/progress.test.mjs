@@ -193,3 +193,9 @@ test('hasNewScript: レベルが seenLevel を超えたときだけ赤点が点�
   P.replace({ seenLevel: 0 });
   assert.equal(P.hasNewScript(), true, '新出があるのに赤点が点かない');
 });
+
+test('hasNewScript: 脚本が完成する最大レベル(土偶=era1→レベル3)を超えたら、未読でも赤点は点かない', () => {
+  // レベル4（脚本には無関係のレベルアップ）。seenLevel はレベル3の完成をまだ見ていない
+  P.replace({ xp: P.LEVEL_XP[3], seenLevel: 3 });
+  assert.equal(P.hasNewScript(), false, '脚本完成後のレベルアップで赤点が誤って点いている');
+});
