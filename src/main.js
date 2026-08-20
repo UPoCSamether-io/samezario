@@ -82,7 +82,7 @@ function show(name) {
       cur = name;
       syncScriptDot();
       if (name === 'shark') renderSharks();
-      if (name === 'dex') renderDex();
+      if (name === 'dex') { renderDex(); if (pendingClaim) { openDex(pendingClaim, true); pendingClaim = null; } }
       if (name === 'script') renderScript();
       if (name === 'title') paintTitleShark();
       if (name === 'game') stopAttract(); else startAttract();
@@ -108,6 +108,11 @@ const syncScriptDot = () => {
 // ---------- 史料 ----------
 // 章の状態判定（chapters/chapterLocked/defaultChapter）は save 由来の純粋なロジックなので
 // progress.js 側に置いてある。ここはビュー状態（chapterIdx）と DOM 配線だけを持つ。
+
+// 獲得したサメの詳細は図鑑のものを流用する。#dex-detail は #s-dex の子で、
+// .screen が display:none を持つため史料画面のままでは映らない。
+// show('dex') の完了後に開きたいので、ここで受け渡す
+let pendingClaim = null;
 
 // 表示中の章の添字。セーブしない。どの章を最後に見ていたかを永続化しても、
 // 次に開くとき「復元中の章」以外を見せる理由がない
@@ -182,10 +187,27 @@ function renderScript() {
       ${added ? `<span class="text-danger ml-1">+${added}</span>` : ''}
     </div>`;
 
-  scriptAction.innerHTML = done
-    ? ''
-    : `<p class="text-[12px] text-paper/70 text-center">${rubify(
-        '｜海《うみ》でサメを｜大《おお》きく｜育《そだ》てると、｜泥《どろ》が｜落《お》ちて｜文字《もじ》が｜読《よ》めるようになる。')}</p>`;
+  const claimed = save.claimedSharks.includes(d.id);
+  if (done && !claimed) {
+    scriptAction.innerHTML = `
+      <button id="script-claim" type="button" class="btn primary w-full claim-pulse">
+        <div class="cap clapper-stripes"></div>
+        <div class="px-6 py-3 font-display font-extrabold text-base md:text-lg">🎬 ${rubify(
+          '｜史料《しりょう》をもとにサメを｜映画《えいが》に｜登場《とうじょう》させる！')}</div>
+      </button>`;
+    $('#script-claim').onclick = () => {
+      claimShark(d.id);
+      renderScript();      // ボタンを消し、次の幕のロックを解く
+      pendingClaim = d;    // 図鑑へ着いたら詳細を開く（Step 0）
+      show('dex');
+    };
+  } else if (done) {
+    scriptAction.innerHTML = `<p class="text-[12px] text-paper/70 text-center">${rubify(
+      '｜復元《ふくげん》｜完了《かんりょう》。｜次《つぎ》の｜幕《まく》へ｜進《すす》める。')}</p>`;
+  } else {
+    scriptAction.innerHTML = `<p class="text-[12px] text-paper/70 text-center">${rubify(
+      '｜海《うみ》でサメを｜大《おお》きく｜育《そだ》てると、｜泥《どろ》が｜落《お》ちて｜文字《もじ》が｜読《よ》めるようになる。')}</p>`;
+  }
 
   markScriptSeen();
   syncScriptDot();
@@ -894,10 +916,13 @@ const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10
 $('#start-btn').onclick = () => play();
 
 // ---------- 図鑑 ----------
-let dexLevel = -1;   // レベルが変わるまでは組み直さない。変わったら解放状態ごと作り直す
+// タイルの生成はキャッシュされるが、解放状態はレベルと獲得の両方で変わる。
+// 獲得では level() が動かないので、獲得数もキーに入れないと影のまま残る
+let dexKey = '';
 function renderDex() {
-  if (dexLevel === level()) return;
-  dexLevel = level();
+  const key = `${level()}/${save.claimedSharks.length}`;
+  if (dexKey === key) return;
+  dexKey = key;
   const wrap = $('#dex-list');
   wrap.innerHTML = '';
   for (const d of SHARKS) {
@@ -923,8 +948,12 @@ function renderDex() {
 const dexDetail = $('#dex-detail');
 const closeDex = () => { dexDetail.style.display = 'none'; };
 
-function openDex(d) {
+/** 図鑑の詳細。claimed=true のときは史料からの「獲得しました」演出として使う */
+function openDex(d, claimed = false) {
   $('#dex-body').innerHTML = `
+    ${claimed ? `<div class="bg-yellow ink-3 border-b-4 border-ink px-6 py-3 text-center font-display font-extrabold text-lg">
+      🎬 ${rubify('｜新《あたら》しいサメが｜映画《えいが》に｜登場《とうじょう》した！')}
+    </div>` : ''}
     <div class="grid gap-6 p-6 md:p-8 md:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
         <div>
           <div class="rounded-xl ink-3 p-4" style="background:${d.color}22">
@@ -958,10 +987,18 @@ function openDex(d) {
             <span class="absolute -top-3 left-4 bg-yellow ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">CHOFU TIPS</span>
             <p class="text-[12.5px] leading-relaxed text-ink/80">${rubify(d.lore)}</p>
           </div>
+
+          ${claimed ? `<button id="dex-sail" type="button" class="btn primary w-full mt-6">
+            <div class="cap clapper-stripes"></div>
+            <div class="px-6 py-3 font-display font-extrabold">${rubify('このサメで｜海《うみ》へ｜行《い》く')}</div>
+          </button>` : ''}
         </div>
     </div>`;
   dexDetail.style.display = 'grid';
   $('#dex-body').scrollTop = 0;
+  if (claimed) {
+    $('#dex-sail').onclick = () => { closeDex(); selectShark(d); show('title'); };
+  }
 }
 
 $('#dex-close').onclick = closeDex;
