@@ -947,3 +947,9 @@ rp {
   transition: width .5s cubic-bezier(.2, .9, .3, 1);
 }
 @media (prefers-reduced-motion: reduce) { .script-gauge > i { transition: none; } }
+
+/* 史料画面ではゲージが紺地の上に載る。ink の枠線だと背景に沈むので紙色で描く */
+#script-gauge-row .script-gauge {
+  border-color: var(--color-paper);
+  background: color-mix(in srgb, var(--color-paper) 18%, transparent);
+}

@@ -54,18 +54,6 @@
     </div>
   </div>
 
-  <!-- ================= 脚本 =================
-       #chrome の外に置く（レターボックスの外まで覆いたいので）。ゲーム画面もこの外に
-       あるので、対戦中に開けないことは main.js 側の show('game') で保証する。 -->
-  <div id="script-sheet" class="absolute inset-0 z-40 bg-navy/85 backdrop-blur-sm hidden p-4 sm:p-8">
-    <div class="relative mx-auto max-w-2xl h-full bg-paper ink-4 hard-lg rounded-lg flex flex-col overflow-hidden">
-      <div class="clapper-stripes h-5 border-b-4 border-ink shrink-0"></div>
-      <button id="script-close" aria-label="閉じる"
-              class="absolute top-9 right-4 z-10 w-10 h-10 grid place-items-center rounded-full bg-paper ink-3">✕</button>
-      <div id="script-body" class="p-6 sm:p-8 flex-1 overflow-auto thin-scroll"></div>
-    </div>
-  </div>
-
   <!-- ================= タイトル ================= -->
   <section id="s-title" class="screen on">
     <!-- 脚本はタイトルからだけ開く。帯の中ではなく帯の下に、図鑑の閉じるボタンと同じ語彙で置く。
@@ -74,7 +62,7 @@
          占めるため（style.css の #title-stage）。右上も右下も nav と重なる。実測で
          667x375 / 932x430 / 1024x768 / 1920x1080 のいずれでも空いていたのは左下だけ。
          画面ごとに位置を変えると覚えられないので、どの幅でもここに固定する -->
-    <button id="script-btn" type="button" aria-label="脚本"
+    <button id="script-btn" type="button" aria-label="史料"
             class="absolute bottom-[var(--bar-pad)] left-4 z-10 grid place-items-center
                    w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-yellow ink-2 md:ink-3 hard-sm
                    transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
@@ -268,6 +256,41 @@
           <div id="shark-list" class="min-h-0 overflow-auto thin-scroll flex flex-col gap-2.5 pr-1"></div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ================= 史料 =================
+       .screen なので、対戦中に隠す処理は要らない（display が持つ）。
+       旧 #script-sheet（#chrome の外のモーダル）はこれに置き換えて廃止した -->
+  <section id="s-script" class="screen">
+    <div class="h-full flex flex-col py-[var(--bar-pad)] px-6">
+      <div class="flex items-center justify-between gap-4 py-3">
+        <button class="btn !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
+          <div class="px-5 py-2.5 font-bold text-sm">← タイトルへ<ruby>戻<rp>(</rp><rt>もど</rt><rp>)</rp></ruby>る</div></button>
+        <div id="script-era" class="font-mono text-[10px] md:text-xs tracking-[0.3em] text-paper/70 text-center min-w-0 truncate"></div>
+        <button id="script-help" type="button" aria-label="この画面の遊び方"
+                class="w-11 h-11 shrink-0 grid place-items-center rounded-full bg-yellow ink-2 hard-sm
+                       transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
+          <span class="material-symbols-rounded !text-xl" aria-hidden="true">help</span>
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between gap-3">
+        <button id="script-prev" type="button" class="btn !w-auto shrink-0"><div class="cap clapper-stripes"></div>
+          <div class="px-3 py-2 font-bold text-sm">◀</div></button>
+        <h2 id="script-chapter"
+            class="font-display font-extrabold text-xl md:text-2xl bg-yellow ink-3 rounded-lg px-6 py-2 hard -rotate-1 text-center min-w-0"></h2>
+        <button id="script-next" type="button" class="btn !w-auto shrink-0"><div class="cap clapper-stripes"></div>
+          <div class="px-3 py-2 font-bold text-sm">▶</div></button>
+      </div>
+
+      <div class="flex-1 min-h-0 mt-3 bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col">
+        <div class="clapper-stripes h-5 border-b-4 border-ink shrink-0"></div>
+        <div id="script-body" class="p-6 sm:p-8 flex-1 min-h-0 overflow-auto thin-scroll"></div>
+      </div>
+
+      <div id="script-gauge-row" class="mt-3 shrink-0"></div>
+      <div id="script-action" class="mt-3 shrink-0"></div>
     </div>
   </section>
 

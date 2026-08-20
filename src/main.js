@@ -83,11 +83,9 @@ function show(name) {
       syncScriptDot();
       if (name === 'shark') renderSharks();
       if (name === 'dex') renderDex();
+      if (name === 'script') renderScript();
       if (name === 'title') paintTitleShark();
       if (name === 'game') stopAttract(); else startAttract();
-      // 脚本シートは #chrome の外にあるので .screen の切り替えでは消えない。
-      // 対戦中には出さない、という絶対条件を守るためここで強制的に閉じる
-      if (name === 'game') scriptSheet.style.display = 'none';
       chrome.classList.remove('shut');
       shutting = false;
       // ゲームは全画面。帯が開ききってから消す（閉じたまま消すとハードカットになる）
@@ -104,69 +102,76 @@ const syncScriptDot = () => {
   const news = hasNewScript();
   scriptDot.classList.toggle('hidden', !news);
   // 赤点は視覚だけなので、スクリーンリーダーには aria-label の言い換えで伝える
-  scriptBtn.setAttribute('aria-label', news ? '脚本（新着あり）' : '脚本');
+  scriptBtn.setAttribute('aria-label', news ? '史料（新着あり）' : '史料');
 };
 
-// ---------- 脚本 ----------
-// 復元中の1本だけを見せる。6本まとめて虫食いを出すと読めない壁の羅列になって
-// 誰も読む気にならないので、次に完成へ近づく1本だけに絞る
-const scriptSheet = $('#script-sheet');
+// ---------- 史料 ----------
+// 章の一覧は SHARKS から導出する。専用の配列を持たない（progress.js の SCRIPT_MAX が
+// SHARKS を見ているので、本文を別配列へ移すと赤点通知が死ぬ）
+const chapters = () => SHARKS.filter((d) => d.script).sort((a, b) => a.era - b.era);
 
-/** 脚本を開く。復元中の1本（無ければ最後に完成した1本）を描く */
-function openScript() {
-  // 既読フラグを更新する前に退避する。そうしないと、完成済みの脚本を何度開いても
+const scriptBody = $('#script-body');
+const scriptGaugeRow = $('#script-gauge-row');
+const scriptAction = $('#script-action');
+
+/** 史料画面を組み立てる。show('script') から呼ばれる唯一の入口 */
+function renderScript() {
+  // 既読フラグを更新する前に退避する。そうしないと、完成済みの史料を何度開いても
   // 直近の段階差分（+29 など）が毎回ハイライトされたままになる
   const isNew = hasNewScript();
-  const d = SHARKS.find((s) => s.script && stageOf(s.era) < 3)
-         || [...SHARKS].reverse().find((s) => s.script);
+  const d = chapters()[0];
 
-  if (!d) {
-    $('#script-body').innerHTML =
-      `<p class="text-ink/60">${rubify('｜脚本《きゃくほん》はまだ｜見《み》つかっていない。')}</p>`;
-  } else {
-    const stage = stageOf(d.era);
-    const v = scriptView(d.script, save.seed, stage);
-    const html = isNew ? v.html : v.html.replace(/<mark class="fresh">(.*?)<\/mark>/gs, '$1');
-    const added = isNew ? v.added : 0;
-    const pct = Math.round(v.readable / v.total * 100);
-    // バーは復元率ではなく経験値。復元率は本文を見れば分かるうえ4段階でしか動かない。
-    // しかも段階ごとに区切ると、そのたびバーが空に戻って1本をどこまで復元したのかが
-    // 見えなくなるので、この脚本の始まりから完成までを通した1本にする
-    const done = stage >= STAGE_RATIO.length - 1;
-    const p = scriptProgress(d.era);
-    const bar = Math.round((done ? 1 : p.ratio) * 100);
-    $('#script-body').innerHTML = `
-      <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">LOST FILM / ${esc(d.en)}</div>
-      <h2 class="font-display font-extrabold text-2xl leading-tight mt-1">${rubify(d.name)}</h2>
-      <div class="mt-3">
-        <div class="flex items-baseline justify-between text-[11px] text-ink/60">
-          <span class="font-bold">${done
-            ? rubify('｜復元《ふくげん》｜完了《かんりょう》')
-            : rubify('｜全部《ぜんぶ》｜読《よ》めるまで')}</span>
-          <!-- 単位はリザルトの「大きさ」と同じ値。同じ言葉にしないと何を溜めるのか繋がらない -->
-          <span class="font-mono">${done ? '' : `${plainText('大きさ')} あと ${p.remain.toLocaleString()}`}</span>
-        </div>
-        <div class="script-gauge mt-1" style="--pct:${bar}%"
-             role="progressbar" aria-valuenow="${bar}" aria-valuemin="0" aria-valuemax="100"
-             aria-label="${done ? '復元完了' : '全部読めるまで'}"><i></i></div>
-        <div class="font-mono text-[10px] text-ink/45 mt-1.5">
-          ${rubify('｜復元《ふくげん》')} ${pct}%（${stage} / ${STAGE_RATIO.length - 1}）
-          ${added ? `<span class="text-danger ml-1">+${added}</span>` : ''}
-        </div>
-      </div>
-      <p class="script-text mt-5 leading-loose">${html}</p>`;
-  }
+  $('#script-era').textContent = `HISTORICAL ARCHIVE #${d.era} / ${d.en}`;
+  $('#script-chapter').innerHTML =
+    `${rubify(`｜第《だい》${d.era}｜幕《まく》`)} ${rubify(d.scriptTitle)}`;
+  scriptBody.style.setProperty('--stain', d.color);
 
-  scriptSheet.style.display = 'block';
+  const stage = stageOf(d.era);
+  const done = stage >= STAGE_RATIO.length - 1;
+  const v = scriptView(d.script, save.seed, stage);
+  const html = isNew ? v.html : v.html.replace(/<mark class="fresh">(.*?)<\/mark>/gs, '$1');
+  const added = isNew ? v.added : 0;
+  const pct = Math.round(v.readable / v.total * 100);
+  // ゲージの塗りは復元率ではなく大きさ（XP）。復元率は 67→79→91→100 の4値しか取らず、
+  // 開始時点で 67% から始まるので「遊ぶ前から3分の2完成」に見えるし、3回しか動かない
+  const p = scriptProgress(d.era);
+  const bar = Math.round((done ? 1 : p.ratio) * 100);
+
+  scriptBody.innerHTML = `
+    <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${rubify(d.scriptTagline)}</div>
+    <p class="script-text mt-5 leading-loose">${html}</p>`;
+  scriptBody.scrollTop = 0;
+
+  scriptGaugeRow.innerHTML = `
+    <div class="flex items-baseline justify-between text-[11px] text-paper/70">
+      <span class="font-bold">${done
+        ? rubify('｜復元《ふくげん》｜完了《かんりょう》')
+        : rubify('｜全部《ぜんぶ》｜読《よ》めるまで')}</span>
+      <!-- 単位はリザルトの「大きさ」と同じ値。同じ言葉にしないと何を溜めるのか繋がらない -->
+      <span class="font-mono">${done ? '' : `${plainText('大きさ')} あと ${p.remain.toLocaleString()}`}</span>
+    </div>
+    <div class="script-gauge mt-1" style="--pct:${bar}%"
+         role="progressbar" aria-valuenow="${bar}" aria-valuemin="0" aria-valuemax="100"
+         aria-label="${done ? '復元完了' : '全部読めるまで'}"><i></i></div>
+    <div class="font-mono text-[10px] text-paper/50 mt-1.5">
+      ${rubify('｜復元《ふくげん》')} ${pct}%
+      ${added ? `<span class="text-danger ml-1">+${added}</span>` : ''}
+    </div>`;
+
+  scriptAction.innerHTML = done
+    ? ''
+    : `<p class="text-[12px] text-paper/70 text-center">${rubify(
+        '｜海《うみ》でサメを｜大《おお》きく｜育《そだ》てると、｜泥《どろ》が｜落《お》ちて｜文字《もじ》が｜読《よ》めるようになる。')}</p>`;
+
+  // 章の切り替えは Task 5 で入れる。それまで押せてしまうと何も起きないボタンになるので伏せておく
+  $('#script-prev').disabled = true;
+  $('#script-next').disabled = true;
+
   markScriptSeen();
   syncScriptDot();
 }
 
-const closeScript = () => { scriptSheet.style.display = 'none'; };
-$('#script-btn').onclick = openScript;
-$('#script-close').onclick = closeScript;
-scriptSheet.onclick = (e) => { if (e.target === scriptSheet) closeScript(); };   // 外側の暗幕
-addEventListener('keydown', (e) => { if (e.key === 'Escape') closeScript(); });
+$('#script-btn').onclick = () => show('script');
 
 // ---------- タイトルの立ち絵 ----------
 function paintTitleShark() {
