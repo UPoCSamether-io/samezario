@@ -49,17 +49,23 @@
   <!-- ================= レターボックス ================= -->
   <div id="chrome">
     <div class="letterbox top-0 border-b-4 border-ink">
+      <!-- 黒帯の中で見落とされないよう、輪郭線のアイコンではなく黄色の角丸チップにする。
+           CHOFU TIPS バッジと同じ語彙（bg-yellow / ink-2 / rounded）。高さは帯に従わせる -->
       <button id="script-btn" type="button"
-              class="absolute top-0 translate-y-0 right-6 h-[var(--bar)] max-h-9 w-9 grid place-items-center
-                     rounded-full text-paper/80 hover:text-paper transition-colors"
+              class="absolute top-1/2 -translate-y-1/2 right-4 h-[calc(var(--bar)-6px)] max-h-8 px-2 gap-1
+                     inline-flex items-center rounded-lg bg-yellow text-ink ink-2
+                     hover:brightness-105 active:translate-y-[calc(-50%+1px)] transition"
               aria-label="脚本">
-        <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2"
+        <svg viewBox="0 0 24 24" class="h-[60%] w-auto shrink-0" fill="none" stroke="currentColor" stroke-width="2.2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M5 3h11l4 4v14H5z"/><path d="M16 3v4h4"/>
           <path d="M9 11h6"/><path d="M9 15h6"/>
         </svg>
+        <span class="font-display font-extrabold leading-none text-[clamp(9px,1.9vh,13px)]"
+              aria-hidden="true">脚本</span>
+        <!-- 赤点はチップの中に流し込む。帯が 20px まで縮む横持ちで絶対配置すると画面外へ切れるため -->
         <span id="script-dot"
-              class="absolute top-0 right-0 w-2 h-2 rounded-full bg-danger border-2 border-ink hidden"></span>
+              class="w-2 h-2 shrink-0 rounded-full bg-danger ring-2 ring-ink hidden"></span>
       </button>
     </div>
     <div class="letterbox bottom-0 border-t-4 border-ink">

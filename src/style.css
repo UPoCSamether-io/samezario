@@ -912,3 +912,25 @@ rp {
 }
 @keyframes fresh-in { from { background: transparent; } }
 
+
+/* 復元の進み具合。段階の刻みを目盛りで重ねて、次にどこまで伸びるかを見せる */
+.script-gauge {
+  position: relative; height: 10px; overflow: hidden;
+  border: 2px solid var(--color-ink); border-radius: 99px;
+  background: color-mix(in srgb, var(--color-ink) 12%, transparent);
+}
+.script-gauge > i {
+  display: block; height: 100%; width: var(--pct);
+  background: var(--color-yellow);
+  transition: width .5s cubic-bezier(.2, .9, .3, 1);
+}
+/* 段階の境目。最後の1本は右端と重なるので描かない */
+.script-gauge::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: linear-gradient(90deg, var(--color-ink) 0 2px, transparent 2px);
+  background-size: calc(100% / var(--steps)) 100%;
+  background-position: calc(100% / var(--steps)) 0;
+  background-repeat: repeat-x;
+  opacity: .45;
+}
+@media (prefers-reduced-motion: reduce) { .script-gauge > i { transition: none; } }

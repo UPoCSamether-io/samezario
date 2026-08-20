@@ -7,7 +7,7 @@ import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlocked
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
-import { scriptView } from './restore.js';
+import { scriptView, STAGE_RATIO } from './restore.js';
 
 // 審査・開発用。?demo=1 で全レベルに到達させ、復元演出とサメ獲得をその場で実演できる。
 // ?demo=0 で元に戻す（xp を 0 に落とす）
@@ -127,12 +127,20 @@ function openScript() {
     const v = scriptView(d.script, save.seed, stage);
     const html = isNew ? v.html : v.html.replace(/<mark class="fresh">(.*?)<\/mark>/gs, '$1');
     const added = isNew ? v.added : 0;
+    const pct = Math.round(v.readable / v.total * 100);
     $('#script-body').innerHTML = `
       <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">LOST FILM / ${esc(d.en)}</div>
       <h2 class="font-display font-extrabold text-2xl leading-tight mt-1">${rubify(d.name)}</h2>
-      <div class="font-mono text-[11px] text-ink/60 mt-2">
-        ${rubify('｜復元《ふくげん》')} ${Math.round(v.readable / v.total * 100)}%
-        ${added ? `<span class="text-danger ml-2">+${added}</span>` : ''}
+      <div class="mt-3">
+        <div class="flex items-baseline justify-between font-mono text-[11px] text-ink/60">
+          <span>${rubify('｜復元《ふくげん》')} ${pct}%
+            ${added ? `<span class="text-danger ml-1">+${added}</span>` : ''}</span>
+          <span>${stage} / ${STAGE_RATIO.length - 1}</span>
+        </div>
+        <!-- 段階の刻みを目盛りで見せる。次にどれだけ進むかが分かると「もう1回」に繋がる -->
+        <div class="script-gauge mt-1" style="--pct:${pct}%; --steps:${STAGE_RATIO.length - 1}"
+             role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"
+             aria-label="${plainText('復元')}"><i></i></div>
       </div>
       <p class="script-text mt-5 leading-loose">${html}</p>`;
   }
@@ -1033,13 +1041,13 @@ function showResult(r) {
       <div class="res-stat-v font-mono font-bold text-xl sm:text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
-  // レベルアップは主、赤点は従。両方が同じ強さで主張すると煩くなる。
-  // 告知は「脚本が進んだ」「サメが解放された」「どちらでもない」の順で実態どおりに出し分ける
+  // このプレイの成果だけを出す。「脚本に新しい文字が現れた」は他画面への案内であって
+  // 走りの結果ではなく、しかも同じことを脚本アイコンの赤点が常時伝えている。
+  // 何よりレベル3では脚本の完成とサメの解放が同時に起きるため、案内文を先に出すと
+  // 一番の報酬であるサメ獲得の告知を押しのけていた。進み具合は脚本画面のゲージが持つ。
   const unlockedShark = SHARKS.find((s) => s.era * 3 === level());
-  const news = leveled
-    ? hasNewScript() ? rubify('｜脚本《きゃくほん》に｜新《あたら》しい｜文字《もじ》が｜現《あらわ》れた')
-      : unlockedShark ? `${rubify(unlockedShark.name)}${rubify('が｜解放《かいほう》された')}`
-      : ''
+  const news = leveled && unlockedShark
+    ? `${rubify(unlockedShark.name)}${rubify('が｜解放《かいほう》された')}`
     : '';
   $('#res-level').innerHTML = leveled
     ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">LEVEL ${level()}</span> ${news}`
