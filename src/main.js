@@ -3,7 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, level, scriptProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, scriptProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, justCompletedChapter } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -1146,9 +1146,7 @@ function showResult(r) {
   save.best = best; persist();
 
   // 経験値。到達質量をそのまま入れる。呼ぶのはここだけ（二重加算を場所で潰す）
-  const lvBefore = level();
   addXp(r.mass);
-  const leveled = level() - lvBefore;
   syncScriptDot();
 
   show('result');
@@ -1164,13 +1162,15 @@ function showResult(r) {
       <div class="res-stat-v font-mono font-bold text-xl sm:text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
-  // ここに出すのは「サメが増えた」ときだけ。レベル番号そのものは、それを見て
+  // ここに出すのは「史料が1本読みきれた」ときだけ。レベル番号そのものは、それを見て
   // プレイヤーが何かできるわけではない裸の数字で、削った他の情報より価値が低い。
-  // 脚本の進み具合は脚本画面のゲージ、新着は赤点が持つ。
-  const unlockedShark = leveled && SHARKS.find((s) => s.era * 3 === level());
-  $('#res-level').innerHTML = unlockedShark
+  //
+  // 「使えるようになった」とは書かない。解放が起きるのは史料画面で自分でボタンを
+  // 押したときだけで、ここで所有を告げると、サメ選択へ行ってロックを見ることになる
+  const done = justCompletedChapter();
+  $('#res-level').innerHTML = done
     ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">NEW</span>
-       ${rubify(unlockedShark.name)}${rubify('が｜使《つか》えるようになった')}`
+       ${rubify(`｜第《だい》${done.era}｜幕《まく》`)}${rubify('の｜史料《しりょう》がすべて｜読《よ》めるようになった！')}`
     : '';
   $('#res-tip').innerHTML = rubify(TIPS[(Math.random() * TIPS.length) | 0]);
 }

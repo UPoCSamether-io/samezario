@@ -172,6 +172,16 @@ export function defaultChapter() {
   return i >= 0 ? i : Math.max(0, cs.findLastIndex((_, k) => !chapterLocked(k)));
 }
 
+/**
+ * 復元しきったのに、まだ獲得していない章。無ければ null。
+ *
+ * リザルトの告知に使う。「サメが使えるようになった」と書いてはいけない —— 解放は
+ * 史料画面で自分でボタンを押したときだけ起きる。ここで告げるのは「史料が全部読める
+ * ようになった」ことまでで、その先はプレイヤーの手に残す
+ */
+export const justCompletedChapter = () =>
+  chapters().find((d) => stageOf(d.era) >= STAGES && !save.claimedSharks.includes(d.id)) || null;
+
 /** 史料の復元完了ボタンから呼ぶ。二度押しで配列が伸びないよう冪等にしてある */
 export const claimShark = (id) =>
   save.claimedSharks.includes(id)
