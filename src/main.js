@@ -3,7 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, scriptProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, justCompletedChapter } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, scriptProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -1167,9 +1167,9 @@ function showResult(r) {
   //
   // 「使えるようになった」とは書かない。解放が起きるのは史料画面で自分でボタンを
   // 押したときだけで、ここで所有を告げると、サメ選択へ行ってロックを見ることになる
-  const done = justCompletedChapter();
+  const done = unclaimedFinishedChapter();
   $('#res-level').innerHTML = done
-    ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">NEW</span>
+    ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">${rubify('｜完成《かんせい》')}</span>
        ${rubify(`｜第《だい》${done.era}｜幕《まく》`)}${rubify('の｜史料《しりょう》がすべて｜読《よ》めるようになった！')}`
     : '';
   $('#res-tip').innerHTML = rubify(TIPS[(Math.random() * TIPS.length) | 0]);

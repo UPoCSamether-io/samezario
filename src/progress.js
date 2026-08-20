@@ -179,7 +179,7 @@ export function defaultChapter() {
  * 史料画面で自分でボタンを押したときだけ起きる。ここで告げるのは「史料が全部読める
  * ようになった」ことまでで、その先はプレイヤーの手に残す
  */
-export const justCompletedChapter = () =>
+export const unclaimedFinishedChapter = () =>
   chapters().find((d) => stageOf(d.era) >= STAGES && !save.claimedSharks.includes(d.id)) || null;
 
 /** 史料の復元完了ボタンから呼ぶ。二度押しで配列が伸びないよう冪等にしてある */

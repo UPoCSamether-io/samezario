@@ -341,7 +341,7 @@ test('defaultChapter: 両方完成・獲得済みなら最後の章（第2幕）
   assert.equal(P.defaultChapter(), 1);
 });
 
-test('justCompletedChapter: 段階3に到達した未獲得の章だけを返す', async () => {
+test('unclaimedFinishedChapter: 段階3に到達した未獲得の章だけを返す', async () => {
   const store = {};
   globalThis.localStorage = {
     getItem: (k) => store[k] ?? null,
@@ -350,14 +350,14 @@ test('justCompletedChapter: 段階3に到達した未獲得の章だけを返す
   const m = await import('./progress.js?jcc');
 
   m.replace({ xp: 0, claimedSharks: ['cinema'] });
-  assert.equal(m.justCompletedChapter(), null, '復元途中では告知しない');
+  assert.equal(m.unclaimedFinishedChapter(), null, '復元途中では告知しない');
 
   m.replace({ xp: 6000, claimedSharks: ['cinema'] });   // レベル3 = 第1幕が完成
-  assert.equal(m.justCompletedChapter()?.id, 'dogu', '完成した未獲得の章を返す');
+  assert.equal(m.unclaimedFinishedChapter()?.id, 'dogu', '完成した未獲得の章を返す');
 
   m.replace({ xp: 6000, claimedSharks: ['cinema', 'dogu'] });
-  assert.equal(m.justCompletedChapter(), null, '獲得済みなら告知しない');
+  assert.equal(m.unclaimedFinishedChapter(), null, '獲得済みなら告知しない');
 
   m.replace({ xp: 16500, claimedSharks: ['cinema', 'dogu'] });   // レベル6 = 第2幕が完成
-  assert.equal(m.justCompletedChapter()?.id, 'tamagawa');
+  assert.equal(m.unclaimedFinishedChapter()?.id, 'tamagawa');
 });
