@@ -200,26 +200,30 @@ test('hasNewScript: 脚本が完成する最大レベル(土偶=era1→レベル
   assert.equal(P.hasNewScript(), false, '脚本完成後のレベルアップで赤点が誤って点いている');
 });
 
-test('levelProgress: 次のレベルまでの割合と残りXPを返す', () => {
-  // レベル0の途中。0 -> LEVEL_XP[0] の区間を見る
-  P.replace({ xp: Math.round(P.LEVEL_XP[0] / 4) });
-  const a = P.levelProgress();
-  assert.equal(P.level(), 0);
-  assert.ok(Math.abs(a.ratio - 0.25) < 0.01, `区間の1/4で ratio が ${a.ratio}`);
-  assert.equal(a.remain, P.LEVEL_XP[0] - save.xp);
+test('scriptProgress: 脚本1本を通した割合と、完成までの残りXPを返す', () => {
+  // era 1（土偶）は 0 -> LEVEL_XP[2] が1本ぶん
+  const goal = P.LEVEL_XP[2];
+  P.replace({ xp: 0 });
+  assert.deepEqual(P.scriptProgress(1), { ratio: 0, remain: goal });
 
-  // レベル1の直後は、次の区間の始まりなので ratio がほぼ0に戻る
+  P.replace({ xp: Math.round(goal / 2) });
+  const mid = P.scriptProgress(1);
+  assert.ok(Math.abs(mid.ratio - 0.5) < 0.01, `半分で ratio が ${mid.ratio}`);
+
+  // 段階が上がってもバーは0へ戻らない。レベル1をまたいだ直後でも割合は増え続ける
   P.replace({ xp: P.LEVEL_XP[0] });
-  const b = P.levelProgress();
-  assert.equal(P.level(), 1);
-  assert.equal(b.ratio, 0, 'レベルアップ直後に ratio が 0 へ戻っていない');
-  assert.equal(b.remain, P.LEVEL_XP[1] - P.LEVEL_XP[0]);
+  const afterLevelUp = P.scriptProgress(1);
+  assert.ok(afterLevelUp.ratio > 0, 'レベルアップでバーが空に戻っている');
+  assert.ok(Math.abs(afterLevelUp.ratio - P.LEVEL_XP[0] / goal) < 0.01);
 });
 
-test('levelProgress: 最大レベルでは満杯で止まり、残りは0（0除算やマイナスを出さない）', () => {
-  P.replace({ xp: P.LEVEL_XP[P.LEVEL_XP.length - 1] * 2 });
-  const p = P.levelProgress();
-  assert.equal(P.level(), P.LEVEL_XP.length);
-  assert.equal(p.ratio, 1);
-  assert.equal(p.remain, 0);
+test('scriptProgress: 完成後は満杯で止まり、残りは0（マイナスを出さない）', () => {
+  P.replace({ xp: P.LEVEL_XP[2] * 3 });
+  assert.deepEqual(P.scriptProgress(1), { ratio: 1, remain: 0 });
+});
+
+test('scriptProgress: era 2 は era 1 の完成地点から始まる（前の区間ぶんは数えない）', () => {
+  P.replace({ xp: P.LEVEL_XP[2] });          // era1 完成 = era2 の起点
+  assert.equal(P.scriptProgress(2).ratio, 0, 'era2 が途中から始まっている');
+  assert.equal(P.scriptProgress(2).remain, P.LEVEL_XP[5] - P.LEVEL_XP[2]);
 });

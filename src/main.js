@@ -3,7 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, level, levelProgress, replace, LEVEL_XP } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, level, scriptProgress, replace, LEVEL_XP } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -128,10 +128,11 @@ function openScript() {
     const html = isNew ? v.html : v.html.replace(/<mark class="fresh">(.*?)<\/mark>/gs, '$1');
     const added = isNew ? v.added : 0;
     const pct = Math.round(v.readable / v.total * 100);
-    // バーは復元率ではなく「次にまた文字が増えるまで」を出す。復元率は本文を見れば
-    // 分かるうえ4段階でしか動かないので、バーにすると何を待てばいいのか読めない。
+    // バーは復元率ではなく経験値。復元率は本文を見れば分かるうえ4段階でしか動かない。
+    // しかも段階ごとに区切ると、そのたびバーが空に戻って1本をどこまで復元したのかが
+    // 見えなくなるので、この脚本の始まりから完成までを通した1本にする
     const done = stage >= STAGE_RATIO.length - 1;
-    const p = levelProgress();
+    const p = scriptProgress(d.era);
     const bar = Math.round((done ? 1 : p.ratio) * 100);
     $('#script-body').innerHTML = `
       <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">LOST FILM / ${esc(d.en)}</div>
@@ -140,13 +141,13 @@ function openScript() {
         <div class="flex items-baseline justify-between text-[11px] text-ink/60">
           <span class="font-bold">${done
             ? rubify('｜復元《ふくげん》｜完了《かんりょう》')
-            : rubify('つぎに｜文字《もじ》が｜増《ふ》えるまで')}</span>
+            : rubify('｜全部《ぜんぶ》｜読《よ》めるまで')}</span>
           <!-- 単位はリザルトの「大きさ」と同じ値。同じ言葉にしないと何を溜めるのか繋がらない -->
           <span class="font-mono">${done ? '' : `${plainText('大きさ')} あと ${p.remain.toLocaleString()}`}</span>
         </div>
         <div class="script-gauge mt-1" style="--pct:${bar}%"
              role="progressbar" aria-valuenow="${bar}" aria-valuemin="0" aria-valuemax="100"
-             aria-label="${done ? '復元完了' : 'つぎに文字が増えるまで'}"><i></i></div>
+             aria-label="${done ? '復元完了' : '全部読めるまで'}"><i></i></div>
         <div class="font-mono text-[10px] text-ink/45 mt-1.5">
           ${rubify('｜復元《ふくげん》')} ${pct}%（${stage} / ${STAGE_RATIO.length - 1}）
           ${added ? `<span class="text-danger ml-1">+${added}</span>` : ''}
@@ -1051,16 +1052,13 @@ function showResult(r) {
       <div class="res-stat-v font-mono font-bold text-xl sm:text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
-  // このプレイの成果だけを出す。「脚本に新しい文字が現れた」は他画面への案内であって
-  // 走りの結果ではなく、しかも同じことを脚本アイコンの赤点が常時伝えている。
-  // 何よりレベル3では脚本の完成とサメの解放が同時に起きるため、案内文を先に出すと
-  // 一番の報酬であるサメ獲得の告知を押しのけていた。進み具合は脚本画面のゲージが持つ。
-  const unlockedShark = SHARKS.find((s) => s.era * 3 === level());
-  const news = leveled && unlockedShark
-    ? `${rubify(unlockedShark.name)}${rubify('が｜解放《かいほう》された')}`
-    : '';
-  $('#res-level').innerHTML = leveled
-    ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">LEVEL ${level()}</span> ${news}`
+  // ここに出すのは「サメが増えた」ときだけ。レベル番号そのものは、それを見て
+  // プレイヤーが何かできるわけではない裸の数字で、削った他の情報より価値が低い。
+  // 脚本の進み具合は脚本画面のゲージ、新着は赤点が持つ。
+  const unlockedShark = leveled && SHARKS.find((s) => s.era * 3 === level());
+  $('#res-level').innerHTML = unlockedShark
+    ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">NEW</span>
+       ${rubify(unlockedShark.name)}${rubify('が｜使《つか》えるようになった')}`
     : '';
   $('#res-tip').innerHTML = rubify(TIPS[(Math.random() * TIPS.length) | 0]);
 }
