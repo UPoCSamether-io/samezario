@@ -899,15 +899,40 @@ rp {
 .dex-silhouette { filter: brightness(0) opacity(.35); }
 .shark-locked { opacity: .45; pointer-events: none; filter: grayscale(1); }
 
-/* 脚本。伏せた文字と、この段階で新しく現れた文字 */
+/* 史料。海の底の泥・砂・海水の滲みで読めなくなっている文字と、
+   この段階で新しく洗い出された文字。
+   ■ を消して実文字を blur で隠す方式は採らない。CJK は blur では読めてしまううえ、
+   全選択コピーと DevTools で全文が露出して仕組みが破られる（restore.js 冒頭の理由と同じ）。
+   伏せ字は ■ のまま DOM に載せ、その ■ の見た目だけを泥にする */
 .script-text { white-space: pre-wrap; }
-.script-text .mask { color: color-mix(in srgb, var(--color-ink) 30%, transparent); }
+.script-text .mask {
+  filter: blur(2px);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--stain, #8a6f4e) 18%, transparent);
+  color: color-mix(in srgb, var(--stain, #8a6f4e) 70%, transparent);
+}
 .script-text mark.fresh {
   background: var(--color-yellow);
   border-radius: 2px;
-  animation: fresh-in .6s ease-out both;
+  animation: wash-clean .6s ease-out both;
 }
-@keyframes fresh-in { from { background: transparent; } }
+
+/* 泥が洗い流されて文字が定着する */
+@keyframes wash-clean {
+  from {
+    filter: blur(3.5px);
+    background: color-mix(in srgb, var(--stain, #8a6f4e) 45%, transparent);
+    opacity: .5;
+  }
+  to {
+    filter: blur(0);
+    background: var(--color-yellow);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .script-text mark.fresh { animation: none; }
+}
 
 
 /* 次に文字が増えるまでの進み具合。復元率ではなく経験値なので、目盛りは刻まず連続で伸ばす */
