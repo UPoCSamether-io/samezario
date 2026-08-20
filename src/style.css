@@ -944,6 +944,31 @@ rp {
 }
 
 
+/* 史料のページ送り。カチンコ（.btn）を使わないのは、あれを「画面が切り替わる」の
+   合図に固定しているため。同じ画面の中で幕を送るだけのここに出すと合図が薄まる。
+   .btn は腕の場所として margin-top:13px と .cap 13px、合わせて 26px の装飾を連れてくるので、
+   外すと見た目が静かになるうえ短辺で高さも返ってくる */
+.script-nav {
+  display: grid; place-items: center;
+  /* 44px。タッチ目標の下限で、これ以下には縮めない */
+  width: 2.75rem; min-height: 2.75rem;
+  padding: 1.25rem 0;
+  border: 3px solid var(--color-ink);
+  border-radius: 0.75rem;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: transform .08s ease-out;
+}
+/* 端の幕では押せない。disabled は色を落とすだけにする（消すと左右の幅が変わって
+   紙面が横にずれ、送るたびに本文の折り返し位置が動く） */
+.script-nav[disabled] { cursor: not-allowed; opacity: .35; }
+.script-nav:not([disabled]):active { transform: translateY(1px); }
+@media (hover: hover) {
+  .script-nav:not([disabled]):hover { transform: translateY(-2px); }
+}
+
 /* 次に文字が増えるまでの進み具合。復元率ではなく経験値なので、目盛りは刻まず連続で伸ばす */
 .script-gauge {
   height: 10px; overflow: hidden;
@@ -976,8 +1001,6 @@ rp {
    （中身ゼロで padding だけの）64px まで潰れていた。本文がこの画面の主役なので、
    装飾の HISTORICAL ARCHIVE 行を消し、他の帯を薄くしてその分を本文へ回す */
 @media (max-height: 500px) {
-  #script-era { display: none; }
-
   /* nth-child ではなく id で当てる。ページ送りを紙面の左右へ移したときに
      子の並びが変わって、この節が丸ごと別の行に効いてしまったため */
   #script-head { padding-block: 0.1rem; }
@@ -986,10 +1009,8 @@ rp {
   /* HISTORICAL ARCHIVE の行は飾り。短辺では本文に高さを譲る */
   #script-era { display: none; }
   #script-chapter { font-size: 0.8rem; padding: 0.15rem 0.5rem; }
-  /* 紙面の左右に置いた分、指で押せる幅を確保する。0.3rem では実測 26px で、
-     タッチ目標の下限 44px を大きく割っていた（667x375）。本文は40字→30字に減るが、
-     押せないボタンより読める行のほうが安い */
-  #script-prev div, #script-next div { padding: 0.75rem 0.85rem; font-size: 0.7rem; }
+  /* 短辺では上下の余白だけ詰める。幅 44px は下限なので触らない */
+  .script-nav { padding-block: 0.75rem; }
 
   #script-stage { margin-top: 0.4rem; gap: 0.25rem; }
   #script-body { padding: 0.5rem 0.75rem; }
@@ -999,5 +1020,22 @@ rp {
   #script-gauge-row .script-gauge { height: 6px; margin-top: 0.15rem; }
   #script-gauge-row > div:last-child { margin-top: 0.15rem; font-size: 9px; }
   #script-action { margin-top: 0.25rem; }
-  #script-action p { font-size: 10px; }
+
+  /* ---- ここから下は「短辺で縦を本文へ返す」ための3点。
+       667x375 の内訳は 上下のレターボックス余白 64 / ヘッダー 54 / 紙面 174 /
+       ゲージ 53 / 説明文 23 で、本文が21行中4.6行しか見えていなかった ----  */
+
+  /* 紙面の上のカチンコ縞は飾りで、情報を持たない。border 込みで 24px あり、
+     短辺で削れるものの中では最大。HISTORICAL ARCHIVE 行と同じ理由で本文に譲る */
+  #script-paper-edge { display: none; }
+
+  /* レターボックスを避ける余白。帯そのものは var(--bar)=20px なので、
+     32px のうち下駄は 12px。4px まで詰めて 16px を本文へ回す。
+     0 にしないのは hard 系の影（5px）が帯に潜るため */
+  #script-wrap { padding-block: calc(var(--bar) + 4px); }
+
+  /* 説明文（「海でサメを育てると…」「復元完了。次の幕へ進める。」）は状況が変わっても
+     ほぼ同じ1文で、ゲージのラベルと [?] のヘルプに二重に載っている。
+     短辺だけ隠す。#script-action に入るもう一方の獲得ボタンは <button> なので残る */
+  #script-action p { display: none; }
 }
