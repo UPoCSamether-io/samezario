@@ -32,12 +32,16 @@ document.fonts.load("1.75rem 'Material Symbols Rounded'", 'movie')
 // タイトル画面と同じ Material Symbols Rounded（FILL=1 / wght=700 の塗りつぶし）で統一する。
 const ICON = {
   cinema: 'highlight',       // スポットライト
-  yokai: 'blur_on',          // すり抜け
+  dogu: 'terrain',           // 土がえり（土に埋まる）
   tamagawa: 'double_arrow',  // 直線ダッシュ
   jindaiji: 'shield',        // そばガード
+  kondo: 'autorenew',        // 天然理心流（急な切り返し）
   airport: 'rotate_right',   // 旋回飛行
+  yokai: 'blur_on',          // すり抜け
 };
-const icon = (name, cls) => `<span class="material-symbols-rounded ${cls}" aria-hidden="true">${name}</span>`;
+// 未知の id でも「undefined」という文字列だけは出さない（Material Symbols は合字フォントなので
+// 存在しない合字名はリテラル文字列としてそのまま描画されてしまう）
+const icon = (name, cls) => `<span class="material-symbols-rounded ${cls}" aria-hidden="true">${name || 'help'}</span>`;
 const portrait = (d) => `/img/sharks/${d.id}_side.webp`;   // 立ち絵（タイトルと図鑑で使う）
 // 立ち絵は DOM の <img> なので preloadSharks（canvas 用の原画）の対象外。
 // 先に取っておかないと、タイトルや図鑑へ移った瞬間に取りに行くことになり、
@@ -689,9 +693,21 @@ function renderSharks() {
     }
     mountDial(list);
   }
+  paintLocks();
   selectShark(selShark);
   // ダイヤルでは選択中が中央に居ないと辻褄が合わないので、開くたびに寄せ直す
   if (isDial()) centerTile($('#shark-list'), SHARKS.indexOf(selShark), 'auto');
+}
+
+// タイルの生成はキャッシュされるが解放状態はレベルアップで変わるので、
+// 表示のたびに施錠状態だけ塗り直す（3面ぶん・data-i で当てる）
+function paintLocks() {
+  $$('.shark-tile').forEach((n) => {
+    const locked = !isUnlockedShark(SHARKS[+n.dataset.i]);
+    n.classList.toggle('shark-locked', locked);
+    n.disabled = locked;
+    n.toggleAttribute('aria-disabled', locked);
+  });
 }
 
 // スマホ横画面のサメ選択はダイヤル。中央で止まったサメがそのまま選ばれる。
@@ -819,10 +835,10 @@ const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10
 $('#start-btn').onclick = () => play();
 
 // ---------- 図鑑 ----------
-let dexBuilt = false;
+let dexLevel = -1;   // レベルが変わるまでは組み直さない。変わったら解放状態ごと作り直す
 function renderDex() {
-  if (dexBuilt) return;
-  dexBuilt = true;
+  if (dexLevel === level()) return;
+  dexLevel = level();
   const wrap = $('#dex-list');
   wrap.innerHTML = '';
   for (const d of SHARKS) {
@@ -919,7 +935,7 @@ async function play() {
     show('game');
     pausePanel.style.display = 'none';
     $('#hud-online').classList.toggle('hidden', !net);
-    $('#hud-skill-icon').textContent = ICON[selShark.id];
+    $('#hud-skill-icon').textContent = ICON[selShark.id] || 'help';
     $('#hud-skill-name').innerHTML = rubify(selShark.skill.name);
     myName = net ? save.name : 'YOU';
     ctl = startGame({
