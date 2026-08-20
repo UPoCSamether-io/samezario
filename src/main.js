@@ -136,8 +136,12 @@ function renderScript() {
   const locked = chapterLocked(chapterIdx);
 
   $('#script-era').textContent = `HISTORICAL ARCHIVE #${d.era} / ${d.en}`;
+  // 鍵は絵文字を使わない。端末ごとに絵柄が変わるうえ、他のUIが全部 Material Symbols
+  // なので1つだけ質感が浮く。rubify() は HTML を escape するので span は外で組む
+  const lockIcon = (cls) =>
+    `<span class="material-symbols-rounded ${cls} align-middle" aria-hidden="true">lock</span>`;
   $('#script-chapter').innerHTML =
-    `${rubify(`｜第《だい》${d.era}｜幕《まく》`)} ${locked ? '🔒' : rubify(d.scriptTitle)}`;
+    `${rubify(`｜第《だい》${d.era}｜幕《まく》`)} ${locked ? lockIcon('!text-lg') : rubify(d.scriptTitle)}`;
   scriptBody.style.setProperty('--stain', d.color);
 
   $('#script-prev').disabled = chapterIdx === 0;
@@ -147,9 +151,10 @@ function renderScript() {
   // DOM に載り、全選択コピーで露出する（伏せ字を ■ にしている意味が消える）
   if (locked) {
     const prev = cs[chapterIdx - 1];
+    // ink/60 は紙地に対して 3.6:1 で、小さくない文字でも下限 4.5:1 を割る
     scriptBody.innerHTML = `
-      <p class="text-center text-ink/60 py-10 leading-loose">${rubify(
-        `🔒 ｜第《だい》${prev.era}｜幕《まく》のサメを｜映画《えいが》に｜登場《とうじょう》させると、\nここが｜読《よ》めるようになる。`)}</p>`;
+      <p class="text-center text-ink/75 py-10 leading-loose">${lockIcon('!text-xl mr-1.5')}${rubify(
+        `｜第《だい》${prev.era}｜幕《まく》のサメを｜映画《えいが》に｜登場《とうじょう》させると、\nここが｜読《よ》めるようになる。`)}</p>`;
     scriptBody.scrollTop = 0;
     scriptGaugeRow.innerHTML = '';
     scriptAction.innerHTML = '';
@@ -170,7 +175,7 @@ function renderScript() {
   const bar = Math.round((done ? 1 : p.ratio) * 100);
 
   scriptBody.innerHTML = `
-    <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">${rubify(d.scriptTagline)}</div>
+    <div class="script-slug">${rubify(d.scriptTagline)}</div>
     <p class="script-text mt-5 leading-loose">${html}</p>`;
   scriptBody.scrollTop = 0;
 

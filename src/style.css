@@ -914,6 +914,22 @@ rp {
    #script-body 自体ではなく子に掛けるのは、スクロール領域とスクロールバーを
    紙面いっぱいのままにしたいから */
 #script-body > * { max-width: 40rem; margin-inline: auto; }
+/* 史料の資料名（「下布田遺跡と三万年前の海」）。以前は 10px の ink/55 で、
+   紙地 #f4efea に対して 3.2:1 しかなく紙に沈んでいた（小さい文字の下限は 4.5:1）。
+   ただ濃くするだけだと本文と同じ黒が2種類並んで、どちらが本文か分からなくなるので、
+   資料館のキャプション札のように地を反転させて別物にする。約 13:1。
+   inline-block にしないのは、#script-body > * の 40rem 中央寄せに乗せて
+   本文と左右の縁を揃えたいため（inline-block だと margin-inline:auto が効かない） */
+.script-slug {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  padding: 0.35rem 0.7rem;
+  border-radius: 0.25rem;
+}
+
 .script-text .mask {
   filter: blur(2px);
   border-radius: 2px;
@@ -958,6 +974,8 @@ rp {
   background: var(--color-paper);
   color: var(--color-ink);
   font-size: 0.85rem;
+  /* 影は他のボタンと同じ hard-sm。カチンコを外しても押せる物であることは残す */
+  box-shadow: 2px 2px 0 0 var(--color-ink);
   cursor: pointer;
   transition: transform .08s ease-out;
 }
