@@ -67,6 +67,18 @@
     </div>
   </div>
 
+  <!-- ================= 脚本 =================
+       #chrome の外に置く（レターボックスの外まで覆いたいので）。ゲーム画面もこの外に
+       あるので、対戦中に開けないことは main.js 側の show('game') で保証する。 -->
+  <div id="script-sheet" class="absolute inset-0 z-40 bg-navy/85 backdrop-blur-sm hidden p-4 sm:p-8">
+    <div class="relative mx-auto max-w-2xl h-full bg-paper ink-4 hard-lg rounded-lg flex flex-col overflow-hidden">
+      <div class="clapper-stripes h-5 border-b-4 border-ink shrink-0"></div>
+      <button id="script-close" aria-label="閉じる"
+              class="absolute top-9 right-4 z-10 w-10 h-10 grid place-items-center rounded-full bg-paper ink-3">✕</button>
+      <div id="script-body" class="p-6 sm:p-8 flex-1 overflow-auto thin-scroll"></div>
+    </div>
+  </div>
+
   <!-- ================= タイトル ================= -->
   <section id="s-title" class="screen on">
     <div id="title-stage" class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[var(--bar-pad)]">

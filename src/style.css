@@ -902,3 +902,13 @@ rp {
 /* 脚本アイコン。親の .letterbox が pointer-events:none なので、ここだけ戻す */
 #script-btn { pointer-events: auto; }
 
+/* 脚本。伏せた文字と、この段階で新しく現れた文字 */
+.script-text { white-space: pre-wrap; }
+.script-text .mask { color: color-mix(in srgb, var(--color-ink) 30%, transparent); }
+.script-text mark.fresh {
+  background: var(--color-yellow);
+  border-radius: 2px;
+  animation: fresh-in .6s ease-out both;
+}
+@keyframes fresh-in { from { background: transparent; } }
+

@@ -3,10 +3,11 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
+import { scriptView } from './restore.js';
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
 
@@ -73,6 +74,9 @@ function show(name) {
       if (name === 'dex') renderDex();
       if (name === 'title') paintTitleShark();
       if (name === 'game') stopAttract(); else startAttract();
+      // 脚本シートは #chrome の外にあるので .screen の切り替えでは消えない。
+      // 対戦中には出さない、という絶対条件を守るためここで強制的に閉じる
+      if (name === 'game') scriptSheet.style.display = 'none';
       chrome.classList.remove('shut');
       shutting = false;
       // ゲームは全画面。帯が開ききってから消す（閉じたまま消すとハードカットになる）
@@ -84,7 +88,50 @@ function show(name) {
 // 脚本に新しい文字が現れたことを赤点で知らせる。
 // #chrome はゲーム中 display:none になるので、表示制御はここでは要らない。
 const scriptDot = $('#script-dot');
-const syncScriptDot = () => scriptDot.classList.toggle('hidden', !hasNewScript());
+const scriptBtn = $('#script-btn');
+const syncScriptDot = () => {
+  const news = hasNewScript();
+  scriptDot.classList.toggle('hidden', !news);
+  // 赤点は視覚だけなので、スクリーンリーダーには aria-label の言い換えで伝える
+  scriptBtn.setAttribute('aria-label', news ? '脚本（新着あり）' : '脚本');
+};
+
+// ---------- 脚本 ----------
+// 復元中の1本だけを見せる。6本まとめて虫食いを出すと読めない壁の羅列になって
+// 誰も読む気にならないので、次に完成へ近づく1本だけに絞る
+const scriptSheet = $('#script-sheet');
+
+/** 脚本を開く。復元中の1本（無ければ最後に完成した1本）を描く */
+function openScript() {
+  const d = SHARKS.find((s) => s.script && stageOf(s.era) < 3)
+         || [...SHARKS].reverse().find((s) => s.script);
+
+  if (!d) {
+    $('#script-body').innerHTML =
+      `<p class="text-ink/60">${rubify('｜脚本《きゃくほん》はまだ｜見《み》つかっていない。')}</p>`;
+  } else {
+    const stage = stageOf(d.era);
+    const v = scriptView(d.script, save.seed, stage);
+    $('#script-body').innerHTML = `
+      <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">LOST FILM / ${esc(d.en)}</div>
+      <h2 class="font-display font-extrabold text-2xl leading-tight mt-1">${rubify(d.name)}</h2>
+      <div class="font-mono text-[11px] text-ink/60 mt-2">
+        ${rubify('｜復元《ふくげん》')} ${Math.round(v.readable / v.total * 100)}%
+        ${v.added ? `<span class="text-danger ml-2">+${v.added}</span>` : ''}
+      </div>
+      <p class="script-text mt-5 leading-loose">${v.html}</p>`;
+  }
+
+  scriptSheet.style.display = 'block';
+  markScriptSeen();
+  syncScriptDot();
+}
+
+const closeScript = () => { scriptSheet.style.display = 'none'; };
+$('#script-btn').onclick = openScript;
+$('#script-close').onclick = closeScript;
+scriptSheet.onclick = (e) => { if (e.target === scriptSheet) closeScript(); };   // 外側の暗幕
+addEventListener('keydown', (e) => { if (e.key === 'Escape') closeScript(); });
 
 // ---------- タイトルの立ち絵 ----------
 function paintTitleShark() {
