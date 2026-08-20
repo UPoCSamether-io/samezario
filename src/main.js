@@ -110,6 +110,24 @@ const syncScriptDot = () => {
 // SHARKS を見ているので、本文を別配列へ移すと赤点通知が死ぬ）
 const chapters = () => SHARKS.filter((d) => d.script).sort((a, b) => a.era - b.era);
 
+// 表示中の章の添字。セーブしない。どの章を最後に見ていたかを永続化しても、
+// 次に開くとき「復元中の章」以外を見せる理由がない
+let chapterIdx = 0;
+
+/** 前の幕のサメを獲得するまで、次の幕はロック */
+const chapterLocked = (i) => {
+  const cs = chapters();
+  return i > 0 && !save.claimedSharks.includes(cs[i - 1].id);
+};
+
+/** 進入時に見せる章。復元中の1本、無ければ最後に開いている1本 */
+function defaultChapter() {
+  const cs = chapters();
+  const i = cs.findIndex((d, k) => !chapterLocked(k) && stageOf(d.era) < STAGE_RATIO.length - 1);
+  // 完成済みだが未獲得（Claim ボタンを出したい）ときは、開いている最後の章に留める
+  return i >= 0 ? i : Math.max(0, cs.findLastIndex((_, k) => !chapterLocked(k)));
+}
+
 const scriptBody = $('#script-body');
 const scriptGaugeRow = $('#script-gauge-row');
 const scriptAction = $('#script-action');
@@ -119,12 +137,33 @@ function renderScript() {
   // 既読フラグを更新する前に退避する。そうしないと、完成済みの史料を何度開いても
   // 直近の段階差分（+29 など）が毎回ハイライトされたままになる
   const isNew = hasNewScript();
-  const d = chapters()[0];
+  const cs = chapters();
+  chapterIdx = Math.max(0, Math.min(cs.length - 1, chapterIdx));
+  const d = cs[chapterIdx];
+  const locked = chapterLocked(chapterIdx);
 
   $('#script-era').textContent = `HISTORICAL ARCHIVE #${d.era} / ${d.en}`;
   $('#script-chapter').innerHTML =
-    `${rubify(`｜第《だい》${d.era}｜幕《まく》`)} ${rubify(d.scriptTitle)}`;
+    `${rubify(`｜第《だい》${d.era}｜幕《まく》`)} ${locked ? '🔒' : rubify(d.scriptTitle)}`;
   scriptBody.style.setProperty('--stain', d.color);
+
+  $('#script-prev').disabled = chapterIdx === 0;
+  $('#script-next').disabled = chapterIdx >= cs.length - 1;
+
+  // ロック中は本文を組み立てない。scriptView() を呼ぶと未解放の章の全文が
+  // DOM に載り、全選択コピーで露出する（伏せ字を ■ にしている意味が消える）
+  if (locked) {
+    const prev = cs[chapterIdx - 1];
+    scriptBody.innerHTML = `
+      <p class="text-center text-ink/60 py-10 leading-loose">${rubify(
+        `🔒 ｜第《だい》${prev.era}｜幕《まく》のサメを｜映画《えいが》に｜登場《とうじょう》させると、\nここが｜読《よ》めるようになる。`)}</p>`;
+    scriptBody.scrollTop = 0;
+    scriptGaugeRow.innerHTML = '';
+    scriptAction.innerHTML = '';
+    markScriptSeen();
+    syncScriptDot();
+    return;
+  }
 
   const stage = stageOf(d.era);
   const done = stage >= STAGE_RATIO.length - 1;
@@ -163,15 +202,20 @@ function renderScript() {
     : `<p class="text-[12px] text-paper/70 text-center">${rubify(
         '｜海《うみ》でサメを｜大《おお》きく｜育《そだ》てると、｜泥《どろ》が｜落《お》ちて｜文字《もじ》が｜読《よ》めるようになる。')}</p>`;
 
-  // 章の切り替えは Task 5 で入れる。それまで押せてしまうと何も起きないボタンになるので伏せておく
-  $('#script-prev').disabled = true;
-  $('#script-next').disabled = true;
-
   markScriptSeen();
   syncScriptDot();
 }
 
-$('#script-btn').onclick = () => show('script');
+const goChapter = (delta) => {
+  const cs = chapters();
+  chapterIdx = Math.max(0, Math.min(cs.length - 1, chapterIdx + delta));
+  renderScript();
+};
+$('#script-prev').onclick = () => goChapter(-1);
+$('#script-next').onclick = () => goChapter(+1);
+
+// 進入のたびに「復元中の章」へ戻す。ナビの位置は画面を出た時点で忘れる
+$('#script-btn').onclick = () => { chapterIdx = defaultChapter(); show('script'); };
 
 // ---------- タイトルの立ち絵 ----------
 function paintTitleShark() {
