@@ -264,10 +264,16 @@
        旧 #script-sheet（#chrome の外のモーダル）はこれに置き換えて廃止した -->
   <section id="s-script" class="screen">
     <div class="h-full flex flex-col py-[var(--bar-pad)] px-6">
-      <div class="flex items-center justify-between gap-4 py-3">
+      <!-- 幕のタイトルはここに置く。ページ送りと同じ行に並べると、その行ぶん（実測 49px、
+           844x390 の 12.5%）が本文から削られる。ボタンは下で紙面の左右へ回す -->
+      <div id="script-head" class="flex items-center justify-between gap-4 py-3">
         <button class="btn !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
           <div class="px-5 py-2.5 font-bold text-sm">← タイトルへ<ruby>戻<rp>(</rp><rt>もど</rt><rp>)</rp></ruby>る</div></button>
-        <div id="script-era" class="font-mono text-[10px] md:text-xs tracking-[0.3em] text-paper/70 text-center min-w-0 truncate"></div>
+        <div class="min-w-0 flex flex-col items-center gap-1">
+          <div id="script-era" class="font-mono text-[10px] md:text-xs tracking-[0.3em] text-paper/70 text-center min-w-0 truncate"></div>
+          <h2 id="script-chapter"
+              class="font-display font-extrabold text-lg md:text-2xl bg-yellow ink-3 rounded-lg px-5 py-1.5 hard -rotate-1 text-center min-w-0 truncate max-w-full"></h2>
+        </div>
         <button id="script-help" type="button" aria-label="この画面の遊び方"
                 class="w-11 h-11 shrink-0 grid place-items-center rounded-full bg-yellow ink-2 hard-sm
                        transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
@@ -275,18 +281,16 @@
         </button>
       </div>
 
-      <div class="flex items-center justify-between gap-3">
-        <button id="script-prev" type="button" aria-label="前の幕" class="btn !w-auto shrink-0"><div class="cap clapper-stripes"></div>
-          <div class="px-3 py-2 font-bold text-sm">◀</div></button>
-        <h2 id="script-chapter"
-            class="font-display font-extrabold text-xl md:text-2xl bg-yellow ink-3 rounded-lg px-6 py-2 hard -rotate-1 text-center min-w-0"></h2>
-        <button id="script-next" type="button" aria-label="次の幕" class="btn !w-auto shrink-0"><div class="cap clapper-stripes"></div>
-          <div class="px-3 py-2 font-bold text-sm">▶</div></button>
-      </div>
-
-      <div class="flex-1 min-h-0 mt-3 bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col">
-        <div class="clapper-stripes h-5 border-b-4 border-ink shrink-0"></div>
-        <div id="script-body" class="p-6 sm:p-8 flex-1 min-h-0 overflow-auto thin-scroll"></div>
+      <!-- ページ送りは紙面の左右。縦に積むと本文の高さを食うだけで、横は余っている -->
+      <div id="script-stage" class="flex-1 min-h-0 mt-3 flex items-stretch gap-2 md:gap-3">
+        <button id="script-prev" type="button" aria-label="前の幕" class="btn !w-auto shrink-0 self-center"><div class="cap clapper-stripes"></div>
+          <div class="px-2 md:px-3 py-4 font-bold text-sm">◀</div></button>
+        <div class="flex-1 min-w-0 bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col">
+          <div class="clapper-stripes h-5 border-b-4 border-ink shrink-0"></div>
+          <div id="script-body" class="p-6 sm:p-8 flex-1 min-h-0 overflow-auto thin-scroll"></div>
+        </div>
+        <button id="script-next" type="button" aria-label="次の幕" class="btn !w-auto shrink-0 self-center"><div class="cap clapper-stripes"></div>
+          <div class="px-2 md:px-3 py-4 font-bold text-sm">▶</div></button>
       </div>
 
       <div id="script-gauge-row" class="mt-3 shrink-0"></div>
