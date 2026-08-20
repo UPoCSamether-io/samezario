@@ -205,8 +205,12 @@ function renderScript() {
       show('dex');
     };
   } else if (done) {
+    // 最終章では「次の幕へ進める」が嘘になる（#script-next は disabled のまま、
+    // 第3幕はまだ存在しない）。最終章かどうかで文言を分ける
     scriptAction.innerHTML = `<p class="text-[12px] text-paper/70 text-center">${rubify(
-      '｜復元《ふくげん》｜完了《かんりょう》。｜次《つぎ》の｜幕《まく》へ｜進《すす》める。')}</p>`;
+      chapterIdx >= cs.length - 1
+        ? 'つぎの｜史料《しりょう》をさがしている。'
+        : '｜復元《ふくげん》｜完了《かんりょう》。｜次《つぎ》の｜幕《まく》へ｜進《すす》める。')}</p>`;
   } else {
     scriptAction.innerHTML = `<p class="text-[12px] text-paper/70 text-center">${rubify(
       '｜海《うみ》でサメを｜大《おお》きく｜育《そだ》てると、｜泥《どろ》が｜落《お》ちて｜文字《もじ》が｜読《よ》めるようになる。')}</p>`;
