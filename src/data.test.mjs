@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { SHARKS } from './data.js';
 import { scriptView, STAGE_RATIO } from './restore.js';
 
@@ -86,8 +87,13 @@ test('史料の本文が全4段階で描画でき、ルビ記法が壊れてい�
 
 test('第1幕の本文は凍結されている（変更するとマスク位置が総ずれする）', () => {
   const dogu = SHARKS.find((d) => d.id === 'dogu');
-  // 文字数の固定。誤字修正であっても、公開済みの本文を変えると
-  // 復元途中のプレイヤーの読めていた文章が壊れる（tokenize の添字が全部ずれる）
-  assert.equal(dogu.script.length, 566, '第1幕の本文が変更されている');
-  assert.equal(scriptView(dogu.script, 12345, 0).total, 291);
+  // 内容そのもののハッシュで固定する。誤字修正であっても、公開済みの本文を変えると
+  // 復元途中のプレイヤーの読めていた文章が壊れる（restore.js の maskSet は KEEP 文字
+  // （空白・句読点など）を除いた cand を作ってから Fisher-Yates で伏せ字位置を決めるので、
+  // script.length や scriptView().total が変わらない編集――たとえば「、」1字を漢字に
+  // 差し替える――でも cand.length が変わり、全プレイヤーの伏せ字位置が丸ごとズレる。
+  // 文字数だけを見る旧アサーションはこの種の編集を素通りさせていたため、
+  // 本文全体のハッシュに切り替えて穴を塞ぐ
+  const sha = createHash('sha256').update(dogu.script, 'utf8').digest('hex');
+  assert.equal(sha, '8f82e7945b66ff8c88bd27e3682cdc0ea32d2dfad2344221c992c5e03a612723', '第1幕の本文が変更されている');
 });
