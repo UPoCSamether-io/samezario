@@ -30,6 +30,8 @@ const createDefaults = () => ({
   xp: 0,          // 累計経験値。レベル・解放・復元段階はすべてここから導出する
   seed: 0,        // 虫食い位置の種。初回だけ生成し、以後変えない
   seenLevel: 0,   // 脚本を最後に開いたときのレベル。赤点の消灯判定
+  claimedSharks: ['cinema'],   // 能動的に獲得したサメ。見本の映画サメは最初から
+  scriptTutorialSeen: false,   // 史料画面の遊び方を一度でも閉じたか
 });
 
 const DEFAULTS = createDefaults();
@@ -149,8 +151,27 @@ export function scriptProgress(era) {
 export const stageOf = (era) =>
   Math.max(0, Math.min(STAGES, level() - STAGES * (era - 1)));
 
-/** era 0（映画サメ＝見本）は常に解放。それ以外は 3*era に到達で解放 */
-export const isUnlockedShark = (d) => d.era === 0 || level() >= STAGES * d.era;
+/** era 0（映画サメ＝見本）は常に解放。それ以外は史料を100%復元して自分で獲得したものだけ */
+export const isUnlockedShark = (d) => d.era === 0 || save.claimedSharks.includes(d.id);
+
+/** 史料の復元完了ボタンから呼ぶ。二度押しで配列が伸びないよう冪等にしてある */
+export const claimShark = (id) =>
+  save.claimedSharks.includes(id)
+    ? save
+    : replace({ claimedSharks: [...save.claimedSharks, id] });
+
+// 既存セーブの移行。claimedSharks を持たないセーブへ、旧・自動解放条件（level() >= 3*era）で
+// 到達済みだったサメを埋める。これが無いと、既にレベル3以上の既存プレイヤーは
+// 解放済みだったサメが次回起動でロックへ戻る（save.shark がそれを指していれば不整合になる）。
+//
+// level() はアロー関数で巻き上げされないので、上の xp/seed の移行ブロックには書けない。
+if (!('claimedSharks' in raw)) {
+  replace({
+    claimedSharks: SHARKS
+      .filter((d) => d.era === 0 || level() >= STAGES * d.era)
+      .map((d) => d.id),
+  });
+}
 
 /** 脚本を開いた。赤点を消す */
 export const markScriptSeen = () => replace({ seenLevel: level() });

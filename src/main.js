@@ -3,17 +3,18 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, level, scriptProgress, replace, LEVEL_XP } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, level, scriptProgress, replace, LEVEL_XP, claimShark } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
 import { scriptView, STAGE_RATIO } from './restore.js';
 
 // 審査・開発用。?demo=1 で全レベルに到達させ、復元演出とサメ獲得をその場で実演できる。
-// ?demo=0 で元に戻す（xp を 0 に落とす）
+// Claim はあえて残しておく（獲得ボタンを押すところまで見せたいので、解放済みにはしない）
+// ?demo=0 で元に戻す（xp を 0 に落とし、獲得済みのサメも見本だけへ戻す）
 const demo = new URLSearchParams(location.search).get('demo');
 if (demo === '1') replace({ xp: LEVEL_XP[LEVEL_XP.length - 1], seenLevel: 0 });
-if (demo === '0') replace({ xp: 0, seenLevel: 0 });
+if (demo === '0') replace({ xp: 0, seenLevel: 0, claimedSharks: ['cinema'], scriptTutorialSeen: false });
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
 

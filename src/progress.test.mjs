@@ -2,7 +2,7 @@
 // progress.js は localStorage を import 時には読むだけ（失敗しても初期値へ落ちる）なので、
 // 先に偽物を置いてから動的 import すれば Node でそのまま回せる。
 import assert from 'node:assert/strict';
-import { MAPS } from './data.js';
+import { MAPS, SHARKS } from './data.js';
 
 const store = {};
 globalThis.localStorage = {
@@ -139,13 +139,15 @@ test('stageOf: 3を超えて増えない', () => {
   assert.equal(P.stageOf(1), 3);
 });
 
-test('isUnlockedShark: era 0（見本）は常に解放、era 1 はレベル3で解放', () => {
-  P.replace({ xp: 0 });
+test('isUnlockedShark: era 0（見本）は常に解放、それ以外は claimShark するまでレベルだけでは解放されない', () => {
+  const dogu = SHARKS.find((s) => s.era === 1);
+  P.replace({ xp: 0, claimedSharks: ['cinema'] });
   assert.equal(P.isUnlockedShark({ era: 0 }), true);
-  assert.equal(P.isUnlockedShark({ era: 1 }), false);
-  P.replace({ xp: P.LEVEL_XP[2] });
-  assert.equal(P.isUnlockedShark({ era: 1 }), true);
-  assert.equal(P.isUnlockedShark({ era: 2 }), false);
+  assert.equal(P.isUnlockedShark(dogu), false);
+  P.replace({ xp: P.LEVEL_XP[2] });   // 旧・自動解放条件（レベル3）に達しても
+  assert.equal(P.isUnlockedShark(dogu), false, 'レベルだけでは解放されない');
+  P.claimShark(dogu.id);
+  assert.equal(P.isUnlockedShark(dogu), true, 'Claim後は解放');
 });
 
 test('seed: 生成済みで、0 ではない（虫食い位置が固定されること）', () => {
@@ -226,4 +228,47 @@ test('scriptProgress: era 2 は era 1 の完成地点から始まる（前の区
   P.replace({ xp: P.LEVEL_XP[2] });          // era1 完成 = era2 の起点
   assert.equal(P.scriptProgress(2).ratio, 0, 'era2 が途中から始まっている');
   assert.equal(P.scriptProgress(2).remain, P.LEVEL_XP[5] - P.LEVEL_XP[2]);
+});
+
+test('claimedSharks に無いサメは、レベルがいくつでも解放されない', async () => {
+  const store = { 'samezario.save': JSON.stringify({ v: 1, xp: 999999, claimedSharks: ['cinema'] }) };
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?claim1');
+  const dogu = SHARKS.find((s) => s.id === 'dogu');
+  assert.equal(m.level() > 3, true, '前提: レベルは3を超えている');
+  assert.equal(m.isUnlockedShark(dogu), false, 'Claim前は未解放');
+  m.claimShark('dogu');
+  assert.equal(m.isUnlockedShark(dogu), true, 'Claim後は解放');
+});
+
+test('claimShark は冪等（二度押しで配列が伸びない）', async () => {
+  const store = { 'samezario.save': JSON.stringify({ v: 1, xp: 0, claimedSharks: ['cinema'] }) };
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?claim2');
+  m.claimShark('dogu');
+  m.claimShark('dogu');
+  assert.deepEqual(m.save.claimedSharks, ['cinema', 'dogu']);
+});
+
+test('claimedSharks を持たない既存セーブは、旧・自動解放条件で埋められる', async () => {
+  // xp 9000 = LEVEL_XP[3] 到達 → 旧条件では level()>=3 の dogu が解放済みだった
+  const store = { 'samezario.save': JSON.stringify({ v: 1, xp: 9000, unlocked: ['chofu', 'tamagawa'], points: 200 }) };
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?claim3');
+  assert.ok(m.save.claimedSharks.includes('dogu'), '到達済みのサメが取り上げられていない');
+  assert.ok(m.save.claimedSharks.includes('cinema'), '見本は常に入る');
+  assert.equal(m.save.v, 1, 'スキーマ版を上げていない');
+  assert.deepEqual(m.save.unlocked, ['chofu', 'tamagawa'], 'エリア解放が保持されている');
+  assert.equal(m.save.points, 200, 'ポイントが保持されている');
+  // 書き戻されていること（次回起動で再計算に頼らない）
+  assert.ok(JSON.parse(store['samezario.save']).claimedSharks.includes('dogu'));
 });
