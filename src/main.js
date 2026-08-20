@@ -3,7 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, level, replace, LEVEL_XP } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, level, levelProgress, replace, LEVEL_XP } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -96,7 +96,7 @@ function show(name) {
 }
 
 // 脚本に新しい文字が現れたことを赤点で知らせる。
-// #chrome はゲーム中 display:none になるので、表示制御はここでは要らない。
+// ボタンは #s-title の中にあるので、表示制御は .screen の display が持つ。
 const scriptDot = $('#script-dot');
 const scriptBtn = $('#script-btn');
 const syncScriptDot = () => {
@@ -128,19 +128,29 @@ function openScript() {
     const html = isNew ? v.html : v.html.replace(/<mark class="fresh">(.*?)<\/mark>/gs, '$1');
     const added = isNew ? v.added : 0;
     const pct = Math.round(v.readable / v.total * 100);
+    // バーは復元率ではなく「次にまた文字が増えるまで」を出す。復元率は本文を見れば
+    // 分かるうえ4段階でしか動かないので、バーにすると何を待てばいいのか読めない。
+    const done = stage >= STAGE_RATIO.length - 1;
+    const p = levelProgress();
+    const bar = Math.round((done ? 1 : p.ratio) * 100);
     $('#script-body').innerHTML = `
       <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">LOST FILM / ${esc(d.en)}</div>
       <h2 class="font-display font-extrabold text-2xl leading-tight mt-1">${rubify(d.name)}</h2>
       <div class="mt-3">
-        <div class="flex items-baseline justify-between font-mono text-[11px] text-ink/60">
-          <span>${rubify('｜復元《ふくげん》')} ${pct}%
-            ${added ? `<span class="text-danger ml-1">+${added}</span>` : ''}</span>
-          <span>${stage} / ${STAGE_RATIO.length - 1}</span>
+        <div class="flex items-baseline justify-between text-[11px] text-ink/60">
+          <span class="font-bold">${done
+            ? rubify('｜復元《ふくげん》｜完了《かんりょう》')
+            : rubify('つぎに｜文字《もじ》が｜増《ふ》えるまで')}</span>
+          <!-- 単位はリザルトの「大きさ」と同じ値。同じ言葉にしないと何を溜めるのか繋がらない -->
+          <span class="font-mono">${done ? '' : `${plainText('大きさ')} あと ${p.remain.toLocaleString()}`}</span>
         </div>
-        <!-- 段階の刻みを目盛りで見せる。次にどれだけ進むかが分かると「もう1回」に繋がる -->
-        <div class="script-gauge mt-1" style="--pct:${pct}%; --steps:${STAGE_RATIO.length - 1}"
-             role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"
-             aria-label="${plainText('復元')}"><i></i></div>
+        <div class="script-gauge mt-1" style="--pct:${bar}%"
+             role="progressbar" aria-valuenow="${bar}" aria-valuemin="0" aria-valuemax="100"
+             aria-label="${done ? '復元完了' : 'つぎに文字が増えるまで'}"><i></i></div>
+        <div class="font-mono text-[10px] text-ink/45 mt-1.5">
+          ${rubify('｜復元《ふくげん》')} ${pct}%（${stage} / ${STAGE_RATIO.length - 1}）
+          ${added ? `<span class="text-danger ml-1">+${added}</span>` : ''}
+        </div>
       </div>
       <p class="script-text mt-5 leading-loose">${html}</p>`;
   }

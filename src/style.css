@@ -899,9 +899,6 @@ rp {
 .dex-silhouette { filter: brightness(0) opacity(.35); }
 .shark-locked { opacity: .45; pointer-events: none; filter: grayscale(1); }
 
-/* 脚本アイコン。親の .letterbox が pointer-events:none なので、ここだけ戻す */
-#script-btn { pointer-events: auto; }
-
 /* 脚本。伏せた文字と、この段階で新しく現れた文字 */
 .script-text { white-space: pre-wrap; }
 .script-text .mask { color: color-mix(in srgb, var(--color-ink) 30%, transparent); }
@@ -913,9 +910,9 @@ rp {
 @keyframes fresh-in { from { background: transparent; } }
 
 
-/* 復元の進み具合。段階の刻みを目盛りで重ねて、次にどこまで伸びるかを見せる */
+/* 次に文字が増えるまでの進み具合。復元率ではなく経験値なので、目盛りは刻まず連続で伸ばす */
 .script-gauge {
-  position: relative; height: 10px; overflow: hidden;
+  height: 10px; overflow: hidden;
   border: 2px solid var(--color-ink); border-radius: 99px;
   background: color-mix(in srgb, var(--color-ink) 12%, transparent);
 }
@@ -923,14 +920,5 @@ rp {
   display: block; height: 100%; width: var(--pct);
   background: var(--color-yellow);
   transition: width .5s cubic-bezier(.2, .9, .3, 1);
-}
-/* 段階の境目。最後の1本は右端と重なるので描かない */
-.script-gauge::after {
-  content: ""; position: absolute; inset: 0;
-  background-image: linear-gradient(90deg, var(--color-ink) 0 2px, transparent 2px);
-  background-size: calc(100% / var(--steps)) 100%;
-  background-position: calc(100% / var(--steps)) 0;
-  background-repeat: repeat-x;
-  opacity: .45;
 }
 @media (prefers-reduced-motion: reduce) { .script-gauge > i { transition: none; } }

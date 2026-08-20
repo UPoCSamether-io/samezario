@@ -130,6 +130,17 @@ export const addXp = (mass) =>
 
 export const level = () => LEVEL_XP.filter((t) => save.xp >= t).length;
 
+/**
+ * 次のレベルまでの進み具合。{ratio: 0..1, remain: 残りXP}。最大レベルなら {1, 0}。
+ * 脚本の段階はレベルと1対1で動くので、これがそのまま「次の段階まであとどれだけ」になる。
+ */
+export function levelProgress() {
+  const n = level();
+  if (n >= LEVEL_XP.length) return { ratio: 1, remain: 0 };
+  const from = n === 0 ? 0 : LEVEL_XP[n - 1];
+  return { ratio: (save.xp - from) / (LEVEL_XP[n] - from), remain: LEVEL_XP[n] - save.xp };
+}
+
 /** そのサメの復元段階(0..3)。era 1 はレベル0から、era 2 はレベル3から始まる */
 export const stageOf = (era) =>
   Math.max(0, Math.min(STAGES, level() - STAGES * (era - 1)));

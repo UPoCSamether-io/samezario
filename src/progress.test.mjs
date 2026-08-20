@@ -199,3 +199,27 @@ test('hasNewScript: 脚本が完成する最大レベル(土偶=era1→レベル
   P.replace({ xp: P.LEVEL_XP[3], seenLevel: 3 });
   assert.equal(P.hasNewScript(), false, '脚本完成後のレベルアップで赤点が誤って点いている');
 });
+
+test('levelProgress: 次のレベルまでの割合と残りXPを返す', () => {
+  // レベル0の途中。0 -> LEVEL_XP[0] の区間を見る
+  P.replace({ xp: Math.round(P.LEVEL_XP[0] / 4) });
+  const a = P.levelProgress();
+  assert.equal(P.level(), 0);
+  assert.ok(Math.abs(a.ratio - 0.25) < 0.01, `区間の1/4で ratio が ${a.ratio}`);
+  assert.equal(a.remain, P.LEVEL_XP[0] - save.xp);
+
+  // レベル1の直後は、次の区間の始まりなので ratio がほぼ0に戻る
+  P.replace({ xp: P.LEVEL_XP[0] });
+  const b = P.levelProgress();
+  assert.equal(P.level(), 1);
+  assert.equal(b.ratio, 0, 'レベルアップ直後に ratio が 0 へ戻っていない');
+  assert.equal(b.remain, P.LEVEL_XP[1] - P.LEVEL_XP[0]);
+});
+
+test('levelProgress: 最大レベルでは満杯で止まり、残りは0（0除算やマイナスを出さない）', () => {
+  P.replace({ xp: P.LEVEL_XP[P.LEVEL_XP.length - 1] * 2 });
+  const p = P.levelProgress();
+  assert.equal(P.level(), P.LEVEL_XP.length);
+  assert.equal(p.ratio, 1);
+  assert.equal(p.remain, 0);
+});
