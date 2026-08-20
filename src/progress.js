@@ -154,6 +154,24 @@ export const stageOf = (era) =>
 /** era 0（映画サメ＝見本）は常に解放。それ以外は史料を100%復元して自分で獲得したものだけ */
 export const isUnlockedShark = (d) => d.era === 0 || save.claimedSharks.includes(d.id);
 
+// 史料の章一覧。SHARKS から導出する。専用の配列を持たない（下の SCRIPT_MAX が
+// SHARKS を見ているので、本文を別配列へ移すと赤点通知が死ぬ）
+export const chapters = () => SHARKS.filter((d) => d.script).sort((a, b) => a.era - b.era);
+
+/** 前の幕のサメを獲得するまで、次の幕はロック */
+export const chapterLocked = (i) => {
+  const cs = chapters();
+  return i > 0 && !save.claimedSharks.includes(cs[i - 1].id);
+};
+
+/** 進入時に見せる章。復元中の1本、無ければ最後に開いている1本 */
+export function defaultChapter() {
+  const cs = chapters();
+  const i = cs.findIndex((d, k) => !chapterLocked(k) && stageOf(d.era) < STAGES);
+  // 完成済みだが未獲得（Claim ボタンを出したい）ときは、開いている最後の章に留める
+  return i >= 0 ? i : Math.max(0, cs.findLastIndex((_, k) => !chapterLocked(k)));
+}
+
 /** 史料の復元完了ボタンから呼ぶ。二度押しで配列が伸びないよう冪等にしてある */
 export const claimShark = (id) =>
   save.claimedSharks.includes(id)

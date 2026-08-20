@@ -3,7 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, level, scriptProgress, replace, LEVEL_XP, claimShark } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, level, scriptProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -106,27 +106,12 @@ const syncScriptDot = () => {
 };
 
 // ---------- 史料 ----------
-// 章の一覧は SHARKS から導出する。専用の配列を持たない（progress.js の SCRIPT_MAX が
-// SHARKS を見ているので、本文を別配列へ移すと赤点通知が死ぬ）
-const chapters = () => SHARKS.filter((d) => d.script).sort((a, b) => a.era - b.era);
+// 章の状態判定（chapters/chapterLocked/defaultChapter）は save 由来の純粋なロジックなので
+// progress.js 側に置いてある。ここはビュー状態（chapterIdx）と DOM 配線だけを持つ。
 
 // 表示中の章の添字。セーブしない。どの章を最後に見ていたかを永続化しても、
 // 次に開くとき「復元中の章」以外を見せる理由がない
 let chapterIdx = 0;
-
-/** 前の幕のサメを獲得するまで、次の幕はロック */
-const chapterLocked = (i) => {
-  const cs = chapters();
-  return i > 0 && !save.claimedSharks.includes(cs[i - 1].id);
-};
-
-/** 進入時に見せる章。復元中の1本、無ければ最後に開いている1本 */
-function defaultChapter() {
-  const cs = chapters();
-  const i = cs.findIndex((d, k) => !chapterLocked(k) && stageOf(d.era) < STAGE_RATIO.length - 1);
-  // 完成済みだが未獲得（Claim ボタンを出したい）ときは、開いている最後の章に留める
-  return i >= 0 ? i : Math.max(0, cs.findLastIndex((_, k) => !chapterLocked(k)));
-}
 
 const scriptBody = $('#script-body');
 const scriptGaugeRow = $('#script-gauge-row');

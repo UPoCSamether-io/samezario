@@ -301,3 +301,42 @@ test('scriptProgress(2) はレベル3で0、レベル6で1', async () => {
   assert.equal(m.scriptProgress(2).ratio, 1);
   assert.equal(m.scriptProgress(2).remain, 0);
 });
+
+test('chapterLocked: 第1幕は claimedSharks に関係なく常にロックされない', () => {
+  P.replace({ claimedSharks: [] });
+  assert.equal(P.chapterLocked(0), false, 'claimedSharks が空でも第1幕はロックされない');
+  P.replace({ claimedSharks: ['cinema', 'dogu', 'tamagawa'] });
+  assert.equal(P.chapterLocked(0), false);
+});
+
+test('chapterLocked: 第2幕は前の幕（土偶）を獲得するまでロック', () => {
+  P.replace({ claimedSharks: ['cinema'] });
+  assert.equal(P.chapterLocked(1), true, '土偶未獲得なのにロックが外れている');
+  P.replace({ claimedSharks: ['cinema', 'dogu'] });
+  assert.equal(P.chapterLocked(1), false, '土偶獲得後もロックが残っている');
+});
+
+test('defaultChapter: 第1幕が進行中ならそこに留まる', () => {
+  P.replace({ xp: 0, claimedSharks: ['cinema'] });
+  assert.equal(P.defaultChapter(), 0);
+});
+
+test('defaultChapter: 第1幕が完成済みだが未獲得なら、ロック中の第2幕へは飛ばず第1幕に留まる', () => {
+  // ここが今回の回帰対象。第1幕が復元完了(stageOf=3)しても claim していなければ
+  // 第2幕はまだロック中なので、defaultChapter はロック中の章を返してはいけない
+  P.replace({ xp: P.LEVEL_XP[2], claimedSharks: ['cinema'] });
+  assert.equal(P.stageOf(1), 3, '前提: 第1幕は復元完了している');
+  assert.equal(P.chapterLocked(1), true, '前提: 土偶未獲得なので第2幕はロック中');
+  assert.equal(P.defaultChapter(), 0, '完成済み未獲得なのにロック中の第2幕へ飛んでいる');
+});
+
+test('defaultChapter: 第1幕を獲得済みで第2幕が進行中ならそちらへ進む', () => {
+  P.replace({ xp: P.LEVEL_XP[2], claimedSharks: ['cinema', 'dogu'] });
+  assert.equal(P.defaultChapter(), 1);
+});
+
+test('defaultChapter: 両方完成・獲得済みなら最後の章（第2幕）に留まる', () => {
+  P.replace({ xp: P.LEVEL_XP[5], claimedSharks: ['cinema', 'dogu', 'tamagawa'] });
+  assert.equal(P.stageOf(2), 3, '前提: 第2幕も復元完了している');
+  assert.equal(P.defaultChapter(), 1);
+});
