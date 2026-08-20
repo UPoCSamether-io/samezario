@@ -127,6 +127,9 @@ function renderScript() {
   // 既読フラグを更新する前に退避する。そうしないと、完成済みの史料を何度開いても
   // 直近の段階差分（+29 など）が毎回ハイライトされたままになる
   const isNew = hasNewScript();
+  // 初回だけ自動で遊び方を出す。ロック中の章の早期 return より前に置くことで、
+  // 未解放の章を最初に開いた場合でも漏れなくチュートリアルが出る
+  if (!save.scriptTutorialSeen) openScriptHelp();
   const cs = chapters();
   chapterIdx = Math.max(0, Math.min(cs.length - 1, chapterIdx));
   const d = cs[chapterIdx];
@@ -212,6 +215,38 @@ function renderScript() {
   markScriptSeen();
   syncScriptDot();
 }
+
+// ---------- 史料の遊び方（チュートリアル兼ヘルプ） ----------
+// 初回に自動で出るオーバーレイと、ヘッダーの [?] で出し直す内容は同じ1枚。
+// 出す条件だけが異なるので、開閉のロジックを共通化する。
+const scriptHelpSheet = $('#script-help-sheet');
+
+const HELP_STEPS = [
+  ['① ｜史料《しりょう》（｜昔《むかし》の｜記録《きろく》）をきれいにしよう',
+   '｜調布《ちょうふ》の｜海《うみ》の｜底《そこ》で｜見《み》つかった「｜昔《むかし》の｜記録《きろく》（｜史料《しりょう》）」ですが、｜泥《どろ》で｜汚《よご》れて｜読《よ》めなくなっています。ここには、｜調布《ちょうふ》の｜本当《ほんとう》の｜歴史《れきし》が｜書《か》かれています。'],
+  ['② ｜海《うみ》でサメを｜大《おお》きく｜育《そだ》てて｜汚《よご》れを｜落《お》とそう',
+   'ゲームでサメを｜大《おお》きく｜育《そだ》てるほど、｜泥汚《どろよご》れが｜落《お》ちて｜文字《もじ》が｜読《よ》めるようになります。'],
+  ['③ ｜記録《きろく》がすべて｜復元《ふくげん》されると、サメが｜登場《とうじょう》！',
+   '｜史料《しりょう》が100%｜復元《ふくげん》されると、｜映画監督《えいがかんとく》がその｜歴史《れきし》をもとに<span class="text-danger font-bold">「｜新《あたら》しいサメ」</span>を｜映画《えいが》にスカウト（｜解放《かいほう》）します。'],
+];
+
+function openScriptHelp() {
+  $('#script-help-body').innerHTML = HELP_STEPS
+    .map(([h, b]) => `<div>
+      <h3 class="font-display font-extrabold text-[15px]">${rubify(h)}</h3>
+      <p class="mt-1 text-ink/80">${rubify(b)}</p>
+    </div>`).join('');
+  scriptHelpSheet.style.display = 'grid';
+}
+
+const closeScriptHelp = () => {
+  scriptHelpSheet.style.display = 'none';
+  if (!save.scriptTutorialSeen) { save.scriptTutorialSeen = true; persist(); }
+};
+
+$('#script-help').onclick = openScriptHelp;
+$('#script-help-close').onclick = closeScriptHelp;
+scriptHelpSheet.onclick = (e) => { if (e.target === scriptHelpSheet) closeScriptHelp(); };
 
 const goChapter = (delta) => {
   const cs = chapters();
