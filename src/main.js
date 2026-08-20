@@ -916,13 +916,9 @@ const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10
 $('#start-btn').onclick = () => play();
 
 // ---------- 図鑑 ----------
-// タイルの生成はキャッシュされるが、解放状態はレベルと獲得の両方で変わる。
-// 獲得では level() が動かないので、獲得数もキーに入れないと影のまま残る
-let dexKey = '';
+// カードは7枚・全ポートレート起動時プリロード済みで、開くのも手動遷移のみ。
+// キャッシュすると解放状態（claimedSharks）とのズレが再発するので、毎回作り直す
 function renderDex() {
-  const key = `${level()}/${save.claimedSharks.length}`;
-  if (dexKey === key) return;
-  dexKey = key;
   const wrap = $('#dex-list');
   wrap.innerHTML = '';
   for (const d of SHARKS) {
