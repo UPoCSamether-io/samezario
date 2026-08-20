@@ -899,3 +899,6 @@ rp {
 .dex-silhouette { filter: brightness(0) opacity(.35); }
 .shark-locked { opacity: .45; pointer-events: none; filter: grayscale(1); }
 
+/* 脚本アイコン。親の .letterbox が pointer-events:none なので、ここだけ戻す */
+#script-btn { pointer-events: auto; }
+

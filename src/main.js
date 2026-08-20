@@ -3,7 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -68,6 +68,7 @@ function show(name) {
       screens[cur]?.classList.remove('on');
       screens[name]?.classList.add('on');
       cur = name;
+      syncScriptDot();
       if (name === 'shark') renderSharks();
       if (name === 'dex') renderDex();
       if (name === 'title') paintTitleShark();
@@ -79,6 +80,11 @@ function show(name) {
     }, SHUT);
   }, CLAP);
 }
+
+// 脚本に新しい文字が現れたことを赤点で知らせる。
+// #chrome はゲーム中 display:none になるので、表示制御はここでは要らない。
+const scriptDot = $('#script-dot');
+const syncScriptDot = () => scriptDot.classList.toggle('hidden', !hasNewScript());
 
 // ---------- タイトルの立ち絵 ----------
 function paintTitleShark() {
@@ -591,6 +597,7 @@ async function share() {
 // 見本の映画サメへ落とす
 let selShark = SHARKS.find((s) => s.id === save.shark && isUnlockedShark(s)) || SHARKS[0];
 paintTitleShark();   // 起動直後のタイトルは show() を通らないのでここで描く
+syncScriptDot();     // 同じ理由で赤点もここで一度合わせる
 
 const STAT_KEYS = [
   ['スピード', 'スピード', (d) => d.speed],
