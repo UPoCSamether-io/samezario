@@ -151,8 +151,18 @@ export function scriptProgress(era) {
 export const stageOf = (era) =>
   Math.max(0, Math.min(STAGES, level() - STAGES * (era - 1)));
 
-/** era 0（映画サメ＝見本）は常に解放。それ以外は史料を100%復元して自分で獲得したものだけ */
-export const isUnlockedShark = (d) => d.era === 0 || save.claimedSharks.includes(d.id);
+// era 0（映画サメ＝見本）は常に解放。史料がある章（現在は土偶・多摩川）は
+// 100%復元して自分で獲得したものだけ。史料がまだ書かれていない4種（深大寺・近藤・
+// 飛行機・妖怪、era 3-6）は、章が無いと LEVEL_XP の7〜18レベル分が誰も何も得られない
+// まま死ぬので、旧・自動解放条件（level() >= STAGES*era）を暫定で残してある。
+//
+// 罠: この4種のどれかに script を足すと `!d.script` が false になり、その瞬間に
+// レベルだけで解放されていたプレイヤーから静かに解放が消える（save.shark がそれを
+// 指していたら不整合にもなる）。script を足す前に、下の claimedSharks 移行と同じ場所へ
+// 「level() が既に STAGES*d.era を超えているセーブへ、その id を claimedSharks に足す」
+// 移行を追加すること
+export const isUnlockedShark = (d) =>
+  d.era === 0 || save.claimedSharks.includes(d.id) || (!d.script && level() >= STAGES * d.era);
 
 // 史料の章一覧。SHARKS から導出する。専用の配列を持たない（下の SCRIPT_MAX が
 // SHARKS を見ているので、本文を別配列へ移すと赤点通知が死ぬ）

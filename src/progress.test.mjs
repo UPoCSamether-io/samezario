@@ -150,6 +150,21 @@ test('isUnlockedShark: era 0（見本）は常に解放、それ以外は claimS
   assert.equal(P.isUnlockedShark(dogu), true, 'Claim後は解放');
 });
 
+test('isUnlockedShark: 史料が無いサメ（era 3-6）はレベル到達だけで解放される', () => {
+  const jindaiji = SHARKS.find((s) => s.id === 'jindaiji');   // era 3, script 無し
+  P.replace({ xp: 0, claimedSharks: ['cinema'] });
+  assert.equal(P.isUnlockedShark(jindaiji), false, 'しきい値未満はロック');
+  P.replace({ xp: P.LEVEL_XP[3 * jindaiji.era - 1] });   // level() >= STAGES(3)*era
+  assert.equal(P.isUnlockedShark(jindaiji), true, 'claimedSharks に無くても解放される');
+  assert.ok(!P.save.claimedSharks.includes('jindaiji'), 'claimedSharks 自体は書き換わらない');
+});
+
+test('isUnlockedShark: 史料のあるサメ（土偶）はレベルが最大でも自動解放されない', () => {
+  const dogu = SHARKS.find((s) => s.id === 'dogu');
+  P.replace({ xp: P.LEVEL_XP[P.LEVEL_XP.length - 1], claimedSharks: ['cinema'] });
+  assert.equal(P.isUnlockedShark(dogu), false, '史料がある章は claim 抜きで解放されてはいけない');
+});
+
 test('seed: 生成済みで、0 ではない（虫食い位置が固定されること）', () => {
   assert.equal(typeof P.save.seed, 'number');
   assert.notEqual(P.save.seed, 0);
