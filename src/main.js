@@ -3,7 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, level } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -987,6 +987,12 @@ function showResult(r) {
   const isBest = r.mass > save.best;
   save.best = best; persist();
 
+  // 経験値。到達質量をそのまま入れる。呼ぶのはここだけ（二重加算を場所で潰す）
+  const lvBefore = level();
+  addXp(r.mass);
+  const leveled = level() - lvBefore;
+  syncScriptDot();
+
   show('result');
   $('#res-sub').innerHTML = `${rubify(selMap.name)} ／ ${rubify(selShark.name)}`
     + (r.cause ? `<br><span class="text-danger">${rubifyCause(r.cause)}${rubify('に｜接触《せっしょく》')}</span>` : '');
@@ -1000,5 +1006,10 @@ function showResult(r) {
       <div class="res-stat-v font-mono font-bold text-xl sm:text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
+  // レベルアップは主、赤点は従。両方が同じ強さで主張すると煩くなる
+  $('#res-level').innerHTML = leveled
+    ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">LEVEL ${level()}</span>
+       ${rubify('｜脚本《きゃくほん》に｜新《あたら》しい｜文字《もじ》が｜現《あらわ》れた')}`
+    : '';
   $('#res-tip').innerHTML = rubify(TIPS[(Math.random() * TIPS.length) | 0]);
 }
