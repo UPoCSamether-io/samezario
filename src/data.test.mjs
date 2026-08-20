@@ -25,10 +25,10 @@ test('土偶サメと近藤イサメが存在する', () => {
   assert.equal(kondo.era, 4);
 });
 
-test('区分1（土偶サメ）だけが script を持つ（スコープは1本）', () => {
+test('区分1・2（土偶サメ・多摩川サメ）が script を持つ（スコープは2本）', () => {
   const withScript = SHARKS.filter((d) => d.script);
-  assert.equal(withScript.length, 1);
-  assert.equal(withScript[0].id, 'dogu');
+  assert.equal(withScript.length, 2);
+  assert.deepEqual(withScript.map((d) => d.id).sort(), ['dogu', 'tamagawa']);
 });
 
 test('script は改行を含み、ルビ記法が閉じている', () => {
@@ -59,4 +59,35 @@ test('本物の脚本は段階が進むほど読める文字が確実に増え�
   }
   assert.equal(views[views.length - 1].readable, views[0].total, '最終段階で全文が読めていない');
   assert.equal(views[0].added, 0, '段階0に新出があるのはおかしい');
+});
+
+test('史料を持つのは era 1 と 2 の2本で、章の見出しが揃っている', () => {
+  const chapters = SHARKS.filter((d) => d.script).sort((a, b) => a.era - b.era);
+  assert.deepEqual(chapters.map((d) => d.era), [1, 2]);
+  for (const d of chapters) {
+    assert.equal(typeof d.scriptTitle, 'string', `${d.id} に scriptTitle がない`);
+    assert.equal(typeof d.scriptTagline, 'string', `${d.id} に scriptTagline がない`);
+    assert.ok(d.scriptTitle.length > 0 && d.scriptTagline.length > 0);
+  }
+});
+
+test('史料の本文が全4段階で描画でき、ルビ記法が壊れていない', () => {
+  for (const d of SHARKS.filter((s) => s.script)) {
+    for (let stage = 0; stage < STAGE_RATIO.length; stage++) {
+      const v = scriptView(d.script, 12345, stage);
+      assert.ok(v.total > 0, `${d.id} stage${stage}: 本文が空`);
+      // ルビ記法が生のまま残っていたら tokenize が拾えていない
+      assert.ok(!/[|｜《》]/.test(v.html), `${d.id} stage${stage}: 未解釈のルビ記法が残っている`);
+    }
+    // 完成段階では伏せ字が1つも残らない
+    assert.ok(!scriptView(d.script, 12345, STAGE_RATIO.length - 1).html.includes('■'));
+  }
+});
+
+test('第1幕の本文は凍結されている（変更するとマスク位置が総ずれする）', () => {
+  const dogu = SHARKS.find((d) => d.id === 'dogu');
+  // 文字数の固定。誤字修正であっても、公開済みの本文を変えると
+  // 復元途中のプレイヤーの読めていた文章が壊れる（tokenize の添字が全部ずれる）
+  assert.equal(dogu.script.length, 566, '第1幕の本文が変更されている');
+  assert.equal(scriptView(dogu.script, 12345, 0).total, 291);
 });

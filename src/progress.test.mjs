@@ -196,9 +196,9 @@ test('hasNewScript: レベルが seenLevel を超えたときだけ赤点が点�
   assert.equal(P.hasNewScript(), true, '新出があるのに赤点が点かない');
 });
 
-test('hasNewScript: 脚本が完成する最大レベル(土偶=era1→レベル3)を超えたら、未読でも赤点は点かない', () => {
-  // レベル4（脚本には無関係のレベルアップ）。seenLevel はレベル3の完成をまだ見ていない
-  P.replace({ xp: P.LEVEL_XP[3], seenLevel: 3 });
+test('hasNewScript: 脚本が完成する最大レベル(多摩川=era2→レベル6)を超えたら、未読でも赤点は点かない', () => {
+  // レベル7（脚本には無関係のレベルアップ）。seenLevel はレベル6の完成をすでに見ている
+  P.replace({ xp: P.LEVEL_XP[6], seenLevel: 6 });
   assert.equal(P.hasNewScript(), false, '脚本完成後のレベルアップで赤点が誤って点いている');
 });
 
@@ -271,4 +271,33 @@ test('claimedSharks を持たない既存セーブは、旧・自動解放条件
   assert.equal(m.save.points, 200, 'ポイントが保持されている');
   // 書き戻されていること（次回起動で再計算に頼らない）
   assert.ok(JSON.parse(store['samezario.save']).claimedSharks.includes('dogu'));
+});
+
+test('第2幕が入って、赤点がレベル6まで反応する', async () => {
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?smax');
+  // レベル6（16,500XP）で第2幕が完成する。seenLevel が追いつくまで赤点が点く
+  m.replace({ xp: 16500, seenLevel: 3 });
+  assert.equal(m.level(), 6);
+  assert.equal(m.hasNewScript(), true, 'レベル6の新出をまだ見ていない');
+  m.markScriptSeen();
+  assert.equal(m.hasNewScript(), false);
+});
+
+test('scriptProgress(2) はレベル3で0、レベル6で1', async () => {
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?sp2');
+  m.replace({ xp: 6000 });
+  assert.equal(m.scriptProgress(2).ratio, 0);
+  m.replace({ xp: 16500 });
+  assert.equal(m.scriptProgress(2).ratio, 1);
+  assert.equal(m.scriptProgress(2).remain, 0);
 });
