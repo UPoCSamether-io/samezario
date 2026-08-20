@@ -961,3 +961,29 @@ rp {
   50%      { filter: drop-shadow(0 0 14px rgba(255, 200, 60, .85)); }
 }
 @media (prefers-reduced-motion: reduce) { .claim-pulse { animation: none; } }
+
+/* 史料画面の横持ち短辺対応。ヘッダー行・章送り行・ゲージ行・アクション行の4段に
+   本文パネルを足すと、他画面より縦を食う。実測 844×390 で #script-body が
+   （中身ゼロで padding だけの）64px まで潰れていた。本文がこの画面の主役なので、
+   装飾の HISTORICAL ARCHIVE 行を消し、他の帯を薄くしてその分を本文へ回す */
+@media (max-height: 500px) {
+  #script-era { display: none; }
+
+  #s-script .h-full > div:first-child { padding-block: 0.1rem; }
+  #s-script .h-full > div:first-child > button div { padding: 0.2rem 0.7rem; font-size: 0.65rem; }
+  #script-help { width: 1.7rem; height: 1.7rem; }
+
+  #s-script .h-full > div:nth-child(2) { gap: 0.3rem; }
+  #script-chapter { font-size: 0.8rem; padding: 0.15rem 0.5rem; }
+  #script-prev div, #script-next div { padding: 0.15rem 0.35rem; font-size: 0.65rem; }
+
+  #s-script .h-full > div:nth-child(3) { margin-top: 0.4rem; }
+  #script-body { padding: 0.5rem 0.75rem; }
+
+  #script-gauge-row { margin-top: 0.3rem; }
+  #script-gauge-row > div:first-child { font-size: 10px; }
+  #script-gauge-row .script-gauge { height: 6px; margin-top: 0.15rem; }
+  #script-gauge-row > div:last-child { margin-top: 0.15rem; font-size: 9px; }
+  #script-action { margin-top: 0.25rem; }
+  #script-action p { font-size: 10px; }
+}
