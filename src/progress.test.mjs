@@ -150,13 +150,35 @@ test('isUnlockedShark: era 0（見本）は常に解放、それ以外は claimS
   assert.equal(P.isUnlockedShark(dogu), true, 'Claim後は解放');
 });
 
-test('isUnlockedShark: 史料が無いサメ（era 3-6）はレベル到達だけで解放される', () => {
+test('grantLevelSharks: 史料が無いサメ（era 3-6）はレベル到達で claimedSharks へ焼き込まれる', () => {
   const jindaiji = SHARKS.find((s) => s.id === 'jindaiji');   // era 3, salvageText 無し
   P.replace({ xp: 0, claimedSharks: ['cinema'] });
   assert.equal(P.isUnlockedShark(jindaiji), false, 'しきい値未満はロック');
-  P.replace({ xp: P.LEVEL_XP[3 * jindaiji.era - 1] });   // level() >= STAGES(3)*era
-  assert.equal(P.isUnlockedShark(jindaiji), true, 'claimedSharks に無くても解放される');
-  assert.ok(!P.save.claimedSharks.includes('jindaiji'), 'claimedSharks 自体は書き換わらない');
+  P.addXp(P.LEVEL_XP[3 * jindaiji.era - 1]);                  // level() >= STAGES(3)*era
+  assert.ok(P.save.claimedSharks.includes('jindaiji'), 'レベル到達でセーブに焼き込まれる');
+  assert.equal(P.isUnlockedShark(jindaiji), true);
+});
+
+test('grantLevelSharks: 焼き込み済みなら、その章に史料を足しても解放は消えない', () => {
+  // この仕組みの存在理由。以前は isUnlockedShark が `!d.salvageText && level()>=...` を
+  // 毎回評価していたので、data.js に本文を1本足した瞬間に条件が false へ転んで、
+  // レベルで解放されていたプレイヤーからサメが黙って消えていた
+  const jindaiji = SHARKS.find((s) => s.id === 'jindaiji');
+  P.replace({ xp: 0, claimedSharks: ['cinema'] });
+  P.addXp(P.LEVEL_XP[3 * jindaiji.era - 1]);
+  assert.equal(P.isUnlockedShark(jindaiji), true, '前提: レベルで解放済み');
+
+  // 第3幕の本文を書いた後の姿。SHARKS 自体は壊さず、同じ id の別オブジェクトで見る
+  const withText = { ...jindaiji, salvageText: '｜第三幕《だいさんまく》の｜本文《ほんぶん》。' };
+  assert.equal(P.isUnlockedShark(withText), true, '本文を足しても解放は消えない');
+});
+
+test('grantLevelSharks: 史料がある章には先回りして配らない', () => {
+  const dogu = SHARKS.find((s) => s.id === 'dogu');
+  P.replace({ xp: 0, claimedSharks: ['cinema'] });
+  P.addXp(P.LEVEL_XP[P.LEVEL_XP.length - 1]);   // 最大レベル
+  assert.ok(!P.save.claimedSharks.includes('dogu'),
+    '史料がある章は100%復元して自分で押すのが解放の意味。先回りで配ると獲得ボタンが無意味になる');
 });
 
 test('isUnlockedShark: 史料のあるサメ（土偶）はレベルが最大でも自動解放されない', () => {

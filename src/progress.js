@@ -126,9 +126,13 @@ export const LEVEL_XP = [
 const STAGES = 3;   // サメ1種あたりの復元段階数
 
 /** 対戦終了時の到達質量を経験値に入れる。1プレイにつき1回だけ呼ぶこと */
-export const addXp = (mass) =>
+export const addXp = (mass) => {
   // xp は自分自身に積むので、NaN が一度入ると二度と抜けない（level も stageOf も道連れ）
-  Number.isFinite(mass) && mass > 0 ? replace({ xp: save.xp + Math.round(mass) }) : save;
+  if (!Number.isFinite(mass) || mass <= 0) return save;
+  replace({ xp: save.xp + Math.round(mass) });
+  // レベルが動くのはここだけ。上がった直後に焼き込む（下の grantLevelSharks 参照）
+  return grantLevelSharks();
+};
 
 export const level = () => LEVEL_XP.filter((t) => save.xp >= t).length;
 
@@ -151,18 +155,35 @@ export function salvageProgress(era) {
 export const stageOf = (era) =>
   Math.max(0, Math.min(STAGES, level() - STAGES * (era - 1)));
 
-// era 0（映画サメ＝見本）は常に解放。史料がある章（現在は土偶・多摩川）は
-// 100%復元して自分で獲得したものだけ。史料がまだ書かれていない4種（深大寺・近藤・
-// 飛行機・妖怪、era 3-6）は、章が無いと LEVEL_XP の7〜18レベル分が誰も何も得られない
-// まま死ぬので、旧・自動解放条件（level() >= STAGES*era）を暫定で残してある。
+// 解放は claimedSharks が唯一の真実。era 0（映画サメ＝見本）だけが常に解放。
 //
-// 罠: この4種のどれかに salvageText を足すと `!d.salvageText` が false になり、その瞬間に
-// レベルだけで解放されていたプレイヤーから静かに解放が消える（save.shark がそれを
-// 指していたら不整合にもなる）。salvageText を足す前に、下の claimedSharks 移行と同じ場所へ
-// 「level() が既に STAGES*d.era を超えているセーブへ、その id を claimedSharks に足す」
-// 移行を追加すること
-export const isUnlockedShark = (d) =>
-  d.era === 0 || save.claimedSharks.includes(d.id) || (!d.salvageText && level() >= STAGES * d.era);
+// 最終形は「全章に史料があり、100%復元して獲得したものだけが解放」。ただし
+// 第3〜6幕の本文がまだ無く、そこを史料ゲートにすると LEVEL_XP の7〜18レベル分が
+// 誰も何も得られないまま死ぬ。そこで本文が無い章だけ、旧・自動解放条件
+// （level() >= STAGES*era）を暫定で残す。
+//
+// ただし「条件を毎回評価する」のではなく grantLevelSharks() で claimedSharks へ
+// 焼き込む。評価のままだと、その章に salvageText を足した瞬間に条件式が false へ
+// 転んで、レベルで解放されていたプレイヤーから静かにサメが消える（save.shark が
+// それを指していたら不整合にもなる）。焼き込んであれば、本文を足す作業は
+// data.js に1本書くだけで完結し、既存プレイヤーは持っているものを失わない。
+export const isUnlockedShark = (d) => d.era === 0 || save.claimedSharks.includes(d.id);
+
+/**
+ * 本文がまだ無い章のサメを、レベル到達で claimedSharks へ焼き込む。
+ * 起動時と経験値加算のたびに走る。冪等。
+ *
+ * 史料がある章には触らない——あちらは100%復元して自分で押すのが解放の意味なので、
+ * ここで先回りして配ると獲得ボタンの意味が消える。
+ */
+export function grantLevelSharks() {
+  const lv = level();
+  const add = SHARKS
+    .filter((d) => d.era > 0 && !d.salvageText && lv >= STAGES * d.era)
+    .map((d) => d.id)
+    .filter((id) => !save.claimedSharks.includes(id));
+  return add.length ? replace({ claimedSharks: [...save.claimedSharks, ...add] }) : save;
+}
 
 /** ロック中のサメの解放条件。図鑑の吹き出しが読む。
  *  isUnlockedShark のすぐ下に置いてあるのは、条件と説明が離れると片方だけ直して
@@ -217,6 +238,10 @@ if (!('claimedSharks' in raw)) {
       .map((d) => d.id),
   });
 }
+
+// 本文がまだ無い章のレベル解放を、起動時にも焼き込む。addXp だけに置くと、
+// この仕組みより前から遊んでいて既にレベルを超えているセーブが取りこぼされる
+grantLevelSharks();
 
 // 旧キー scriptTutorialSeen の移行（機能名を「サルベージ」に改名したときの置き土産）。
 // 無いと、遊び方を一度閉じた既存プレイヤーへもう一度あの全画面シートが出る。
