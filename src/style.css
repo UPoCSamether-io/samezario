@@ -1050,6 +1050,15 @@ rp {
 }
 
 
+/* ページ送りと紙面のあいだ。gap だけで詰めると右のボタンが紙面の影の中に立つ。
+   紙面は hard-lg（8px 8px 0）なので影が右へ 8px 張り出していて、実測 667x375 の
+   gap 4px に対して 4px 食い込んでいた。左は自分の影が 2px 出るだけなので、
+   右だけ影のぶんを足して見た目の間隔をそろえる。
+   gap を Tailwind のクラスではなくここで持つのは、この 0.5rem が
+   「紙面の影の 8px」と対で意味を持つ数字だから——別々の場所にあると片方だけ動く */
+#salvage-stage { gap: 0.75rem; }
+#salvage-next { margin-left: 0.5rem; }
+
 /* 史料のページ送り。カチンコ（.btn）を使わないのは、あれを「画面が切り替わる」の
    合図に固定しているため。同じ画面の中で幕を送るだけのここに出すと合図が薄まる。
    .btn は腕の場所として margin-top:13px と .cap 13px、合わせて 26px の装飾を連れてくるので、
@@ -1120,7 +1129,9 @@ rp {
   /* 短辺では上下の余白だけ詰める。幅 44px は下限なので触らない */
   .salvage-nav { padding-block: 0.75rem; }
 
-  #salvage-stage { margin-top: 0.4rem; gap: 0.25rem; }
+  /* 短辺でも影ぶんの逃げは残す。ここを 0.25rem まで詰めていたのが
+     「ボタンが本文にくっついている」の正体だった */
+  #salvage-stage { margin-top: 0.4rem; gap: 0.5rem; }
   #salvage-body { padding: 0.5rem 0.75rem; }
 
   #salvage-gauge-row { margin-top: 0.3rem; }
