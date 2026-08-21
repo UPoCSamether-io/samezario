@@ -914,6 +914,49 @@ rp {
    #script-body 自体ではなく子に掛けるのは、スクロール領域とスクロールバーを
    紙面いっぱいのままにしたいから */
 #script-body > * { max-width: 40rem; margin-inline: auto; }
+/* ---- 発掘記録カード ----
+   紙面が「白い角丸パネル」で、史料というより便箋だった。ただし地に模様を敷く案は
+   採らない。伏せ字 ■ の上には泥（blur + stain）が乗っていて、地の模様はその
+   コントラストと直接ぶつかる。読むのは小4なので、装飾は本文の可読性より後ろ。
+   だから縁だけで資料化する: 左に管理ラベルの縦帯、右下に検印、上に資料名の札。
+   検印と（もし足すなら）罫は background-image に置く。背景レイヤーなら
+   本文より必ず後ろに描かれるので、文字のコントラストを絶対に踏まない */
+#script-paper {
+  /* 右下の検印。実在の館の印ではないので文字は入れず輪郭だけにする。
+     20% まで落としてあるので、上に本文が流れてきても 4.5:1 を割らない。
+     停止位置を px ではなく % にし、closest-side で光線の長さを「背景の半分」に
+     固定する。こうしないと短辺で background-size を縮めたときに輪郭が箱から
+     はみ出して、円弧の切れ端だけが残る */
+  background-image: radial-gradient(circle closest-side,
+    transparent 0 78%,
+    color-mix(in srgb, var(--color-danger) 20%, transparent) 78% 90%,
+    transparent 90%);
+  background-position: right 1.1rem bottom 1.1rem;
+  background-size: 64px 64px;
+  background-repeat: no-repeat;
+}
+
+/* 左の管理ラベル。整理番号は上の #script-era にも出るが、あれは紺地の小さな行で、
+   紙そのものには番号が無かった。縦帯にすると棚に並んだ資料の背に見えるので、
+   紙が1枚の記録カードとして読める。
+   absolute ではなく flex の子にしているのは、上下いっぱいに伸ばすのに
+   オフセットの計算が要らないため（紙面の高さは画面サイズで変わる） */
+#script-rail {
+  flex: none;
+  writing-mode: vertical-rl;
+  padding: 0.8rem 0.45rem;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.28em;
+  white-space: nowrap;
+  /* 幕が増えて英名が長くなると縦帯からはみ出す。vertical-rl では行内方向が
+     縦なので、ellipsis はここでも効く（下端で「…」に切れる） */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 史料の資料名（「下布田遺跡と三万年前の海」）。以前は 10px の ink/55 で、
    紙地 #f4efea に対して 3.2:1 しかなく紙に沈んでいた（小さい文字の下限は 4.5:1）。
    ただ濃くするだけだと本文と同じ黒が2種類並んで、どちらが本文か分からなくなるので、
@@ -1043,9 +1086,12 @@ rp {
        667x375 の内訳は 上下のレターボックス余白 64 / ヘッダー 54 / 紙面 174 /
        ゲージ 53 / 説明文 23 で、本文が21行中4.6行しか見えていなかった ----  */
 
-  /* 紙面の上のカチンコ縞は飾りで、情報を持たない。border 込みで 24px あり、
-     短辺で削れるものの中では最大。HISTORICAL ARCHIVE 行と同じ理由で本文に譲る */
-  #script-paper-edge { display: none; }
+  /* 管理ラベルは細める。消さないのは、上端のカチンコ縞を落とした後は
+     これが紙面の唯一の縁の造作で、消すとただの白い箱に戻るため。
+     28px → 18px で本文は 1字ぶんしか減らない */
+  #script-rail { padding: 0.4rem 0.3rem; font-size: 8px; letter-spacing: 0.2em; }
+  /* 検印も小さく。紙面が 174px しかないので、64px の輪郭は本文に被りすぎる */
+  #script-paper { background-size: 44px 44px; background-position: right 0.5rem bottom 0.5rem; }
 
   /* レターボックスを避ける余白。帯そのものは var(--bar)=20px なので、
      32px のうち下駄は 12px。4px まで詰めて 16px を本文へ回す。

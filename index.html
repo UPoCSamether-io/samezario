@@ -286,8 +286,13 @@
            中を送るここで使うと合図の意味が薄まる。三角ひとつで足りる -->
       <div id="script-stage" class="flex-1 min-h-0 mt-3 flex items-stretch gap-2 md:gap-3">
         <button id="script-prev" type="button" aria-label="前の幕" class="script-nav shrink-0 self-center"><span aria-hidden="true">◀</span></button>
-        <div class="flex-1 min-w-0 bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col">
-          <div id="script-paper-edge" class="clapper-stripes h-5 border-b-4 border-ink shrink-0"></div>
+        <!-- 発掘記録カード。紙の地には一切触らない（伏せ字の泥フィルタと本文の
+             コントラストが直接ぶつかるため）。資料らしさは縁だけで出す:
+             左に管理ラベルの縦帯、右下に検印、上に資料名の札（.script-slug）。
+             上端のカチンコ縞はここで落とした。あれは画面遷移の合図なので、
+             記録カードの縁として置くと合図の意味が薄まる -->
+        <div id="script-paper" class="flex-1 min-w-0 bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex">
+          <div id="script-rail" aria-hidden="true"></div>
           <div id="script-body" class="p-6 sm:p-8 flex-1 min-h-0 overflow-auto thin-scroll"></div>
         </div>
         <button id="script-next" type="button" aria-label="次の幕" class="script-nav shrink-0 self-center"><span aria-hidden="true">▶</span></button>

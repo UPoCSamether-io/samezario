@@ -136,6 +136,9 @@ function renderScript() {
   const locked = chapterLocked(chapterIdx);
 
   $('#script-era').textContent = `HISTORICAL ARCHIVE #${d.era} / ${d.en}`;
+  // 紙面の左の管理ラベル。aria-hidden の飾りなので読み上げには出さない（同じ内容が
+  // 上の #script-era にある）。長い名前でも縦帯が伸びないよう overflow で切る
+  $('#script-rail').textContent = `ARCHIVE No.${d.era} · ${d.en.toUpperCase()}`;
   // 鍵は絵文字を使わない。端末ごとに絵柄が変わるうえ、他のUIが全部 Material Symbols
   // なので1つだけ質感が浮く。rubify() は HTML を escape するので span は外で組む
   const lockIcon = (cls) =>
