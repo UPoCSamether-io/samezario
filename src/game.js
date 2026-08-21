@@ -234,6 +234,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   }
 
   function endRun(cause) {
+    if (dead) return;   // sim が death を2回積んでも XP を二重加算しない
     dead = true;
     setTimeout(() => onEnd({
       mass: Math.round(player.mass), kills: player.kills, time: world.elapsed, cause,
