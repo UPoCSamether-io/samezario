@@ -3,24 +3,23 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter, unlockHint,
-         grantLevelSharks } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter, unlockHint } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
 import { salvageView, STAGE_RATIO } from './salvage.js';
 
-// 審査・開発用。?demo=1 で全レベルに到達させ、復元演出とサメ獲得をその場で実演できる。
-// Claim はあえて残しておく（獲得ボタンを押すところまで見せたいので、解放済みにはしない）
-// ?demo=0 で元に戻す（xp を 0 に落とし、獲得済みのサメも見本だけへ戻す）
+// 審査・開発用。?demo=1 は「獲得経験値を10倍」にする。以前はレベルを最大へ飛ばして
+// いたが、飛ばすと肝心の場面——泥が落ちて文字が増えるところ——を見せられないまま
+// 「もう全部読める史料」が出てくるだけになる。10倍だと1プレイの到達質量 1000〜2000 が
+// 10000〜20000 になり、レベル3（＝第1幕の完成と土偶サメの解放）を1試合で越える。
+// 遊ぶ→泥が落ちる→サメを獲得、という筋が1回で通る。
+//
+// 引き換えに段階0→3 が一息に進むので、途中段階の見た目は飛ぶ。段階の移り変わりを
+// 見せたい相手には 3 くらいへ落とす（1試合で1〜2段階）。
+const DEMO_XP_MULT = 10;
 const demo = new URLSearchParams(location.search).get('demo');
-// grantLevelSharks() は progress.js の読み込み時にも走るが、それは保存済みの xp を
-// 見た時点の話。ここで xp を跳ね上げた後にもう一度呼ばないと、史料がまだ無い4種
-// （深大寺・近藤・飛行機・妖怪）が最大レベルなのにロックのまま残る（実機で再現）
-if (demo === '1') {
-  replace({ xp: LEVEL_XP[LEVEL_XP.length - 1], seenLevel: 0 });
-  grantLevelSharks();
-}
+const xpMult = demo === '1' ? DEMO_XP_MULT : 1;
 if (demo === '0') replace({ xp: 0, seenLevel: 0, claimedSharks: ['cinema'], salvageTutorialSeen: false });
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
@@ -1217,8 +1216,9 @@ function showResult(r) {
   const isBest = r.mass > save.best;
   save.best = best; persist();
 
-  // 経験値。到達質量をそのまま入れる。呼ぶのはここだけ（二重加算を場所で潰す）
-  addXp(r.mass);
+  // 経験値。到達質量をそのまま入れる。呼ぶのはここだけ（二重加算を場所で潰す）。
+  // 倍率が 1 以外になるのは ?demo=1 のときだけ（冒頭の DEMO_XP_MULT）
+  addXp(r.mass * xpMult);
   syncSalvageDot();
 
   show('result');
