@@ -26,10 +26,10 @@ test('土偶サメと近藤イサメが存在する', () => {
   assert.equal(kondo.era, 4);
 });
 
-test('区分1・2（土偶サメ・多摩川サメ）が salvageText を持つ（スコープは2本）', () => {
-  const withSalvage = SHARKS.filter((d) => d.salvageText);
-  assert.equal(withSalvage.length, 2);
-  assert.deepEqual(withSalvage.map((d) => d.id).sort(), ['dogu', 'tamagawa']);
+test('era 1..6 の全サメが salvageText を持つ（見本の映画サメだけ持たない）', () => {
+  for (const d of SHARKS) {
+    assert.equal(!!d.salvageText, d.era > 0, `${d.id} の salvageText の有無が era と合っていない`);
+  }
 });
 
 test('salvageText は改行を含み、ルビ記法が閉じている', () => {
@@ -62,9 +62,9 @@ test('本物の史料は段階が進むほど読める文字が確実に増え�
   assert.equal(views[0].added, 0, '段階0に新出があるのはおかしい');
 });
 
-test('史料を持つのは era 1 と 2 の2本で、章の見出しが揃っている', () => {
+test('史料は era 1..6 の6本で、章の見出しが揃っている', () => {
   const chapters = SHARKS.filter((d) => d.salvageText).sort((a, b) => a.era - b.era);
-  assert.deepEqual(chapters.map((d) => d.era), [1, 2]);
+  assert.deepEqual(chapters.map((d) => d.era), [1, 2, 3, 4, 5, 6]);
   for (const d of chapters) {
     assert.equal(typeof d.salvageTitle, 'string', `${d.id} に salvageTitle がない`);
     assert.equal(typeof d.salvageTagline, 'string', `${d.id} に salvageTagline がない`);

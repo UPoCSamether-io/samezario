@@ -130,8 +130,7 @@ export const addXp = (mass) => {
   // xp は自分自身に積むので、NaN が一度入ると二度と抜けない（level も stageOf も道連れ）
   if (!Number.isFinite(mass) || mass <= 0) return save;
   replace({ xp: save.xp + Math.round(mass) });
-  // レベルが動くのはここだけ。上がった直後に焼き込む（下の grantLevelSharks 参照）
-  return grantLevelSharks();
+  return save;
 };
 
 export const level = () => LEVEL_XP.filter((t) => save.xp >= t).length;
@@ -156,47 +155,13 @@ export const stageOf = (era) =>
   Math.max(0, Math.min(STAGES, level() - STAGES * (era - 1)));
 
 // 解放は claimedSharks が唯一の真実。era 0（映画サメ＝見本）だけが常に解放。
+// 第1〜6幕はすべて史料を持つので、解放の道は「100%復元して獲得ボタンを押す」の1本だけ。
 //
-// 最終形は「全章に史料があり、100%復元して獲得したものだけが解放」。ただし
-// 第3〜6幕の本文がまだ無く、そこを史料ゲートにすると LEVEL_XP の7〜18レベル分が
-// 誰も何も得られないまま死ぬ。そこで本文が無い章だけ、旧・自動解放条件
-// （level() >= STAGES*era）を暫定で残す。
-//
-// ただし「条件を毎回評価する」のではなく grantLevelSharks() で claimedSharks へ
-// 焼き込む。評価のままだと、その章に salvageText を足した瞬間に条件式が false へ
-// 転んで、レベルで解放されていたプレイヤーから静かにサメが消える（save.shark が
-// それを指していたら不整合にもなる）。焼き込んであれば、本文を足す作業は
-// data.js に1本書くだけで完結し、既存プレイヤーは持っているものを失わない。
+// レベル到達での自動解放はもう無い。ただし claimedSharks を持たない旧セーブだけは、
+// このファイル末尾の移行で旧・自動解放条件のまま埋める。埋めずに史料ゲートへ移すと、
+// レベルで解放済みだったサメが既存プレイヤーから黙って消える（save.shark がそれを
+// 指していたら不整合にもなる）。
 export const isUnlockedShark = (d) => d.era === 0 || save.claimedSharks.includes(d.id);
-
-/**
- * 本文がまだ無い章のサメを、レベル到達で claimedSharks へ焼き込む。
- * 起動時と経験値加算のたびに走る。冪等。
- *
- * 史料がある章には触らない——あちらは100%復元して自分で押すのが解放の意味なので、
- * ここで先回りして配ると獲得ボタンの意味が消える。
- */
-export function grantLevelSharks() {
-  const lv = level();
-  const add = SHARKS
-    .filter((d) => d.era > 0 && !d.salvageText && lv >= STAGES * d.era)
-    .map((d) => d.id)
-    .filter((id) => !save.claimedSharks.includes(id));
-  return add.length ? replace({ claimedSharks: [...save.claimedSharks, ...add] }) : save;
-}
-
-/**
- * ロック中のサメの解放条件。図鑑の吹き出しが読む。
- * isUnlockedShark のすぐ下に置いてあるのは、条件と説明が離れると片方だけ直して
- * 嘘の案内が出るため。kind は grantLevelSharks と claimShark にそのまま対応する。
- *
- * レベルではなく「大きさ あと N」を返す。レベルは内部の計算用で、プレイヤーには
- * 一度も見せていない（ゲージもリザルトも単位は「大きさ」）。ここだけ「レベル9」と
- * 言うと、どこにも出ていない数を条件に持ち出すことになる。
- */
-export const unlockHint = (d) => d.salvageText
-  ? { kind: 'salvage', era: d.era }
-  : { kind: 'size', remain: Math.max(0, LEVEL_XP[STAGES * d.era - 1] - save.xp) };
 
 // 史料の章一覧。SHARKS から導出する。専用の配列を持たない（下の SALVAGE_MAX が
 // SHARKS を見ているので、本文を別配列へ移すと赤点通知が死ぬ）
@@ -244,10 +209,6 @@ if (!('claimedSharks' in raw)) {
       .map((d) => d.id),
   });
 }
-
-// 本文がまだ無い章のレベル解放を、起動時にも焼き込む。addXp だけに置くと、
-// この仕組みより前から遊んでいて既にレベルを超えているセーブが取りこぼされる
-grantLevelSharks();
 
 // 旧キー scriptTutorialSeen の移行（機能名を「サルベージ」に改名したときの置き土産）。
 // 無いと、遊び方を一度閉じた既存プレイヤーへもう一度あの全画面シートが出る。

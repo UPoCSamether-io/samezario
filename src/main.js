@@ -3,7 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter, unlockHint } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -1017,11 +1017,7 @@ const hideDexHint = () => { hintCard = null; dexHint.classList.add('hidden'); };
 
 /** 解放条件の文面。吹き出し（ルビ付き）と aria-label（ルビ無し）で同じ文を使う */
 function unlockCopy(d) {
-  const h = unlockHint(d);
-  return h.kind === 'salvage'
-    ? `｜史料《しりょう》の｜第《だい》${h.era}｜幕《まく》を｜復元《ふくげん》すると｜解放《かいほう》`
-    // 単位はゲージとリザルトと同じ「大きさ」。レベルはプレイヤーに一度も見せていない
-    : `サメの｜大《おお》きさ あと ${h.remain.toLocaleString()} で｜解放《かいほう》`;
+  return `｜史料《しりょう》の｜第《だい》${d.era}｜幕《まく》を｜復元《ふくげん》すると｜解放《かいほう》`;
 }
 
 function showDexHint(card, d) {

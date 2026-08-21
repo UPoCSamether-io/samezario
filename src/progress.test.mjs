@@ -150,30 +150,7 @@ test('isUnlockedShark: era 0（見本）は常に解放、それ以外は claimS
   assert.equal(P.isUnlockedShark(dogu), true, 'Claim後は解放');
 });
 
-test('grantLevelSharks: 史料が無いサメ（era 3-6）はレベル到達で claimedSharks へ焼き込まれる', () => {
-  const jindaiji = SHARKS.find((s) => s.id === 'jindaiji');   // era 3, salvageText 無し
-  P.replace({ xp: 0, claimedSharks: ['cinema'] });
-  assert.equal(P.isUnlockedShark(jindaiji), false, 'しきい値未満はロック');
-  P.addXp(P.LEVEL_XP[3 * jindaiji.era - 1]);                  // level() >= STAGES(3)*era
-  assert.ok(P.save.claimedSharks.includes('jindaiji'), 'レベル到達でセーブに焼き込まれる');
-  assert.equal(P.isUnlockedShark(jindaiji), true);
-});
-
-test('grantLevelSharks: 焼き込み済みなら、その章に史料を足しても解放は消えない', () => {
-  // この仕組みの存在理由。以前は isUnlockedShark が `!d.salvageText && level()>=...` を
-  // 毎回評価していたので、data.js に本文を1本足した瞬間に条件が false へ転んで、
-  // レベルで解放されていたプレイヤーからサメが黙って消えていた
-  const jindaiji = SHARKS.find((s) => s.id === 'jindaiji');
-  P.replace({ xp: 0, claimedSharks: ['cinema'] });
-  P.addXp(P.LEVEL_XP[3 * jindaiji.era - 1]);
-  assert.equal(P.isUnlockedShark(jindaiji), true, '前提: レベルで解放済み');
-
-  // 第3幕の本文を書いた後の姿。SHARKS 自体は壊さず、同じ id の別オブジェクトで見る
-  const withText = { ...jindaiji, salvageText: '｜第三幕《だいさんまく》の｜本文《ほんぶん》。' };
-  assert.equal(P.isUnlockedShark(withText), true, '本文を足しても解放は消えない');
-});
-
-test('grantLevelSharks: 史料がある章には先回りして配らない', () => {
+test('レベルがいくつでも、史料がある章のサメは先回りして配られない', () => {
   const dogu = SHARKS.find((s) => s.id === 'dogu');
   P.replace({ xp: 0, claimedSharks: ['cinema'] });
   P.addXp(P.LEVEL_XP[P.LEVEL_XP.length - 1]);   // 最大レベル
@@ -233,10 +210,15 @@ test('hasNewSalvage: レベルが seenLevel を超えたときだけ赤点が点
   assert.equal(P.hasNewSalvage(), true, '新出があるのに赤点が点かない');
 });
 
-test('hasNewSalvage: 史料が完成する最大レベル(多摩川=era2→レベル6)を超えたら、未読でも赤点は点かない', () => {
-  // レベル7（史料には無関係のレベルアップ）。seenLevel はレベル6の完成をすでに見ている
+test('hasNewSalvage: 史料が完成する最大レベル(妖怪=era6→レベル18)の先では、赤点は点かない', () => {
+  // 最終幕を読み終えた状態から、さらにXPを積む。頭打ちなので赤点は点かない
+  P.replace({ xp: P.LEVEL_XP[17] * 2, seenLevel: 18 });
+  assert.equal(P.hasNewSalvage(), false, '史料完成後のXP加算で赤点が誤って点いている');
+});
+
+test('hasNewSalvage: 第2幕の完成後も、第3幕の泥が落ちれば赤点が点く', () => {
   P.replace({ xp: P.LEVEL_XP[6], seenLevel: 6 });
-  assert.equal(P.hasNewSalvage(), false, '史料完成後のレベルアップで赤点が誤って点いている');
+  assert.equal(P.hasNewSalvage(), true);
 });
 
 test('salvageProgress: 史料1本を通した割合と、完成までの残りXPを返す', () => {
@@ -372,10 +354,10 @@ test('defaultChapter: 第1幕を獲得済みで第2幕が進行中ならそち�
   assert.equal(P.defaultChapter(), 1);
 });
 
-test('defaultChapter: 両方完成・獲得済みなら最後の章（第2幕）に留まる', () => {
+test('defaultChapter: 完成・獲得済みの先に未完成の章があれば、そこへ進む', () => {
   P.replace({ xp: P.LEVEL_XP[5], claimedSharks: ['cinema', 'dogu', 'tamagawa'] });
   assert.equal(P.stageOf(2), 3, '前提: 第2幕も復元完了している');
-  assert.equal(P.defaultChapter(), 1);
+  assert.equal(P.defaultChapter(), 2, '第3幕（未完成）が次の行き先');
 });
 
 test('unclaimedFinishedChapter: 段階3に到達した未獲得の章だけを返す', async () => {
