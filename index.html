@@ -309,20 +309,22 @@
     <div id="salvage-help-sheet" class="absolute inset-0 bg-navy/85 backdrop-blur-sm hidden place-items-center z-20 px-6 py-[var(--bar-pad)]">
       <div class="relative w-full max-w-[640px] max-h-full bg-paper ink-4 hard-lg rounded-xl overflow-hidden flex flex-col">
         <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
+        <!-- #dex-detail・#unlock と同じ右上の ×。以前は下端に「史料を読む」の
+             大きなボタンを置いていたが、あれは帯として 86px の縦を占めていて、
+             その分だけ本文のスクロールが増えていた。絶対配置なら縦を1pxも食わない -->
+        <button id="salvage-help-close" aria-label="閉じる"
+                class="absolute top-9 right-4 z-10 w-10 h-10 grid place-items-center rounded-full bg-yellow ink-2 hard-sm
+                       transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
+          <span class="material-symbols-rounded !text-xl">close</span>
+        </button>
         <div class="min-h-0 overflow-auto thin-scroll p-6 md:p-8">
-          <h2 class="font-display font-extrabold text-xl md:text-2xl leading-tight text-center">
+          <!-- px-10 は右上の × を避ける余白。中央寄せなので左右そろえて入れる -->
+          <h2 class="font-display font-extrabold text-xl md:text-2xl leading-tight text-center px-10 text-balance">
             【 <ruby>海底<rp>(</rp><rt>かいてい</rt><rp>)</rp></ruby>の<ruby>史料<rp>(</rp><rt>しりょう</rt><rp>)</rp></ruby>（<ruby>歴史<rp>(</rp><rt>れきし</rt><rp>)</rp></ruby>の<ruby>記録<rp>(</rp><rt>きろく</rt><rp>)</rp></ruby>）を<ruby>復元<rp>(</rp><rt>ふくげん</rt><rp>)</rp></ruby>しよう 】
           </h2>
           <div id="salvage-help-body" class="mt-6 grid gap-5 text-[14px] leading-[1.9]"></div>
         </div>
-        <!-- #howto-foot と同じ理由でスクロール領域の外に出す。横持ちスマホでは
-             ボタンをスクロール内に置くと画面外に落ちて閉じられなくなる（#howto-foot 参照） -->
-        <div class="p-6 md:p-8 pt-0 shrink-0">
-          <button id="salvage-help-close" type="button" class="btn primary w-full">
-            <div class="cap clapper-stripes"></div>
-            <div class="px-6 py-3 font-display font-extrabold"><ruby>史料<rp>(</rp><rt>しりょう</rt><rp>)</rp></ruby>を<ruby>読<rp>(</rp><rt>よ</rt><rp>)</rp></ruby>む</div>
-          </button>
-        </div>
+
       </div>
     </div>
   </section>
@@ -337,6 +339,9 @@
         <div class="w-[150px]"></div>
       </div>
       <div id="dex-list" class="flex-1 min-h-0 overflow-auto thin-scroll grid gap-4 max-sm:gap-2.5 pb-4 content-start"></div>
+      <!-- ロック中のカードを押したときの解放条件。カードの中に入れるとカードの
+           overflow:hidden で切れるので、1つだけ外に置いて位置を JS で動かす -->
+      <div id="dex-hint" role="status" class="hidden"></div>
     </div>
 
     <!-- カードをクリックしたときの詳細。中身は renderDex が流し込む -->

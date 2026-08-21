@@ -3,7 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter, unlockHint } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -201,7 +201,7 @@ function renderSalvage() {
   const claimed = save.claimedSharks.includes(d.id);
   if (done && !claimed) {
     salvageAction.innerHTML = `
-      <button id="salvage-claim" type="button" class="btn primary w-full claim-pulse">
+      <button id="salvage-claim" type="button" class="btn primary !w-fit max-w-full mx-auto claim-pulse">
         <div class="cap clapper-stripes"></div>
         <div class="px-6 py-3 font-display font-extrabold text-base md:text-lg">🎬 ${rubify(
           '｜史料《しりょう》をもとにサメを｜映画《えいが》に｜登場《とうじょう》させる！')}</div>
@@ -991,11 +991,64 @@ function renderDex() {
       <div class="dex-name w-full border-t-4 border-ink px-3 py-2.5">
         <h3 class="font-display font-extrabold text-lg leading-tight">${locked ? '????' : rubify(d.name)}</h3>
       </div>`;
-    if (locked) card.setAttribute('aria-disabled', 'true');
-    card.onclick = () => { if (!locked) openDex(d); };
+    // aria-disabled は付けない。押すと解放条件が出る＝実際に押せるボタンなので、
+    // 「無効」と言うと嘘になる（支援技術がフォーカスを飛ばすし、Playwright も
+    // enabled 待ちで固まる）。条件はラベルに入れて、吹き出しを開かなくても伝わるようにする
+    if (locked) card.setAttribute('aria-label', plainText(unlockCopy(d)));
+    card.onclick = () => (locked ? showDexHint(card, d) : openDex(d));
     wrap.appendChild(card);
   }
 }
+
+// ロック中のカードを押したときの解放条件。カードは overflow:hidden なので中に
+// 入れると切れる。1つだけ #dex-list の外に置いて、位置を JS で動かす。
+// position:fixed なのは、offset-parent を探さずに getBoundingClientRect() の値を
+// そのまま使えるため（#dex-list はスクロールするので相対座標だとズレる）
+const dexHint = $('#dex-hint');
+const dexList = $('#dex-list');
+let hintCard = null;                       // 吹き出しが指しているカード
+const hideDexHint = () => { hintCard = null; dexHint.classList.add('hidden'); };
+
+/** 解放条件の文面。吹き出し（ルビ付き）と aria-label（ルビ無し）で同じ文を使う */
+function unlockCopy(d) {
+  const h = unlockHint(d);
+  return h.kind === 'salvage'
+    ? `｜史料《しりょう》の｜第《だい》${h.era}｜幕《まく》を｜復元《ふくげん》すると｜解放《かいほう》`
+    : `レベル${h.level}になると｜解放《かいほう》`;
+}
+
+function showDexHint(card, d) {
+  dexHint.innerHTML = rubify(unlockCopy(d));
+  dexHint.classList.remove('hidden');      // 先に出す。隠れたままだと寸法が取れない
+  hintCard = card;
+  placeDexHint();
+}
+
+function placeDexHint() {
+  if (!hintCard) return;
+  const c = hintCard.getBoundingClientRect();
+  const list = dexList.getBoundingClientRect();
+  // 送ってカードが一覧から出たら、指す先が無いので消す
+  if (c.bottom <= list.top || c.top >= list.bottom) return hideDexHint();
+
+  const b = dexHint.getBoundingClientRect();
+  const pad = 8;
+  const left = Math.min(Math.max(pad, c.left + c.width / 2 - b.width / 2), innerWidth - b.width - pad);
+  // 既定はカードの下。上を既定にすると、1行目のカードでは必ず「サメ図鑑」の
+  // 見出しに重なる（実測）。カードは縦に長いので、下は普通に空いている。
+  // 下に入らない最終行だけ上へ回して、尻尾の向きも入れ替える
+  const below = c.bottom + 10 + b.height <= innerHeight - pad;
+  dexHint.classList.toggle('below', below);
+  dexHint.style.left = `${Math.round(left)}px`;
+  dexHint.style.top = `${Math.round(below ? c.bottom + 10 : c.top - b.height - 10)}px`;
+}
+
+// 次にどこかを押したら消す。pointerdown → click の順で来るので、カードを押した
+// ときは「前の吹き出しを消す」→「新しいのを出す」になって取り合いにならない
+document.addEventListener('pointerdown', hideDexHint);
+// 送ったら消すのではなく追わせる。押した瞬間にブラウザがカードへフォーカスを
+// 送ってスクロールすることがあり、「消す」だと出した端から自分で消していた
+dexList.addEventListener('scroll', placeDexHint, { passive: true });
 
 const dexDetail = $('#dex-detail');
 const closeDex = () => { dexDetail.style.display = 'none'; };

@@ -164,6 +164,13 @@ export const stageOf = (era) =>
 export const isUnlockedShark = (d) =>
   d.era === 0 || save.claimedSharks.includes(d.id) || (!d.salvageText && level() >= STAGES * d.era);
 
+/** ロック中のサメの解放条件。図鑑の吹き出しが読む。
+ *  isUnlockedShark のすぐ下に置いてあるのは、条件と説明が離れると片方だけ直して
+ *  嘘の案内が出るため。kind は上の式の後ろ2項にそのまま対応する */
+export const unlockHint = (d) => d.salvageText
+  ? { kind: 'salvage', era: d.era }
+  : { kind: 'level', level: STAGES * d.era };
+
 // 史料の章一覧。SHARKS から導出する。専用の配列を持たない（下の SALVAGE_MAX が
 // SHARKS を見ているので、本文を別配列へ移すと赤点通知が死ぬ）
 export const chapters = () => SHARKS.filter((d) => d.salvageText).sort((a, b) => a.era - b.era);

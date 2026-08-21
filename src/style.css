@@ -914,6 +914,39 @@ rp {
    #salvage-body 自体ではなく子に掛けるのは、スクロール領域とスクロールバーを
    紙面いっぱいのままにしたいから */
 #salvage-body > * { max-width: 40rem; margin-inline: auto; }
+/* 図鑑のロック中カードを押したときの解放条件。position:fixed なのは
+   #dex-list がスクロールするから——相対座標だと中身を送った瞬間にズレる。
+   pointer-events を切ってあるので、吹き出しが出ている間も下のカードを押せる */
+#dex-hint {
+  position: fixed;
+  z-index: 30;
+  max-width: min(17rem, calc(100vw - 1rem));
+  padding: 0.45rem 0.7rem;
+  border: 3px solid var(--color-ink);
+  border-radius: 0.6rem;
+  box-shadow: 4px 4px 0 0 var(--color-ink);
+  background: var(--color-navy);
+  color: var(--color-paper);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.75;
+  pointer-events: none;
+}
+/* 尻尾。border だけで三角を作る（画像も clip-path も要らない）。
+   枠線ぶん 3px ずらした同じ形を2枚重ねて、縁のある三角に見せる */
+#dex-hint::before, #dex-hint::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  margin-left: -9px;
+  border: 9px solid transparent;
+}
+#dex-hint::before { top: 100%; border-top-color: var(--color-ink); }
+#dex-hint::after  { top: calc(100% - 4px); border-top-color: var(--color-navy); }
+/* カードの下に回ったときは尻尾も上向きへ */
+#dex-hint.below::before { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--color-ink); }
+#dex-hint.below::after  { top: auto; bottom: calc(100% - 4px); border-top-color: transparent; border-bottom-color: var(--color-navy); }
+
 /* ---- 発掘記録カード ----
    紙面が「白い角丸パネル」で、史料というより便箋だった。ただし地に模様を敷く案は
    採らない。伏せ字 ■ の上には泥（blur + stain）が乗っていて、地の模様はその
