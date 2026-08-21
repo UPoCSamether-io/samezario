@@ -3,7 +3,8 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter, unlockHint } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter, unlockHint,
+         grantLevelSharks } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -13,7 +14,13 @@ import { salvageView, STAGE_RATIO } from './salvage.js';
 // Claim はあえて残しておく（獲得ボタンを押すところまで見せたいので、解放済みにはしない）
 // ?demo=0 で元に戻す（xp を 0 に落とし、獲得済みのサメも見本だけへ戻す）
 const demo = new URLSearchParams(location.search).get('demo');
-if (demo === '1') replace({ xp: LEVEL_XP[LEVEL_XP.length - 1], seenLevel: 0 });
+// grantLevelSharks() は progress.js の読み込み時にも走るが、それは保存済みの xp を
+// 見た時点の話。ここで xp を跳ね上げた後にもう一度呼ばないと、史料がまだ無い4種
+// （深大寺・近藤・飛行機・妖怪）が最大レベルなのにロックのまま残る（実機で再現）
+if (demo === '1') {
+  replace({ xp: LEVEL_XP[LEVEL_XP.length - 1], seenLevel: 0 });
+  grantLevelSharks();
+}
 if (demo === '0') replace({ xp: 0, seenLevel: 0, claimedSharks: ['cinema'], salvageTutorialSeen: false });
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
