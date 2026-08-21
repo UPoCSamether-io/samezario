@@ -56,13 +56,13 @@
 
   <!-- ================= タイトル ================= -->
   <section id="s-title" class="screen on">
-    <!-- 脚本はタイトルからだけ開く。帯の中ではなく帯の下に、図鑑の閉じるボタンと同じ語彙で置く。
+    <!-- 史料はタイトルからだけ開く。帯の中ではなく帯の下に、図鑑の閉じるボタンと同じ語彙で置く。
          この section の中にあるので、対戦中に隠す処理は要らない（.screen の display が持つ）。
          左下なのは、max-height:500px で組みが2カラムになると nav が右列を上から下まで
          占めるため（style.css の #title-stage）。右上も右下も nav と重なる。実測で
          667x375 / 932x430 / 1024x768 / 1920x1080 のいずれでも空いていたのは左下だけ。
          画面ごとに位置を変えると覚えられないので、どの幅でもここに固定する -->
-    <button id="script-btn" type="button" aria-label="史料"
+    <button id="salvage-btn" type="button" aria-label="史料"
             class="absolute bottom-[var(--bar-pad)] left-4 z-10 grid place-items-center
                    w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-yellow ink-2 md:ink-3 hard-sm
                    transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
@@ -71,7 +71,7 @@
         <path d="M5 3h11l4 4v14H5z"/><path d="M16 3v4h4"/>
         <path d="M9 11h6"/><path d="M9 15h6"/>
       </svg>
-      <span id="script-dot"
+      <span id="salvage-dot"
             class="absolute -top-1 -right-1 w-3.5 h-3.5 md:w-4 md:h-4 rounded-full bg-danger border-2 border-ink hidden"></span>
     </button>
     <div id="title-stage" class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[var(--bar-pad)]">
@@ -261,20 +261,20 @@
 
   <!-- ================= 史料 =================
        .screen なので、対戦中に隠す処理は要らない（display が持つ）。
-       旧 #script-sheet（#chrome の外のモーダル）はこれに置き換えて廃止した -->
-  <section id="s-script" class="screen">
-    <div id="script-wrap" class="h-full flex flex-col py-[var(--bar-pad)] px-6">
+       旧 #salvage-sheet（#chrome の外のモーダル）はこれに置き換えて廃止した -->
+  <section id="s-salvage" class="screen">
+    <div id="salvage-wrap" class="h-full flex flex-col py-[var(--bar-pad)] px-6">
       <!-- 幕のタイトルはここに置く。ページ送りと同じ行に並べると、その行ぶん（実測 49px、
            844x390 の 12.5%）が本文から削られる。ボタンは下で紙面の左右へ回す -->
-      <div id="script-head" class="flex items-center justify-between gap-4 py-3">
+      <div id="salvage-head" class="flex items-center justify-between gap-4 py-3">
         <button class="btn !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
           <div class="px-5 py-2.5 font-bold text-sm">← タイトルへ<ruby>戻<rp>(</rp><rt>もど</rt><rp>)</rp></ruby>る</div></button>
         <div class="min-w-0 flex flex-col items-center gap-1">
-          <div id="script-era" class="font-mono text-[10px] md:text-xs tracking-[0.3em] text-paper/70 text-center min-w-0 truncate"></div>
-          <h2 id="script-chapter"
+          <div id="salvage-era" class="font-mono text-[10px] md:text-xs tracking-[0.3em] text-paper/70 text-center min-w-0 truncate"></div>
+          <h2 id="salvage-chapter"
               class="font-display font-extrabold text-lg md:text-2xl bg-yellow ink-3 rounded-lg px-5 py-1.5 hard -rotate-1 text-center min-w-0 truncate max-w-full"></h2>
         </div>
-        <button id="script-help" type="button" aria-label="この画面の遊び方"
+        <button id="salvage-help" type="button" aria-label="この画面の遊び方"
                 class="w-11 h-11 shrink-0 grid place-items-center rounded-full bg-yellow ink-2 hard-sm
                        transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
           <span class="material-symbols-rounded !text-xl" aria-hidden="true">help</span>
@@ -284,38 +284,41 @@
       <!-- ページ送りは紙面の左右。縦に積むと本文の高さを食うだけで、横は余っている。
            カチンコ（.btn）は使わない。あれは「画面が切り替わる」の合図で、同じ画面の
            中を送るここで使うと合図の意味が薄まる。三角ひとつで足りる -->
-      <div id="script-stage" class="flex-1 min-h-0 mt-3 flex items-stretch gap-2 md:gap-3">
-        <button id="script-prev" type="button" aria-label="前の幕" class="script-nav shrink-0 self-center"><span aria-hidden="true">◀</span></button>
+      <div id="salvage-stage" class="flex-1 min-h-0 mt-3 flex items-stretch gap-2 md:gap-3">
+        <button id="salvage-prev" type="button" aria-label="前の幕" class="salvage-nav shrink-0 self-center"><span aria-hidden="true">◀</span></button>
         <!-- 発掘記録カード。紙の地には一切触らない（伏せ字の泥フィルタと本文の
              コントラストが直接ぶつかるため）。資料らしさは縁だけで出す:
-             左に管理ラベルの縦帯、右下に検印、上に資料名の札（.script-slug）。
+             左に管理ラベルの縦帯、右下に検印、上に資料名の札（.salvage-slug）。
              上端のカチンコ縞はここで落とした。あれは画面遷移の合図なので、
              記録カードの縁として置くと合図の意味が薄まる -->
-        <div id="script-paper" class="flex-1 min-w-0 bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex">
-          <div id="script-rail" aria-hidden="true"></div>
-          <div id="script-body" class="p-6 sm:p-8 flex-1 min-h-0 overflow-auto thin-scroll"></div>
+        <div id="salvage-paper" class="flex-1 min-w-0 bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex">
+          <div id="salvage-rail" aria-hidden="true"></div>
+          <!-- 検印。輪郭だけだと何なのか読めなかったので字を入れる。実在の館の印では
+               ないので、館名も整理番号も入れない汎用の「検」1字にとどめる -->
+          <div id="salvage-seal" aria-hidden="true">検</div>
+          <div id="salvage-body" class="p-6 sm:p-8 flex-1 min-h-0 overflow-auto thin-scroll"></div>
         </div>
-        <button id="script-next" type="button" aria-label="次の幕" class="script-nav shrink-0 self-center"><span aria-hidden="true">▶</span></button>
+        <button id="salvage-next" type="button" aria-label="次の幕" class="salvage-nav shrink-0 self-center"><span aria-hidden="true">▶</span></button>
       </div>
 
-      <div id="script-gauge-row" class="mt-3 shrink-0"></div>
-      <div id="script-action" class="mt-3 shrink-0"></div>
+      <div id="salvage-gauge-row" class="mt-3 shrink-0"></div>
+      <div id="salvage-action" class="mt-3 shrink-0"></div>
     </div>
 
     <!-- 初回に自動で出る遊び方。ヘッダーの [?] からいつでも出し直せる -->
-    <div id="script-help-sheet" class="absolute inset-0 bg-navy/85 backdrop-blur-sm hidden place-items-center z-20 px-6 py-[var(--bar-pad)]">
+    <div id="salvage-help-sheet" class="absolute inset-0 bg-navy/85 backdrop-blur-sm hidden place-items-center z-20 px-6 py-[var(--bar-pad)]">
       <div class="relative w-full max-w-[640px] max-h-full bg-paper ink-4 hard-lg rounded-xl overflow-hidden flex flex-col">
         <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
         <div class="min-h-0 overflow-auto thin-scroll p-6 md:p-8">
           <h2 class="font-display font-extrabold text-xl md:text-2xl leading-tight text-center">
             【 <ruby>海底<rp>(</rp><rt>かいてい</rt><rp>)</rp></ruby>の<ruby>史料<rp>(</rp><rt>しりょう</rt><rp>)</rp></ruby>（<ruby>歴史<rp>(</rp><rt>れきし</rt><rp>)</rp></ruby>の<ruby>記録<rp>(</rp><rt>きろく</rt><rp>)</rp></ruby>）を<ruby>復元<rp>(</rp><rt>ふくげん</rt><rp>)</rp></ruby>しよう 】
           </h2>
-          <div id="script-help-body" class="mt-6 grid gap-5 text-[14px] leading-[1.9]"></div>
+          <div id="salvage-help-body" class="mt-6 grid gap-5 text-[14px] leading-[1.9]"></div>
         </div>
         <!-- #howto-foot と同じ理由でスクロール領域の外に出す。横持ちスマホでは
              ボタンをスクロール内に置くと画面外に落ちて閉じられなくなる（#howto-foot 参照） -->
         <div class="p-6 md:p-8 pt-0 shrink-0">
-          <button id="script-help-close" type="button" class="btn primary w-full">
+          <button id="salvage-help-close" type="button" class="btn primary w-full">
             <div class="cap clapper-stripes"></div>
             <div class="px-6 py-3 font-display font-extrabold"><ruby>史料<rp>(</rp><rt>しりょう</rt><rp>)</rp></ruby>を<ruby>読<rp>(</rp><rt>よ</rt><rp>)</rp></ruby>む</div>
           </button>

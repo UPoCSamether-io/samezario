@@ -1,6 +1,6 @@
 import { esc } from './ruby.js';
 
-// 脚本の虫食い。DOM を触らない純関数だけを置く（ruby.js と同じ方針で Node から直接テストできる）。
+// 史料の虫食い。DOM を触らない純関数だけを置く（ruby.js と同じ方針で Node から直接テストできる）。
 //
 // マスク位置はプレイヤーごとの seed から決定的に作る。毎回振り直すと、
 // リロードを数回するだけで全文が読めてしまい仕組みが破られる。
@@ -100,13 +100,13 @@ export function renderHTML(toks, masked, added = new Set()) {
 }
 
 /**
- * main.js が呼ぶ唯一の入口。段階 stage の脚本を HTML にして返す。
+ * main.js が呼ぶ唯一の入口。段階 stage の史料を HTML にして返す。
  *
  * 新出文字は「前の段階のマスク集合 − 今の段階のマスク集合」。
  * maskSet が入れ子性を持つので、前段階をその場で計算し直すだけで求まる。
  * 保存は要らない。
  */
-export function scriptView(text, seed, stage) {
+export function salvageView(text, seed, stage) {
   const toks = tokenize(text);
   const keep = protectedEnds(toks);
   const s = Math.max(0, Math.min(STAGE_RATIO.length - 1, stage | 0));

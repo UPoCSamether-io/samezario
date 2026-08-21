@@ -29,9 +29,9 @@ const createDefaults = () => ({
   seenHowto: false,   // 遊び方を一度でも閉じたか。初回だけ自動で挟むための印
   xp: 0,          // 累計経験値。レベル・解放・復元段階はすべてここから導出する
   seed: 0,        // 虫食い位置の種。初回だけ生成し、以後変えない
-  seenLevel: 0,   // 脚本を最後に開いたときのレベル。赤点の消灯判定
+  seenLevel: 0,   // 史料を最後に開いたときのレベル。赤点の消灯判定
   claimedSharks: ['cinema'],   // 能動的に獲得したサメ。見本の映画サメは最初から
-  scriptTutorialSeen: false,   // 史料画面の遊び方を一度でも閉じたか
+  salvageTutorialSeen: false,   // 史料画面の遊び方を一度でも閉じたか
 });
 
 const DEFAULTS = createDefaults();
@@ -111,11 +111,11 @@ export function markShared(spot) {
  * レベルの累計XPしきい値。差分は 1000 + 500n の逓増。
  *
  * 1プレイの到達質量は 1000〜2000（開始 30 から育つ）。旧値は 10 分の 1 の
- * スケールで、レベル1を開始数秒で、脚本が完成するレベル3すら初回プレイの
+ * スケールで、レベル1を開始数秒で、史料が完成するレベル3すら初回プレイの
  * 途中で越えていた。段階0〜3 の虫食いが一度も目に入らないまま終わるので、
  * 曲線の形はそのままに 10 倍した。
  *
- * この値だとレベル3（＝脚本の完成と土偶サメの解放）まで 3〜6 プレイで、
+ * この値だとレベル3（＝史料の完成と土偶サメの解放）まで 3〜6 プレイで、
  * 各段階が 1〜2 プレイずつ表示される。全18レベルは 50〜100 プレイの長期目標。
  */
 export const LEVEL_XP = [
@@ -133,12 +133,12 @@ export const addXp = (mass) =>
 export const level = () => LEVEL_XP.filter((t) => save.xp >= t).length;
 
 /**
- * その脚本1本ぜんたいの進み具合。{ratio: 0..1, remain: 完成までの残りXP}。
+ * その史料1本ぜんたいの進み具合。{ratio: 0..1, remain: 完成までの残りXP}。
  *
  * レベルごとに0へ戻さない。段階が変わるたびにバーが空になると、1本を
  * どこまで復元したのかが分からなくなるため、始まりから完成までを1本で見せる。
  */
-export function scriptProgress(era) {
+export function salvageProgress(era) {
   const from = era <= 1 ? 0 : LEVEL_XP[STAGES * (era - 1) - 1];
   const to = LEVEL_XP[STAGES * era - 1];
   return {
@@ -156,17 +156,17 @@ export const stageOf = (era) =>
 // 飛行機・妖怪、era 3-6）は、章が無いと LEVEL_XP の7〜18レベル分が誰も何も得られない
 // まま死ぬので、旧・自動解放条件（level() >= STAGES*era）を暫定で残してある。
 //
-// 罠: この4種のどれかに script を足すと `!d.script` が false になり、その瞬間に
+// 罠: この4種のどれかに salvageText を足すと `!d.salvageText` が false になり、その瞬間に
 // レベルだけで解放されていたプレイヤーから静かに解放が消える（save.shark がそれを
-// 指していたら不整合にもなる）。script を足す前に、下の claimedSharks 移行と同じ場所へ
+// 指していたら不整合にもなる）。salvageText を足す前に、下の claimedSharks 移行と同じ場所へ
 // 「level() が既に STAGES*d.era を超えているセーブへ、その id を claimedSharks に足す」
 // 移行を追加すること
 export const isUnlockedShark = (d) =>
-  d.era === 0 || save.claimedSharks.includes(d.id) || (!d.script && level() >= STAGES * d.era);
+  d.era === 0 || save.claimedSharks.includes(d.id) || (!d.salvageText && level() >= STAGES * d.era);
 
-// 史料の章一覧。SHARKS から導出する。専用の配列を持たない（下の SCRIPT_MAX が
+// 史料の章一覧。SHARKS から導出する。専用の配列を持たない（下の SALVAGE_MAX が
 // SHARKS を見ているので、本文を別配列へ移すと赤点通知が死ぬ）
-export const chapters = () => SHARKS.filter((d) => d.script).sort((a, b) => a.era - b.era);
+export const chapters = () => SHARKS.filter((d) => d.salvageText).sort((a, b) => a.era - b.era);
 
 /** 前の幕のサメを獲得するまで、次の幕はロック */
 export const chapterLocked = (i) => {
@@ -211,11 +211,18 @@ if (!('claimedSharks' in raw)) {
   });
 }
 
-/** 脚本を開いた。赤点を消す */
-export const markScriptSeen = () => replace({ seenLevel: level() });
+// 旧キー scriptTutorialSeen の移行（機能名を「サルベージ」に改名したときの置き土産）。
+// 無いと、遊び方を一度閉じた既存プレイヤーへもう一度あの全画面シートが出る。
+// 壊れはしないが、次に開いたときいきなり被さるのは事故に見える
+if (!('salvageTutorialSeen' in raw) && raw.scriptTutorialSeen) {
+  replace({ salvageTutorialSeen: true });
+}
 
-// 脚本が実際に変化しうる最大レベル。データから引くので区分を足せば自動で伸びる
-const SCRIPT_MAX = Math.max(0, ...SHARKS.filter((s) => s.script).map((s) => s.era * STAGES));
+/** 史料を開いた。赤点を消す */
+export const markSalvageSeen = () => replace({ seenLevel: level() });
 
-/** 赤点を出すか。新しい文字が現れたのに脚本を開いていない状態（完成後は頭打ち） */
-export const hasNewScript = () => Math.min(level(), SCRIPT_MAX) > Math.min(save.seenLevel, SCRIPT_MAX);
+// 史料が実際に変化しうる最大レベル。データから引くので区分を足せば自動で伸びる
+const SALVAGE_MAX = Math.max(0, ...SHARKS.filter((s) => s.salvageText).map((s) => s.era * STAGES));
+
+/** 赤点を出すか。新しい文字が現れたのに史料を開いていない状態（完成後は頭打ち） */
+export const hasNewSalvage = () => Math.min(level(), SALVAGE_MAX) > Math.min(save.seenLevel, SALVAGE_MAX);

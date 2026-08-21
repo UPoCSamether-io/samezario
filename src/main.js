@@ -3,18 +3,18 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewScript, stageOf, markScriptSeen, addXp, scriptProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
-import { scriptView, STAGE_RATIO } from './restore.js';
+import { salvageView, STAGE_RATIO } from './salvage.js';
 
 // 審査・開発用。?demo=1 で全レベルに到達させ、復元演出とサメ獲得をその場で実演できる。
 // Claim はあえて残しておく（獲得ボタンを押すところまで見せたいので、解放済みにはしない）
 // ?demo=0 で元に戻す（xp を 0 に落とし、獲得済みのサメも見本だけへ戻す）
 const demo = new URLSearchParams(location.search).get('demo');
 if (demo === '1') replace({ xp: LEVEL_XP[LEVEL_XP.length - 1], seenLevel: 0 });
-if (demo === '0') replace({ xp: 0, seenLevel: 0, claimedSharks: ['cinema'], scriptTutorialSeen: false });
+if (demo === '0') replace({ xp: 0, seenLevel: 0, claimedSharks: ['cinema'], salvageTutorialSeen: false });
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
 
@@ -80,10 +80,10 @@ function show(name) {
       screens[cur]?.classList.remove('on');
       screens[name]?.classList.add('on');
       cur = name;
-      syncScriptDot();
+      syncSalvageDot();
       if (name === 'shark') renderSharks();
       if (name === 'dex') { renderDex(); if (pendingClaim) { openDex(pendingClaim, true); pendingClaim = null; } }
-      if (name === 'script') renderScript();
+      if (name === 'salvage') renderSalvage();
       if (name === 'title') paintTitleShark();
       if (name === 'game') stopAttract(); else startAttract();
       chrome.classList.remove('shut');
@@ -94,15 +94,15 @@ function show(name) {
   }, CLAP);
 }
 
-// 脚本に新しい文字が現れたことを赤点で知らせる。
+// 史料に新しい文字が現れたことを赤点で知らせる。
 // ボタンは #s-title の中にあるので、表示制御は .screen の display が持つ。
-const scriptDot = $('#script-dot');
-const scriptBtn = $('#script-btn');
-const syncScriptDot = () => {
-  const news = hasNewScript();
-  scriptDot.classList.toggle('hidden', !news);
+const salvageDot = $('#salvage-dot');
+const salvageBtn = $('#salvage-btn');
+const syncSalvageDot = () => {
+  const news = hasNewSalvage();
+  salvageDot.classList.toggle('hidden', !news);
   // 赤点は視覚だけなので、スクリーンリーダーには aria-label の言い換えで伝える
-  scriptBtn.setAttribute('aria-label', news ? '史料（新着あり）' : '史料');
+  salvageBtn.setAttribute('aria-label', news ? '史料（新着あり）' : '史料');
 };
 
 // ---------- 史料 ----------
@@ -118,71 +118,71 @@ let pendingClaim = null;
 // 次に開くとき「復元中の章」以外を見せる理由がない
 let chapterIdx = 0;
 
-const scriptBody = $('#script-body');
-const scriptGaugeRow = $('#script-gauge-row');
-const scriptAction = $('#script-action');
+const salvageBody = $('#salvage-body');
+const salvageGaugeRow = $('#salvage-gauge-row');
+const salvageAction = $('#salvage-action');
 
-/** 史料画面を組み立てる。show('script') から呼ばれる唯一の入口 */
-function renderScript() {
+/** 史料画面を組み立てる。show('salvage') から呼ばれる唯一の入口 */
+function renderSalvage() {
   // 既読フラグを更新する前に退避する。そうしないと、完成済みの史料を何度開いても
   // 直近の段階差分（+29 など）が毎回ハイライトされたままになる
-  const isNew = hasNewScript();
+  const isNew = hasNewSalvage();
   // 初回だけ自動で遊び方を出す。ロック中の章の早期 return より前に置くことで、
   // 未解放の章を最初に開いた場合でも漏れなくチュートリアルが出る
-  if (!save.scriptTutorialSeen) openScriptHelp();
+  if (!save.salvageTutorialSeen) openSalvageHelp();
   const cs = chapters();
   chapterIdx = Math.max(0, Math.min(cs.length - 1, chapterIdx));
   const d = cs[chapterIdx];
   const locked = chapterLocked(chapterIdx);
 
-  $('#script-era').textContent = `HISTORICAL ARCHIVE #${d.era} / ${d.en}`;
+  $('#salvage-era').textContent = `HISTORICAL ARCHIVE #${d.era} / ${d.en}`;
   // 紙面の左の管理ラベル。aria-hidden の飾りなので読み上げには出さない（同じ内容が
-  // 上の #script-era にある）。長い名前でも縦帯が伸びないよう overflow で切る
-  $('#script-rail').textContent = `ARCHIVE No.${d.era} · ${d.en.toUpperCase()}`;
+  // 上の #salvage-era にある）。長い名前でも縦帯が伸びないよう overflow で切る
+  $('#salvage-rail').textContent = `ARCHIVE No.${d.era} · ${d.en.toUpperCase()}`;
   // 鍵は絵文字を使わない。端末ごとに絵柄が変わるうえ、他のUIが全部 Material Symbols
   // なので1つだけ質感が浮く。rubify() は HTML を escape するので span は外で組む
   const lockIcon = (cls) =>
     `<span class="material-symbols-rounded ${cls} align-middle" aria-hidden="true">lock</span>`;
-  $('#script-chapter').innerHTML =
-    `${rubify(`｜第《だい》${d.era}｜幕《まく》`)} ${locked ? lockIcon('!text-lg') : rubify(d.scriptTitle)}`;
-  scriptBody.style.setProperty('--stain', d.color);
+  $('#salvage-chapter').innerHTML =
+    `${rubify(`｜第《だい》${d.era}｜幕《まく》`)} ${locked ? lockIcon('!text-lg') : rubify(d.salvageTitle)}`;
+  salvageBody.style.setProperty('--stain', d.color);
 
-  $('#script-prev').disabled = chapterIdx === 0;
-  $('#script-next').disabled = chapterIdx >= cs.length - 1;
+  $('#salvage-prev').disabled = chapterIdx === 0;
+  $('#salvage-next').disabled = chapterIdx >= cs.length - 1;
 
-  // ロック中は本文を組み立てない。scriptView() を呼ぶと未解放の章の全文が
+  // ロック中は本文を組み立てない。salvageView() を呼ぶと未解放の章の全文が
   // DOM に載り、全選択コピーで露出する（伏せ字を ■ にしている意味が消える）
   if (locked) {
     const prev = cs[chapterIdx - 1];
     // ink/60 は紙地に対して 3.6:1 で、小さくない文字でも下限 4.5:1 を割る
-    scriptBody.innerHTML = `
+    salvageBody.innerHTML = `
       <p class="text-center text-ink/75 py-10 leading-loose">${lockIcon('!text-xl mr-1.5')}${rubify(
         `｜第《だい》${prev.era}｜幕《まく》のサメを｜映画《えいが》に｜登場《とうじょう》させると、\nここが｜読《よ》めるようになる。`)}</p>`;
-    scriptBody.scrollTop = 0;
-    scriptGaugeRow.innerHTML = '';
-    scriptAction.innerHTML = '';
-    markScriptSeen();
-    syncScriptDot();
+    salvageBody.scrollTop = 0;
+    salvageGaugeRow.innerHTML = '';
+    salvageAction.innerHTML = '';
+    markSalvageSeen();
+    syncSalvageDot();
     return;
   }
 
   const stage = stageOf(d.era);
   const done = stage >= STAGE_RATIO.length - 1;
-  const v = scriptView(d.script, save.seed, stage);
+  const v = salvageView(d.salvageText, save.seed, stage);
   const html = isNew ? v.html : v.html.replace(/<mark class="fresh">(.*?)<\/mark>/gs, '$1');
   const added = isNew ? v.added : 0;
   const pct = Math.round(v.readable / v.total * 100);
   // ゲージの塗りは復元率ではなく大きさ（XP）。復元率は 67→79→91→100 の4値しか取らず、
   // 開始時点で 67% から始まるので「遊ぶ前から3分の2完成」に見えるし、3回しか動かない
-  const p = scriptProgress(d.era);
+  const p = salvageProgress(d.era);
   const bar = Math.round((done ? 1 : p.ratio) * 100);
 
-  scriptBody.innerHTML = `
-    <div class="script-slug">${rubify(d.scriptTagline)}</div>
-    <p class="script-text mt-5 leading-loose">${html}</p>`;
-  scriptBody.scrollTop = 0;
+  salvageBody.innerHTML = `
+    <div class="salvage-slug">${rubify(d.salvageTagline)}</div>
+    <p class="salvage-text mt-5 leading-loose">${html}</p>`;
+  salvageBody.scrollTop = 0;
 
-  scriptGaugeRow.innerHTML = `
+  salvageGaugeRow.innerHTML = `
     <div class="flex items-baseline justify-between text-[11px] text-paper/70">
       <span class="font-bold">${done
         ? rubify('｜復元《ふくげん》｜完了《かんりょう》')
@@ -190,7 +190,7 @@ function renderScript() {
       <!-- 単位はリザルトの「大きさ」と同じ値。同じ言葉にしないと何を溜めるのか繋がらない -->
       <span class="font-mono">${done ? '' : `${plainText('大きさ')} あと ${p.remain.toLocaleString()}`}</span>
     </div>
-    <div class="script-gauge mt-1" style="--pct:${bar}%"
+    <div class="salvage-gauge mt-1" style="--pct:${bar}%"
          role="progressbar" aria-valuenow="${bar}" aria-valuemin="0" aria-valuemax="100"
          aria-label="${done ? '復元完了' : '全部読めるまで'}"><i></i></div>
     <div class="font-mono text-[10px] text-paper/50 mt-1.5">
@@ -200,38 +200,38 @@ function renderScript() {
 
   const claimed = save.claimedSharks.includes(d.id);
   if (done && !claimed) {
-    scriptAction.innerHTML = `
-      <button id="script-claim" type="button" class="btn primary w-full claim-pulse">
+    salvageAction.innerHTML = `
+      <button id="salvage-claim" type="button" class="btn primary w-full claim-pulse">
         <div class="cap clapper-stripes"></div>
         <div class="px-6 py-3 font-display font-extrabold text-base md:text-lg">🎬 ${rubify(
           '｜史料《しりょう》をもとにサメを｜映画《えいが》に｜登場《とうじょう》させる！')}</div>
       </button>`;
-    $('#script-claim').onclick = () => {
+    $('#salvage-claim').onclick = () => {
       claimShark(d.id);
-      renderScript();      // ボタンを消し、次の幕のロックを解く
+      renderSalvage();      // ボタンを消し、次の幕のロックを解く
       pendingClaim = d;    // 図鑑へ着いたら詳細を開く（Step 0）
       show('dex');
     };
   } else if (done) {
-    // 最終章では「次の幕へ進める」が嘘になる（#script-next は disabled のまま、
+    // 最終章では「次の幕へ進める」が嘘になる（#salvage-next は disabled のまま、
     // 第3幕はまだ存在しない）。最終章かどうかで文言を分ける
-    scriptAction.innerHTML = `<p class="text-[12px] text-paper/70 text-center">${rubify(
+    salvageAction.innerHTML = `<p class="text-[12px] text-paper/70 text-center">${rubify(
       chapterIdx >= cs.length - 1
         ? 'つぎの｜史料《しりょう》をさがしている。'
         : '｜復元《ふくげん》｜完了《かんりょう》。｜次《つぎ》の｜幕《まく》へ｜進《すす》める。')}</p>`;
   } else {
-    scriptAction.innerHTML = `<p class="text-[12px] text-paper/70 text-center">${rubify(
+    salvageAction.innerHTML = `<p class="text-[12px] text-paper/70 text-center">${rubify(
       '｜海《うみ》でサメを｜大《おお》きく｜育《そだ》てると、｜泥《どろ》が｜落《お》ちて｜文字《もじ》が｜読《よ》めるようになる。')}</p>`;
   }
 
-  markScriptSeen();
-  syncScriptDot();
+  markSalvageSeen();
+  syncSalvageDot();
 }
 
 // ---------- 史料の遊び方（チュートリアル兼ヘルプ） ----------
 // 初回に自動で出るオーバーレイと、ヘッダーの [?] で出し直す内容は同じ1枚。
 // 出す条件だけが異なるので、開閉のロジックを共通化する。
-const scriptHelpSheet = $('#script-help-sheet');
+const salvageHelpSheet = $('#salvage-help-sheet');
 
 // 本文は先に組み立てておく。rubify() はルビ記法以外をすべてエスケープするので、
 // 強調の <span> を文字列に混ぜると &lt;span&gt; がそのまま画面に出てしまう。
@@ -247,38 +247,38 @@ const HELP_STEPS = [
    + rubify('を｜映画《えいが》にスカウト（｜解放《かいほう》）します。')],
 ];
 
-function openScriptHelp() {
-  $('#script-help-body').innerHTML = HELP_STEPS
+function openSalvageHelp() {
+  $('#salvage-help-body').innerHTML = HELP_STEPS
     .map(([h, b]) => `<div>
       <h3 class="font-display font-extrabold text-[15px]">${rubify(h)}</h3>
       <p class="mt-1 text-ink/80">${b}</p>
     </div>`).join('');
-  scriptHelpSheet.style.display = 'grid';
+  salvageHelpSheet.style.display = 'grid';
 }
 
-const closeScriptHelp = () => {
-  scriptHelpSheet.style.display = 'none';
-  if (!save.scriptTutorialSeen) { save.scriptTutorialSeen = true; persist(); }
+const closeSalvageHelp = () => {
+  salvageHelpSheet.style.display = 'none';
+  if (!save.salvageTutorialSeen) { save.salvageTutorialSeen = true; persist(); }
 };
 
-$('#script-help').onclick = openScriptHelp;
-$('#script-help-close').onclick = closeScriptHelp;
-scriptHelpSheet.onclick = (e) => { if (e.target === scriptHelpSheet) closeScriptHelp(); };
+$('#salvage-help').onclick = openSalvageHelp;
+$('#salvage-help-close').onclick = closeSalvageHelp;
+salvageHelpSheet.onclick = (e) => { if (e.target === salvageHelpSheet) closeSalvageHelp(); };
 // #dex-detail・unlockPanel と同じ Escape 対応。ただしこちらの close は
-// scriptTutorialSeen を書いて persist() するので、他の2枚と違って閉じている間の
+// salvageTutorialSeen を書いて persist() するので、他の2枚と違って閉じている間の
 // Escape まで拾うと無意味な persist() が起きる。開いている間だけ拾うよう絞る
-addEventListener('keydown', (e) => { if (e.key === 'Escape' && scriptHelpSheet.style.display === 'grid') closeScriptHelp(); });
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && salvageHelpSheet.style.display === 'grid') closeSalvageHelp(); });
 
 const goChapter = (delta) => {
   const cs = chapters();
   chapterIdx = Math.max(0, Math.min(cs.length - 1, chapterIdx + delta));
-  renderScript();
+  renderSalvage();
 };
-$('#script-prev').onclick = () => goChapter(-1);
-$('#script-next').onclick = () => goChapter(+1);
+$('#salvage-prev').onclick = () => goChapter(-1);
+$('#salvage-next').onclick = () => goChapter(+1);
 
 // 進入のたびに「復元中の章」へ戻す。ナビの位置は画面を出た時点で忘れる
-$('#script-btn').onclick = () => { chapterIdx = defaultChapter(); show('script'); };
+$('#salvage-btn').onclick = () => { chapterIdx = defaultChapter(); show('salvage'); };
 
 // ---------- タイトルの立ち絵 ----------
 function paintTitleShark() {
@@ -791,7 +791,7 @@ async function share() {
 // 見本の映画サメへ落とす
 let selShark = SHARKS.find((s) => s.id === save.shark && isUnlockedShark(s)) || SHARKS[0];
 paintTitleShark();   // 起動直後のタイトルは show() を通らないのでここで描く
-syncScriptDot();     // 同じ理由で赤点もここで一度合わせる
+syncSalvageDot();     // 同じ理由で赤点もここで一度合わせる
 
 const STAT_KEYS = [
   ['スピード', 'スピード', (d) => d.speed],
@@ -1159,7 +1159,7 @@ function showResult(r) {
 
   // 経験値。到達質量をそのまま入れる。呼ぶのはここだけ（二重加算を場所で潰す）
   addXp(r.mass);
-  syncScriptDot();
+  syncSalvageDot();
 
   show('result');
   $('#res-sub').innerHTML = `${rubify(selMap.name)} ／ ${rubify(selShark.name)}`

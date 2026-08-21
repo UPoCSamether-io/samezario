@@ -902,18 +902,18 @@ rp {
 /* 史料。海の底の泥・砂・海水の滲みで読めなくなっている文字と、
    この段階で新しく洗い出された文字。
    ■ を消して実文字を blur で隠す方式は採らない。CJK は blur では読めてしまううえ、
-   全選択コピーと DevTools で全文が露出して仕組みが破られる（restore.js 冒頭の理由と同じ）。
+   全選択コピーと DevTools で全文が露出して仕組みが破られる（salvage.js 冒頭の理由と同じ）。
    伏せ字は ■ のまま DOM に載せ、その ■ の見た目だけを泥にする */
-.script-text { white-space: pre-wrap; }
+.salvage-text { white-space: pre-wrap; }
 
 /* 紙面の中身は本文40字ぶんの幅で頭打ちにして中央へ寄せる。幅いっぱいに流すと 1920px で
    1行112文字になり（実測）、折り返したときに目が次の行頭を見失う。日本語の可読上限は
    およそ40〜45字。
    単位が em ではなく rem なのは、em だと要素自身の字送りが基準になり、10px の小見出しだけ
    400px の別カラムになって本文と縁が揃わないため。
-   #script-body 自体ではなく子に掛けるのは、スクロール領域とスクロールバーを
+   #salvage-body 自体ではなく子に掛けるのは、スクロール領域とスクロールバーを
    紙面いっぱいのままにしたいから */
-#script-body > * { max-width: 40rem; margin-inline: auto; }
+#salvage-body > * { max-width: 40rem; margin-inline: auto; }
 /* ---- 発掘記録カード ----
    紙面が「白い角丸パネル」で、史料というより便箋だった。ただし地に模様を敷く案は
    採らない。伏せ字 ■ の上には泥（blur + stain）が乗っていて、地の模様はその
@@ -921,27 +921,41 @@ rp {
    だから縁だけで資料化する: 左に管理ラベルの縦帯、右下に検印、上に資料名の札。
    検印と（もし足すなら）罫は background-image に置く。背景レイヤーなら
    本文より必ず後ろに描かれるので、文字のコントラストを絶対に踏まない */
-#script-paper {
-  /* 右下の検印。実在の館の印ではないので文字は入れず輪郭だけにする。
-     20% まで落としてあるので、上に本文が流れてきても 4.5:1 を割らない。
-     停止位置を px ではなく % にし、closest-side で光線の長さを「背景の半分」に
-     固定する。こうしないと短辺で background-size を縮めたときに輪郭が箱から
-     はみ出して、円弧の切れ端だけが残る */
-  background-image: radial-gradient(circle closest-side,
-    transparent 0 78%,
-    color-mix(in srgb, var(--color-danger) 20%, transparent) 78% 90%,
-    transparent 90%);
-  background-position: right 1.1rem bottom 1.1rem;
-  background-size: 64px 64px;
-  background-repeat: no-repeat;
-}
+#salvage-paper { position: relative; }
 
-/* 左の管理ラベル。整理番号は上の #script-era にも出るが、あれは紺地の小さな行で、
+/* 右下の検印。輪郭だけの円は「ハンコ」として読めなかったので字を入れる。
+   実在の館の印ではないので、館名も整理番号も入れず汎用の「検」1字にとどめる。
+   「済」にしないのは、復元前の史料に「済」が捺してあると嘘になるため。
+   danger 35% は、上に本文が流れてきても ink との比が 6.4:1 で下限を割らない。
+   伏せ字は元から読めない見た目なので、被っても失うものがない */
+#salvage-seal {
+  position: absolute; right: 1.1rem; bottom: 1.1rem;
+  /* 本文より後ろ。#salvage-body 側に z-index:1 を置いて順序を固定する
+     （絶対配置は既定で通常フローより前に描かれるので、指定しないと字に被る） */
+  z-index: 0;
+  width: 4rem; height: 4rem;
+  display: grid; place-items: center;
+  border: 3px solid var(--seal-ink);
+  border-radius: 50%;
+  color: var(--seal-ink);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.75rem;
+  line-height: 1;
+  /* 手で捺した感じ。真っ直ぐだと印刷された図形に見える */
+  transform: rotate(-8deg);
+  pointer-events: none;
+  user-select: none;
+}
+#salvage-paper { --seal-ink: color-mix(in srgb, var(--color-danger) 35%, transparent); }
+#salvage-body { position: relative; z-index: 1; }
+
+/* 左の管理ラベル。整理番号は上の #salvage-era にも出るが、あれは紺地の小さな行で、
    紙そのものには番号が無かった。縦帯にすると棚に並んだ資料の背に見えるので、
    紙が1枚の記録カードとして読める。
    absolute ではなく flex の子にしているのは、上下いっぱいに伸ばすのに
    オフセットの計算が要らないため（紙面の高さは画面サイズで変わる） */
-#script-rail {
+#salvage-rail {
   flex: none;
   writing-mode: vertical-rl;
   padding: 0.8rem 0.45rem;
@@ -961,9 +975,9 @@ rp {
    紙地 #f4efea に対して 3.2:1 しかなく紙に沈んでいた（小さい文字の下限は 4.5:1）。
    ただ濃くするだけだと本文と同じ黒が2種類並んで、どちらが本文か分からなくなるので、
    資料館のキャプション札のように地を反転させて別物にする。約 13:1。
-   inline-block にしないのは、#script-body > * の 40rem 中央寄せに乗せて
+   inline-block にしないのは、#salvage-body > * の 40rem 中央寄せに乗せて
    本文と左右の縁を揃えたいため（inline-block だと margin-inline:auto が効かない） */
-.script-slug {
+.salvage-slug {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.3em;
@@ -973,13 +987,13 @@ rp {
   border-radius: 0.25rem;
 }
 
-.script-text .mask {
+.salvage-text .mask {
   filter: blur(2px);
   border-radius: 2px;
   background: color-mix(in srgb, var(--stain, #8a6f4e) 18%, transparent);
   color: color-mix(in srgb, var(--stain, #8a6f4e) 70%, transparent);
 }
-.script-text mark.fresh {
+.salvage-text mark.fresh {
   background: var(--color-yellow);
   border-radius: 2px;
   animation: wash-clean .6s ease-out both;
@@ -999,7 +1013,7 @@ rp {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .script-text mark.fresh { animation: none; }
+  .salvage-text mark.fresh { animation: none; }
 }
 
 
@@ -1007,7 +1021,7 @@ rp {
    合図に固定しているため。同じ画面の中で幕を送るだけのここに出すと合図が薄まる。
    .btn は腕の場所として margin-top:13px と .cap 13px、合わせて 26px の装飾を連れてくるので、
    外すと見た目が静かになるうえ短辺で高さも返ってくる */
-.script-nav {
+.salvage-nav {
   display: grid; place-items: center;
   /* 44px。タッチ目標の下限で、これ以下には縮めない */
   width: 2.75rem; min-height: 2.75rem;
@@ -1024,27 +1038,27 @@ rp {
 }
 /* 端の幕では押せない。disabled は色を落とすだけにする（消すと左右の幅が変わって
    紙面が横にずれ、送るたびに本文の折り返し位置が動く） */
-.script-nav[disabled] { cursor: not-allowed; opacity: .35; }
-.script-nav:not([disabled]):active { transform: translateY(1px); }
+.salvage-nav[disabled] { cursor: not-allowed; opacity: .35; }
+.salvage-nav:not([disabled]):active { transform: translateY(1px); }
 @media (hover: hover) {
-  .script-nav:not([disabled]):hover { transform: translateY(-2px); }
+  .salvage-nav:not([disabled]):hover { transform: translateY(-2px); }
 }
 
 /* 次に文字が増えるまでの進み具合。復元率ではなく経験値なので、目盛りは刻まず連続で伸ばす */
-.script-gauge {
+.salvage-gauge {
   height: 10px; overflow: hidden;
   border: 2px solid var(--color-ink); border-radius: 99px;
   background: color-mix(in srgb, var(--color-ink) 12%, transparent);
 }
-.script-gauge > i {
+.salvage-gauge > i {
   display: block; height: 100%; width: var(--pct);
   background: var(--color-yellow);
   transition: width .5s cubic-bezier(.2, .9, .3, 1);
 }
-@media (prefers-reduced-motion: reduce) { .script-gauge > i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .salvage-gauge > i { transition: none; } }
 
 /* 史料画面ではゲージが紺地の上に載る。ink の枠線だと背景に沈むので紙色で描く */
-#script-gauge-row .script-gauge {
+#salvage-gauge-row .salvage-gauge {
   border-color: var(--color-paper);
   background: color-mix(in srgb, var(--color-paper) 18%, transparent);
 }
@@ -1058,29 +1072,29 @@ rp {
 @media (prefers-reduced-motion: reduce) { .claim-pulse { animation: none; } }
 
 /* 史料画面の横持ち短辺対応。ヘッダー行・章送り行・ゲージ行・アクション行の4段に
-   本文パネルを足すと、他画面より縦を食う。実測 844×390 で #script-body が
+   本文パネルを足すと、他画面より縦を食う。実測 844×390 で #salvage-body が
    （中身ゼロで padding だけの）64px まで潰れていた。本文がこの画面の主役なので、
    装飾の HISTORICAL ARCHIVE 行を消し、他の帯を薄くしてその分を本文へ回す */
 @media (max-height: 500px) {
   /* nth-child ではなく id で当てる。ページ送りを紙面の左右へ移したときに
      子の並びが変わって、この節が丸ごと別の行に効いてしまったため */
-  #script-head { padding-block: 0.1rem; }
-  #script-head > button div { padding: 0.2rem 0.7rem; font-size: 0.65rem; }
-  #script-help { width: 1.7rem; height: 1.7rem; }
+  #salvage-head { padding-block: 0.1rem; }
+  #salvage-head > button div { padding: 0.2rem 0.7rem; font-size: 0.65rem; }
+  #salvage-help { width: 1.7rem; height: 1.7rem; }
   /* HISTORICAL ARCHIVE の行は飾り。短辺では本文に高さを譲る */
-  #script-era { display: none; }
-  #script-chapter { font-size: 0.8rem; padding: 0.15rem 0.5rem; }
+  #salvage-era { display: none; }
+  #salvage-chapter { font-size: 0.8rem; padding: 0.15rem 0.5rem; }
   /* 短辺では上下の余白だけ詰める。幅 44px は下限なので触らない */
-  .script-nav { padding-block: 0.75rem; }
+  .salvage-nav { padding-block: 0.75rem; }
 
-  #script-stage { margin-top: 0.4rem; gap: 0.25rem; }
-  #script-body { padding: 0.5rem 0.75rem; }
+  #salvage-stage { margin-top: 0.4rem; gap: 0.25rem; }
+  #salvage-body { padding: 0.5rem 0.75rem; }
 
-  #script-gauge-row { margin-top: 0.3rem; }
-  #script-gauge-row > div:first-child { font-size: 10px; }
-  #script-gauge-row .script-gauge { height: 6px; margin-top: 0.15rem; }
-  #script-gauge-row > div:last-child { margin-top: 0.15rem; font-size: 9px; }
-  #script-action { margin-top: 0.25rem; }
+  #salvage-gauge-row { margin-top: 0.3rem; }
+  #salvage-gauge-row > div:first-child { font-size: 10px; }
+  #salvage-gauge-row .salvage-gauge { height: 6px; margin-top: 0.15rem; }
+  #salvage-gauge-row > div:last-child { margin-top: 0.15rem; font-size: 9px; }
+  #salvage-action { margin-top: 0.25rem; }
 
   /* ---- ここから下は「短辺で縦を本文へ返す」ための3点。
        667x375 の内訳は 上下のレターボックス余白 64 / ヘッダー 54 / 紙面 174 /
@@ -1089,17 +1103,21 @@ rp {
   /* 管理ラベルは細める。消さないのは、上端のカチンコ縞を落とした後は
      これが紙面の唯一の縁の造作で、消すとただの白い箱に戻るため。
      28px → 18px で本文は 1字ぶんしか減らない */
-  #script-rail { padding: 0.4rem 0.3rem; font-size: 8px; letter-spacing: 0.2em; }
-  /* 検印も小さく。紙面が 174px しかないので、64px の輪郭は本文に被りすぎる */
-  #script-paper { background-size: 44px 44px; background-position: right 0.5rem bottom 0.5rem; }
+  #salvage-rail { padding: 0.4rem 0.3rem; font-size: 8px; letter-spacing: 0.2em; }
+  /* 検印も小さく。紙面が 200px 前後しかないので、64px の印は本文に被りすぎる */
+  #salvage-seal {
+    right: 0.5rem; bottom: 0.5rem;
+    width: 2.6rem; height: 2.6rem;
+    border-width: 2px; font-size: 1.1rem;
+  }
 
   /* レターボックスを避ける余白。帯そのものは var(--bar)=20px なので、
      32px のうち下駄は 12px。4px まで詰めて 16px を本文へ回す。
      0 にしないのは hard 系の影（5px）が帯に潜るため */
-  #script-wrap { padding-block: calc(var(--bar) + 4px); }
+  #salvage-wrap { padding-block: calc(var(--bar) + 4px); }
 
   /* 説明文（「海でサメを育てると…」「復元完了。次の幕へ進める。」）は状況が変わっても
      ほぼ同じ1文で、ゲージのラベルと [?] のヘルプに二重に載っている。
-     短辺だけ隠す。#script-action に入るもう一方の獲得ボタンは <button> なので残る */
-  #script-action p { display: none; }
+     短辺だけ隠す。#salvage-action に入るもう一方の獲得ボタンは <button> なので残る */
+  #salvage-action p { display: none; }
 }

@@ -151,7 +151,7 @@ test('isUnlockedShark: era 0（見本）は常に解放、それ以外は claimS
 });
 
 test('isUnlockedShark: 史料が無いサメ（era 3-6）はレベル到達だけで解放される', () => {
-  const jindaiji = SHARKS.find((s) => s.id === 'jindaiji');   // era 3, script 無し
+  const jindaiji = SHARKS.find((s) => s.id === 'jindaiji');   // era 3, salvageText 無し
   P.replace({ xp: 0, claimedSharks: ['cinema'] });
   assert.equal(P.isUnlockedShark(jindaiji), false, 'しきい値未満はロック');
   P.replace({ xp: P.LEVEL_XP[3 * jindaiji.era - 1] });   // level() >= STAGES(3)*era
@@ -178,10 +178,10 @@ test('既存セーブの移行: xp を持たないセーブは best を引き継
   assert.notEqual(fresh.save.seed, 0, 'seed が生成されていない');
 });
 
-test('markScriptSeen: seenLevel が現在のレベルに揃い、赤点判定が消える', () => {
+test('markSalvageSeen: seenLevel が現在のレベルに揃い、赤点判定が消える', () => {
   P.replace({ xp: P.LEVEL_XP[2], seenLevel: 0 });
   assert.ok(P.level() > P.save.seenLevel, '赤点が点いていない');
-  P.markScriptSeen();
+  P.markSalvageSeen();
   assert.equal(P.save.seenLevel, P.level());
 });
 
@@ -204,45 +204,45 @@ test('addXp: NaN や負の質量では xp を汚さない（一度入ると回�
   assert.equal(P.save.xp, 500);
 });
 
-test('hasNewScript: レベルが seenLevel を超えたときだけ赤点が点く', () => {
+test('hasNewSalvage: レベルが seenLevel を超えたときだけ赤点が点く', () => {
   P.replace({ xp: P.LEVEL_XP[2], seenLevel: P.LEVEL_XP.length });
-  assert.equal(P.hasNewScript(), false, '既読なのに赤点が点いている');
+  assert.equal(P.hasNewSalvage(), false, '既読なのに赤点が点いている');
   P.replace({ seenLevel: 0 });
-  assert.equal(P.hasNewScript(), true, '新出があるのに赤点が点かない');
+  assert.equal(P.hasNewSalvage(), true, '新出があるのに赤点が点かない');
 });
 
-test('hasNewScript: 脚本が完成する最大レベル(多摩川=era2→レベル6)を超えたら、未読でも赤点は点かない', () => {
-  // レベル7（脚本には無関係のレベルアップ）。seenLevel はレベル6の完成をすでに見ている
+test('hasNewSalvage: 史料が完成する最大レベル(多摩川=era2→レベル6)を超えたら、未読でも赤点は点かない', () => {
+  // レベル7（史料には無関係のレベルアップ）。seenLevel はレベル6の完成をすでに見ている
   P.replace({ xp: P.LEVEL_XP[6], seenLevel: 6 });
-  assert.equal(P.hasNewScript(), false, '脚本完成後のレベルアップで赤点が誤って点いている');
+  assert.equal(P.hasNewSalvage(), false, '史料完成後のレベルアップで赤点が誤って点いている');
 });
 
-test('scriptProgress: 脚本1本を通した割合と、完成までの残りXPを返す', () => {
+test('salvageProgress: 史料1本を通した割合と、完成までの残りXPを返す', () => {
   // era 1（土偶）は 0 -> LEVEL_XP[2] が1本ぶん
   const goal = P.LEVEL_XP[2];
   P.replace({ xp: 0 });
-  assert.deepEqual(P.scriptProgress(1), { ratio: 0, remain: goal });
+  assert.deepEqual(P.salvageProgress(1), { ratio: 0, remain: goal });
 
   P.replace({ xp: Math.round(goal / 2) });
-  const mid = P.scriptProgress(1);
+  const mid = P.salvageProgress(1);
   assert.ok(Math.abs(mid.ratio - 0.5) < 0.01, `半分で ratio が ${mid.ratio}`);
 
   // 段階が上がってもバーは0へ戻らない。レベル1をまたいだ直後でも割合は増え続ける
   P.replace({ xp: P.LEVEL_XP[0] });
-  const afterLevelUp = P.scriptProgress(1);
+  const afterLevelUp = P.salvageProgress(1);
   assert.ok(afterLevelUp.ratio > 0, 'レベルアップでバーが空に戻っている');
   assert.ok(Math.abs(afterLevelUp.ratio - P.LEVEL_XP[0] / goal) < 0.01);
 });
 
-test('scriptProgress: 完成後は満杯で止まり、残りは0（マイナスを出さない）', () => {
+test('salvageProgress: 完成後は満杯で止まり、残りは0（マイナスを出さない）', () => {
   P.replace({ xp: P.LEVEL_XP[2] * 3 });
-  assert.deepEqual(P.scriptProgress(1), { ratio: 1, remain: 0 });
+  assert.deepEqual(P.salvageProgress(1), { ratio: 1, remain: 0 });
 });
 
-test('scriptProgress: era 2 は era 1 の完成地点から始まる（前の区間ぶんは数えない）', () => {
+test('salvageProgress: era 2 は era 1 の完成地点から始まる（前の区間ぶんは数えない）', () => {
   P.replace({ xp: P.LEVEL_XP[2] });          // era1 完成 = era2 の起点
-  assert.equal(P.scriptProgress(2).ratio, 0, 'era2 が途中から始まっている');
-  assert.equal(P.scriptProgress(2).remain, P.LEVEL_XP[5] - P.LEVEL_XP[2]);
+  assert.equal(P.salvageProgress(2).ratio, 0, 'era2 が途中から始まっている');
+  assert.equal(P.salvageProgress(2).remain, P.LEVEL_XP[5] - P.LEVEL_XP[2]);
 });
 
 test('claimedSharks に無いサメは、レベルがいくつでも解放されない', async () => {
@@ -298,12 +298,12 @@ test('第2幕が入って、赤点がレベル6まで反応する', async () => 
   // レベル6（16,500XP）で第2幕が完成する。seenLevel が追いつくまで赤点が点く
   m.replace({ xp: 16500, seenLevel: 3 });
   assert.equal(m.level(), 6);
-  assert.equal(m.hasNewScript(), true, 'レベル6の新出をまだ見ていない');
-  m.markScriptSeen();
-  assert.equal(m.hasNewScript(), false);
+  assert.equal(m.hasNewSalvage(), true, 'レベル6の新出をまだ見ていない');
+  m.markSalvageSeen();
+  assert.equal(m.hasNewSalvage(), false);
 });
 
-test('scriptProgress(2) はレベル3で0、レベル6で1', async () => {
+test('salvageProgress(2) はレベル3で0、レベル6で1', async () => {
   const store = {};
   globalThis.localStorage = {
     getItem: (k) => store[k] ?? null,
@@ -311,10 +311,10 @@ test('scriptProgress(2) はレベル3で0、レベル6で1', async () => {
   };
   const m = await import('./progress.js?sp2');
   m.replace({ xp: 6000 });
-  assert.equal(m.scriptProgress(2).ratio, 0);
+  assert.equal(m.salvageProgress(2).ratio, 0);
   m.replace({ xp: 16500 });
-  assert.equal(m.scriptProgress(2).ratio, 1);
-  assert.equal(m.scriptProgress(2).remain, 0);
+  assert.equal(m.salvageProgress(2).ratio, 1);
+  assert.equal(m.salvageProgress(2).remain, 0);
 });
 
 test('chapterLocked: 第1幕は claimedSharks に関係なく常にロックされない', () => {
