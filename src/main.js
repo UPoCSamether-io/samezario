@@ -1020,7 +1020,8 @@ function unlockCopy(d) {
   const h = unlockHint(d);
   return h.kind === 'salvage'
     ? `｜史料《しりょう》の｜第《だい》${h.era}｜幕《まく》を｜復元《ふくげん》すると｜解放《かいほう》`
-    : `レベル${h.level}になると｜解放《かいほう》`;
+    // 単位はゲージとリザルトと同じ「大きさ」。レベルはプレイヤーに一度も見せていない
+    : `サメの｜大《おお》きさ あと ${h.remain.toLocaleString()} で｜解放《かいほう》`;
 }
 
 function showDexHint(card, d) {

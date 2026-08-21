@@ -185,12 +185,18 @@ export function grantLevelSharks() {
   return add.length ? replace({ claimedSharks: [...save.claimedSharks, ...add] }) : save;
 }
 
-/** ロック中のサメの解放条件。図鑑の吹き出しが読む。
- *  isUnlockedShark のすぐ下に置いてあるのは、条件と説明が離れると片方だけ直して
- *  嘘の案内が出るため。kind は上の式の後ろ2項にそのまま対応する */
+/**
+ * ロック中のサメの解放条件。図鑑の吹き出しが読む。
+ * isUnlockedShark のすぐ下に置いてあるのは、条件と説明が離れると片方だけ直して
+ * 嘘の案内が出るため。kind は grantLevelSharks と claimShark にそのまま対応する。
+ *
+ * レベルではなく「大きさ あと N」を返す。レベルは内部の計算用で、プレイヤーには
+ * 一度も見せていない（ゲージもリザルトも単位は「大きさ」）。ここだけ「レベル9」と
+ * 言うと、どこにも出ていない数を条件に持ち出すことになる。
+ */
 export const unlockHint = (d) => d.salvageText
   ? { kind: 'salvage', era: d.era }
-  : { kind: 'level', level: STAGES * d.era };
+  : { kind: 'size', remain: Math.max(0, LEVEL_XP[STAGES * d.era - 1] - save.xp) };
 
 // 史料の章一覧。SHARKS から導出する。専用の配列を持たない（下の SALVAGE_MAX が
 // SHARKS を見ているので、本文を別配列へ移すと赤点通知が死ぬ）
