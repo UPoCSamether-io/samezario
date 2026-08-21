@@ -171,9 +171,11 @@ function renderSalvage() {
   const v = salvageView(d.salvageText, save.seed, stage);
   const html = isNew ? v.html : v.html.replace(/<mark class="fresh">(.*?)<\/mark>/gs, '$1');
   const added = isNew ? v.added : 0;
-  const pct = Math.round(v.readable / v.total * 100);
-  // ゲージの塗りは復元率ではなく大きさ（XP）。復元率は 67→79→91→100 の4値しか取らず、
-  // 開始時点で 67% から始まるので「遊ぶ前から3分の2完成」に見えるし、3回しか動かない
+  // ゲージの塗りは復元率ではなく大きさ（XP）。復元率は 67→79→90→100（第1幕）/
+  // 69→81→91→100（第2幕）の4値しか取らない。この％はゲージのすぐ下に置くと
+  // ゲージの目盛りに見えるが、両者は別の量なので数字と塗りが一致せず嘘になる。
+  // しかも連続量ではないので、％で出す意味がない。数字は出さず、増えた瞬間だけ
+  // 「何字読めるようになったか」を言葉で出す（下の added）
   const p = salvageProgress(d.era);
   const bar = Math.round((done ? 1 : p.ratio) * 100);
 
@@ -193,10 +195,8 @@ function renderSalvage() {
     <div class="salvage-gauge mt-1" style="--pct:${bar}%"
          role="progressbar" aria-valuenow="${bar}" aria-valuemin="0" aria-valuemax="100"
          aria-label="${done ? '復元完了' : '全部読めるまで'}"><i></i></div>
-    <div class="font-mono text-[10px] text-paper/50 mt-1.5">
-      ${rubify('｜復元《ふくげん》')} ${pct}%
-      ${added ? `<span class="text-danger ml-1">+${added}</span>` : ''}
-    </div>`;
+    ${added ? `<div class="salvage-gain text-[11px] font-bold text-yellow mt-1.5">${rubify(
+      `＋${added}｜字《じ》 ｜読《よ》めるようになった！`)}</div>` : ''}`;
 
   const claimed = save.claimedSharks.includes(d.id);
   if (done && !claimed) {

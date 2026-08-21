@@ -1126,7 +1126,9 @@ rp {
   #salvage-gauge-row { margin-top: 0.3rem; }
   #salvage-gauge-row > div:first-child { font-size: 10px; }
   #salvage-gauge-row .salvage-gauge { height: 6px; margin-top: 0.15rem; }
-  #salvage-gauge-row > div:last-child { margin-top: 0.15rem; font-size: 9px; }
+  /* :last-child ではなくクラスで当てる。復元％の行を消したとき、:last-child が
+     黙ってゲージ本体に移っていた（ページ送りを移したときと同じ踏み方） */
+  .salvage-gain { margin-top: 0.15rem; font-size: 9px; }
   #salvage-action { margin-top: 0.25rem; }
 
   /* ---- ここから下は「短辺で縦を本文へ返す」ための3点。
