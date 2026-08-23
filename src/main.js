@@ -53,6 +53,10 @@ const ICON = {
 // 存在しない合字名はリテラル文字列としてそのまま描画されてしまう）
 const icon = (name, cls) => `<span class="material-symbols-rounded ${cls}" aria-hidden="true">${name || 'help'}</span>`;
 const portrait = (d) => `/img/sharks/${d.id}_side.webp`;   // 立ち絵（タイトルと図鑑で使う）
+// 未解放のサメの伏せ字。図鑑・サメ選択・史料の見出しで同じものを出す。
+// 解放前に名前が読めてしまうと、史料を復元して「誰が出てくるのか」が分かる
+// ——という一本道のごほうびが、先に answer だけ配られた状態になる
+const MASK = '????';
 // 立ち絵は DOM の <img> なので preloadSharks（canvas 用の原画）の対象外。
 // 先に取っておかないと、タイトルや図鑑へ移った瞬間に取りに行くことになり、
 // 届くまでその枠が空のまま出る
@@ -152,10 +156,13 @@ function renderSalvage() {
   const d = cs[chapterIdx];
   const locked = chapterLocked(chapterIdx);
 
-  $('#salvage-era').textContent = `HISTORICAL ARCHIVE #${d.era} / ${d.en}`;
+  // 章がロック中なら英字名も伏せる。見出しに鍵を出しておきながら管理ラベルで
+  // 「/ TAMAGAWA」と言っていては、誰が出てくるのかがそこだけで割れてしまう
+  const en = locked ? MASK : d.en;
+  $('#salvage-era').textContent = `HISTORICAL ARCHIVE #${d.era} / ${en}`;
   // 紙面の左の管理ラベル。aria-hidden の飾りなので読み上げには出さない（同じ内容が
   // 上の #salvage-era にある）。長い名前でも縦帯が伸びないよう overflow で切る
-  $('#salvage-rail').textContent = `ARCHIVE No.${d.era} · ${d.en.toUpperCase()}`;
+  $('#salvage-rail').textContent = `ARCHIVE No.${d.era} · ${en.toUpperCase()}`;
   // 鍵は絵文字を使わない。端末ごとに絵柄が変わるうえ、他のUIが全部 Material Symbols
   // なので1つだけ質感が浮く。rubify() は HTML を escape するので span は外で組む
   const lockIcon = (cls) =>
@@ -870,24 +877,15 @@ function renderSharks() {
     mainPreview = mountPreview($('#preview'), selShark);
     const list = $('#shark-list');
     list.innerHTML = '';
-    // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ戻す
+    // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ戻す。
+    // ここで作るのは器だけで、中身（名前・施錠状態）は下の paintLocks() が入れる
     for (let copy = 0; copy < DIAL_COPIES; copy++) {
       SHARKS.forEach((d, i) => {
-        const locked = !isUnlockedShark(d);
         const b = document.createElement('button');
         b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
-          'transition-transform hover:-translate-x-1 active:translate-y-0.5' + (locked ? ' shark-locked' : '');
+          'transition-transform hover:-translate-x-1 active:translate-y-0.5';
         b.dataset.i = i;
         b.dataset.copy = copy;
-        b.innerHTML = `
-          <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper" style="background:${d.color}">
-            ${icon(ICON[d.id], '!text-[22px]')}
-          </span>
-          <span class="min-w-0">
-            <span class="tile-name block font-display font-extrabold text-base leading-tight">${rubify(d.name)}</span>
-            <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${rubify(d.tag)}</span>
-          </span>`;
-        if (locked) { b.disabled = true; b.setAttribute('aria-disabled', 'true'); }
         b.onclick = () => selectShark(d);
         list.appendChild(b);
       });
@@ -900,14 +898,38 @@ function renderSharks() {
   if (isDial()) centerTile($('#shark-list'), SHARKS.indexOf(selShark), 'auto');
 }
 
-// タイルの生成はキャッシュされるが解放状態はレベルアップで変わるので、
-// 表示のたびに施錠状態だけ塗り直す（3面ぶん・data-i で当てる）
+/**
+ * タイル1枚の中身。ロック中は図鑑のカードと同じで、名前も英字も肩書きも出さない。
+ * モチーフのアイコンと色はそれ自体が正体を指す（terrain＝土偶）ので、鍵と地の色へ寄せる。
+ * 見えるのは「まだ居ないサメが1枠ある」ことだけ。
+ */
+const tileInner = (d, locked) => `
+  <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper"
+        style="background:${locked ? 'var(--color-ink)' : d.color}">
+    ${icon(locked ? 'lock' : ICON[d.id], '!text-[22px]')}
+  </span>
+  <span class="min-w-0">
+    <span class="tile-name block font-display font-extrabold text-base leading-tight">${
+      locked ? MASK : rubify(d.name)}</span>
+    <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${
+      locked ? MASK : `${esc(d.en)} · ${rubify(d.tag)}`}</span>
+  </span>`;
+
+// タイルの生成はキャッシュされるが解放状態は史料の獲得で変わるので、表示のたびに
+// 塗り直す（3面ぶん・data-i で当てる）。伏せているのは見た目ではなく中身なので、
+// 施錠状態だけでなく innerHTML ごと入れ替える——そうしないと、獲得した直後に
+// サメ選択を開いても伏せ字のままになる
 function paintLocks() {
   $$('.shark-tile').forEach((n) => {
-    const locked = !isUnlockedShark(SHARKS[+n.dataset.i]);
+    const d = SHARKS[+n.dataset.i];
+    const locked = !isUnlockedShark(d);
     n.classList.toggle('shark-locked', locked);
     n.disabled = locked;
     n.toggleAttribute('aria-disabled', locked);
+    n.innerHTML = tileInner(d, locked);
+    // 名前を伏せたぶん、押せない理由は解放条件で言う（図鑑のカードと同じ文面）
+    if (locked) n.setAttribute('aria-label', plainText(unlockCopy(d)));
+    else n.removeAttribute('aria-label');
   });
 }
 
@@ -1053,7 +1075,7 @@ function renderDex() {
              class="w-full h-full object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.22)] ${locked ? 'dex-silhouette' : ''}">
       </div>
       <div class="dex-name w-full border-t-4 border-ink px-3 py-2.5">
-        <h3 class="font-display font-extrabold text-lg leading-tight">${locked ? '????' : rubify(d.name)}</h3>
+        <h3 class="font-display font-extrabold text-lg leading-tight">${locked ? MASK : rubify(d.name)}</h3>
       </div>`;
     // aria-disabled は付けない。押すと解放条件が出る＝実際に押せるボタンなので、
     // 「無効」と言うと嘘になる（支援技術がフォーカスを飛ばすし、Playwright も
