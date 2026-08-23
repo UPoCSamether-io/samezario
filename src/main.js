@@ -3,6 +3,7 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
+import { mountHowtoDemo } from './howto-demo.js';
 import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
@@ -90,6 +91,7 @@ function show(name) {
       if (name === 'shark') renderSharks();
       if (name === 'dex') { renderDex(); if (pendingClaim) { openDex(pendingClaim, true); pendingClaim = null; } }
       if (name === 'salvage') renderSalvage();
+      if (name === 'howto') goHowtoPage(0);   // 入り直したら1ページ目から
       if (name === 'title') paintTitleShark();
       if (name === 'game') stopAttract(); else startAttract();
       chrome.classList.remove('shut');
@@ -324,6 +326,40 @@ function aimHowto(next) {
   howtoGo.dataset.go = next;
   howtoGoLabel.innerHTML = next === 'title' ? 'とじる' : rubify('ロケ｜地《ち》を｜選《えら》ぶ →');
 }
+
+// 3ページ。最後の1枚だけ #howto-go（＝行き先を持つボタン）に入れ替える。
+// 送りの途中で data-go のボタンを出すと、読み終わる前にロケ地選択へ抜けられてしまう
+const howtoNext = $('#howto-next'), howtoBack = $('#howto-back');
+const howtoPages = $$('.howto-page');
+const howtoDots = $$('.howto-dot');
+let howtoPage = 0;
+
+function paintHowto() {
+  howtoPages.forEach((n, i) => { n.hidden = i !== howtoPage; });
+  howtoDots.forEach((n, i) => n.classList.toggle('on', i === howtoPage));
+  const last = howtoPage >= howtoPages.length - 1;
+  howtoNext.hidden = last;
+  howtoGo.hidden = !last;
+  howtoBack.classList.toggle('invisible', howtoPage === 0);
+}
+
+function goHowtoPage(i) {
+  howtoPage = Math.max(0, Math.min(howtoPages.length - 1, i));
+  paintHowto();
+}
+howtoNext.onclick = () => goHowtoPage(howtoPage + 1);
+howtoBack.onclick = () => goHowtoPage(howtoPage - 1);
+howtoDots.forEach((n, i) => { n.onclick = () => goHowtoPage(i); });
+paintHowto();
+
+// デモは本編と同じ絵で描く。主役は選んでいるサメ、相手は別の1匹。
+// selShark はこの下で宣言されるが、読むのは rAF の中（＝モジュール評価後）なので触れる
+mountHowtoDemo($('#howto-demo'), () => ({
+  page: howtoPage,
+  self: selShark,
+  other: SHARKS.find((d) => d !== selShark) || SHARKS[0],
+  water: selMap.water,   // これから行くロケ地の海の色で見せる
+}));
 
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-go]');

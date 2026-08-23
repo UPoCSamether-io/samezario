@@ -744,24 +744,24 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #s-shark .name-pane { padding: 0.4rem 0.6rem; }
   #s-shark .name-pane p { display: none; }
 
-  /* 横画面の遊び方。max-w-2xl のままだと 537px しか使わず、余った幅の隣で
-     6項目が縦に並んでスクロールになる。幅を開けて2段組みにし、
-     項目の途中で列がまたがらないよう break-inside を止める */
-  #howto-panel { max-width: min(96vw, 980px); }
-  /* 下だけ薄いのは、全項目が収まったあと padding-bottom 分だけスクロールバーが
-     出て「まだ下に何かある」と誤読させるため */
-  #howto-body { padding: 1rem 1.25rem 0.5rem; }
-  #howto-foot { padding: 0 1.25rem 0.75rem; }
-  #howto-title { font-size: 1.25rem; margin-bottom: 0.4rem; }
-  #howto-list {
-    column-count: 2;
-    column-gap: 1.75rem;
-    font-size: 12.5px;
-    line-height: 1.45;
+  /* 横画面の遊び方。積んだままだとデモと本文で縦を食い切るので、
+     リザルト（#res-panel）と同じ「余っている幅を縦に回す」組み替えをする。
+     左にデモ、右に本文と送り。幅を開けるのはその2カラムを作るため */
+  #howto-panel { max-width: min(96vw, 900px); }
+  /* 下だけ薄いのは、収まったあと padding-bottom 分だけスクロールバーが出て
+     「まだ下に何かある」と誤読させるため */
+  #howto-body {
+    padding: 0.85rem 1.1rem 0.5rem;
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    gap: 1.1rem;
+    align-items: center;
   }
-  /* 3段組みも試したが逆に伸びた（281px > 2段の278px）。項目数が6で高さが不揃いなため、
-     列を増やすと1項目あたりの行数が増えて最長列が勝つ。2段が底 */
-  #howto-list > li { break-inside: avoid; margin: 0 0 0.35rem; }
+  #howto-foot { padding: 0 1.1rem 0.75rem; }
+  #howto-demo { max-height: 46vh; }
+  #howto-copy { margin-top: 0; }
+  .howto-h { font-size: 1.15rem; }
+  .howto-p { font-size: 12.5px; line-height: 1.7; min-height: 3.4em; }
 
   /* ---- 横画面のリザルト ----
      積み上げでは CUT!+戦績 190px / Tips+操作列 240px に対し、使える高さが
@@ -946,6 +946,32 @@ rp {
 /* カードの下に回ったときは尻尾も上向きへ */
 #dex-hint.below::before { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--color-ink); }
 #dex-hint.below::after  { top: auto; bottom: calc(100% - 4px); border-top-color: transparent; border-bottom-color: var(--color-navy); }
+
+/* ---- 遊び方（3ページ） ----
+   1ページ＝デモ1つ＋2行。ページ送りは main.js が持ち、ここは箱の形だけ。
+   デモは canvas 側でレターボックスするので、この箱の縦横比が崩れても絵は割れない。 */
+#howto-demo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 320 / 140;
+  max-height: 38vh;
+  border: 3px solid var(--color-ink);
+  border-radius: 0.6rem;
+  background: var(--color-teal-deep);
+}
+#howto-copy { margin-top: 0.9rem; }
+.howto-h { font-size: 1.5rem; line-height: 1.15; }
+/* 2行ぶんの高さを常に取る。ページごとに本文の行数が違うので、素のままだと
+   送るたびにパネルの高さが変わり、次へのボタンが指の下から逃げる */
+.howto-p { font-size: 15px; line-height: 1.8; margin-top: 0.35rem; min-height: 3.6em; }
+
+.howto-dot {
+  width: 11px; height: 11px; border-radius: 99px;
+  border: 2px solid var(--color-ink);
+  background: transparent;
+  transition: background .15s, transform .15s;
+}
+.howto-dot.on { background: var(--color-ink); transform: scale(1.2); }
 
 /* ---- 発掘記録カード ----
    紙面が「白い角丸パネル」で、史料というより便箋だった。ただし地に模様を敷く案は
