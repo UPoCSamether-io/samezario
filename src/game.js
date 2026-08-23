@@ -4,6 +4,7 @@
 // 餌の増減や生死は決めない —— オンラインなら world.authority=false で
 // サーバの宣告を待ち、繋がらなければ world.goSolo() で自分が正になる。
 import { BOT_NAMES } from './data.js';
+import { plainText } from './ruby.js';
 import { paintShark, paintSpriteShark } from './shark-art.js';
 import { makeSteer } from './steer.js';
 import { createWorld, radiusOf, clamp, rand, pick, TAU } from './sim.js';
@@ -11,6 +12,7 @@ import { createWorld, radiusOf, clamp, rand, pick, TAU } from './sim.js';
 const INK = '#2d2d2d';
 const PAPER = '#f4efea';
 const YELLOW = '#f3b553';
+const MINT = '#a3f0f0';
 
 /**
  * 外周を描くための Path2D。sim が当たり判定に使っている頂点そのものから引くので、
@@ -76,6 +78,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   const world = createWorld({ map, authority: !net });
   const { arena, sharks, food, W } = world;
   const outline = arenaOutline(arena);
+  // 環境ギミック（#83）。効き目そのものは sim.js が決めていて、ここは見せ方だけ。
+  // ギミックの無いエリアでは null なので、以下はまるごと素通りする
+  const gim = world.gimmick;
+  const gimLabel = gim ? plainText(gim.def.label) : '';
   const stripes = ctx.createPattern(stripeTile(), 'repeat');
   const dots = ctx.createPattern(dotTile(), 'repeat');
 
@@ -383,6 +389,224 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
   }
 
+  // ---------- 環境ギミックの見せ方 ----------
+  // 目的は2つだけ。「流れがどちらを向いているか」と「いまゾーンの中に居るか」。
+  // 効き目の値は sim.js から引くので、絵と盤面が食い違うことはない。
+
+  // 見出しの大きさ。ワールド px 固定にすると引きの絵（zoom 0.34）で読めなくなり、
+  // 画面 px 固定にすると寄った絵で画面を覆う。下限だけ画面側で押さえる
+  const labelPx = () => Math.max(30, 26 / cam.zoom);
+
+  /** ワールド座標に置く見出し。サメの名前と同じ「白抜き＋墨の縁」 */
+  function worldLabel(text, x, y, px, fill) {
+    ctx.save();
+    ctx.font = `700 ${px}px "Space Grotesk", "M PLUS Rounded 1c", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 5 / cam.zoom;
+    ctx.strokeStyle = INK;
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = fill;
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+
+  /**
+   * 流れを矢羽根（>）の列で見せて、流れの速さで流す。向きは矢羽根そのものが指す。
+   * 1個ずつ stroke() すると引きの絵で数百回になるので、1本の Path にまとめて1回で描く。
+   * ang の座標系へ回してから格子で置くので、行は流れに直交して並ぶ。
+   */
+  function chevrons(t, ang, speed, box, gap, span, style, lw, cap = 700) {
+    const co = Math.cos(-ang), si = Math.sin(-ang);
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const [x, y] of [[box.x0, box.y0], [box.x1, box.y0], [box.x0, box.y1], [box.x1, box.y1]]) {
+      const u = x * co - y * si, v = x * si + y * co;
+      if (u < u0) u0 = u;
+      if (u > u1) u1 = u;
+      if (v < v0) v0 = v;
+      if (v > v1) v1 = v;
+    }
+    const wing = Math.min(24, gap * 0.3);
+    const p = new Path2D();
+    let n = 0;
+    for (let v = Math.ceil(v0 / gap) * gap; v <= v1 && n < cap; v += gap) {
+      // 行ごとに位相をずらす。揃えると格子に見えて水に見えない
+      const drift = (t * speed + (v / gap) * span * 0.37) % span;
+      for (let u = Math.ceil((u0 - drift) / span) * span + drift; u <= u1 && n < cap; u += span) {
+        p.moveTo(u - wing, v - wing);
+        p.lineTo(u, v);
+        p.lineTo(u - wing, v + wing);
+        n++;
+      }
+    }
+    ctx.save();
+    ctx.rotate(ang);
+    ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.strokeStyle = style;
+    ctx.lineWidth = lw;
+    ctx.stroke(p);
+    ctx.restore();
+  }
+
+  /** 多摩川の急流。水面いちめんの矢羽根が下流へ流れる */
+  function drawCurrent(t, view) {
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    chevrons(t, gim.def.dir, gim.def.speed, view, 200, 320, PAPER, Math.max(2.8 / cam.zoom, 3.4));
+    ctx.restore();
+  }
+
+  /** 飛行場のプロペラ気流。滑走路の帯は凪の間もうっすら残す＝「ここで吹く」と先に分かる */
+  function drawGust(t, view) {
+    const r = gim.runway;
+    const lv = gim.level(world.envT);
+
+    ctx.save();
+    ctx.translate(r.x0, r.y0);
+    ctx.rotate(r.ang);
+    const g = ctx.createLinearGradient(0, -r.w, 0, r.w);
+    g.addColorStop(0, 'rgba(243,181,83,0)');
+    g.addColorStop(0.5, `rgba(243,181,83,${(0.05 + lv * 0.2).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(243,181,83,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, -r.w, r.len, r.w * 2);
+
+    ctx.strokeStyle = `rgba(243,181,83,${(0.3 + lv * 0.45).toFixed(3)})`;
+    ctx.lineWidth = Math.max(2.5 / cam.zoom, 3);
+    ctx.setLineDash([90, 70]);
+    ctx.lineDashOffset = -t * (50 + lv * 400);
+    ctx.beginPath();
+    ctx.moveTo(0, -r.w); ctx.lineTo(r.len, -r.w);
+    ctx.moveTo(0, r.w); ctx.lineTo(r.len, r.w);
+    ctx.stroke();
+    // センターライン。路面標識と同じ刻みにしておくと、凪の間も滑走路として読める
+    ctx.strokeStyle = `rgba(243,181,83,${(0.16 + lv * 0.3).toFixed(3)})`;
+    ctx.lineWidth = Math.max(2 / cam.zoom, 2.5);
+    ctx.setLineDash([150, 150]);
+    ctx.lineDashOffset = -t * (50 + lv * 400);
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(r.len, 0);
+    ctx.stroke();
+    ctx.restore();
+
+    if (lv > 0.02) {
+      // 矢羽根は帯の中だけ。走査する範囲も帯の外接矩形と視界の重なりに絞る
+      const bx0 = Math.min(r.x0, r.x1) - r.w, bx1 = Math.max(r.x0, r.x1) + r.w;
+      const by0 = Math.min(r.y0, r.y1) - r.w, by1 = Math.max(r.y0, r.y1) + r.w;
+      const box = {
+        x0: Math.max(view.x0, bx0), x1: Math.min(view.x1, bx1),
+        y0: Math.max(view.y0, by0), y1: Math.min(view.y1, by1),
+      };
+      if (box.x0 < box.x1 && box.y0 < box.y1) {
+        ctx.save();
+        ctx.translate(r.x0, r.y0);
+        ctx.rotate(r.ang);
+        ctx.beginPath();
+        ctx.rect(0, -r.w, r.len, r.w * 2);
+        ctx.clip();
+        ctx.rotate(-r.ang);
+        ctx.translate(-r.x0, -r.y0);
+        ctx.globalAlpha = 0.15 + lv * 0.6;
+        chevrons(t, r.ang, gim.def.push * 1.7, box, 130, 270, YELLOW, Math.max(2.2 / cam.zoom, 3));
+        ctx.restore();
+      }
+    }
+
+    // 見出しは帯の縁の少し外。滑走路は斜めなので、ずらす向きも滑走路の法線で取る
+    const mx = (r.x0 + r.x1) / 2, my = (r.y0 + r.y1) / 2;
+    ctx.globalAlpha = 0.35 + lv * 0.55;
+    worldLabel(gimLabel, mx - r.uy * (r.w + 40), my + r.ux * (r.w + 40), labelPx(), YELLOW);
+    ctx.globalAlpha = 1;
+  }
+
+  /** 深大寺の湧水。縁の破線が「ここから中」の線で、泡は t だけで決まる（端末で絵が割れない） */
+  function drawSprings(t) {
+    for (let i = 0; i < gim.springs.length; i++) {
+      const z = gim.springs[i];
+      const here = (player.x - z.x) ** 2 + (player.y - z.y) ** 2 < z.r * z.r;
+      const pulse = 0.5 + 0.5 * Math.sin(t * 1.6 + i * 2.1);
+
+      const g = ctx.createRadialGradient(z.x, z.y, z.r * 0.12, z.x, z.y, z.r);
+      g.addColorStop(0, `rgba(163,240,240,${((here ? 0.26 : 0.14) + pulse * 0.05).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(163,240,240,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.fill();
+
+      ctx.save();
+      ctx.strokeStyle = MINT;
+      ctx.globalAlpha = here ? 0.95 : 0.45;
+      ctx.lineWidth = Math.max(2.5 / cam.zoom, here ? 5 : 3.5);
+      ctx.setLineDash([30, 22]);
+      ctx.lineDashOffset = -t * 36;
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = 'rgba(163,240,240,.45)';
+      for (let k = 0; k < 9; k++) {
+        const ph = (t * 0.33 + k * 0.111 + i * 0.37) % 1;
+        const a = k * 2.4 + i * 1.7;
+        const rr = z.r * (0.1 + 0.6 * ph);
+        ctx.beginPath();
+        ctx.arc(z.x + Math.cos(a) * rr, z.y + Math.sin(a) * rr - ph * z.r * 0.3, 3 + (1 - ph) * 7, 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = here ? 1 : 0.6;
+      worldLabel(gimLabel, z.x, z.y + z.r - 30, labelPx(), MINT);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /** 水の中に敷く層。サメより後ろ、餌より後ろ */
+  function drawEnvBack(t, view) {
+    if (!gim) return;
+    ctx.save();
+    ctx.clip(outline);          // 流れも渦も湧水も水の中だけ。壁の外へはみ出させない
+    if (gim.kind === 'current') drawCurrent(t, view);
+    if (gim.kind === 'gust') drawGust(t, view);
+    if (gim.kind === 'spring') drawSprings(t);
+    ctx.restore();
+  }
+
+  /**
+   * いま自分に効いているものを、自機のまわりで直接見せる。
+   * 矢印は「押されている向き」なので、自分の向きとの差がそのまま得か損かになる。
+   */
+  function drawEnvFront(t) {
+    if (!gim || !player.alive) return;
+    const wind = gim.windAt(player.x, player.y, world.envT);
+    const hr = radiusOf(player.mass);
+
+    if (wind.x || wind.y) {
+      const m = Math.hypot(wind.x, wind.y);
+      const len = hr * 1.9 + m * 0.7;
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.rotate(Math.atan2(wind.y, wind.x));
+      ctx.globalAlpha = 0.8;
+      ctx.lineCap = ctx.lineJoin = 'round';
+      ctx.strokeStyle = YELLOW;
+      ctx.lineWidth = Math.max(3 / cam.zoom, 4);
+      ctx.beginPath();
+      ctx.moveTo(hr * 1.4, 0); ctx.lineTo(len, 0);
+      ctx.moveTo(len - 20, -15); ctx.lineTo(len, 0); ctx.lineTo(len - 20, 15);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // 湧水ゾーンは直径 900px 超で、中に居ると縁も見出しも画面の外に出てしまう。
+    // 「入っている」は自機のまわりだけで完結させる。そばガードの輪（破線・黄・半径 2.4r）と
+    // 見分けが付くよう、こちらは実線・ミントで外側（3.9r）に置く
+    if (gim.springAt(player.x, player.y)) {
+      ctx.save();
+      ctx.strokeStyle = MINT;
+      ctx.lineWidth = Math.max(3.5 / cam.zoom, 4.5);
+      ctx.globalAlpha = 0.5 + 0.35 * Math.sin(t * 5);
+      ctx.beginPath(); ctx.arc(player.x, player.y, hr * 3.9, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 1;
+      worldLabel(gimLabel, player.x, player.y + hr * 3.9 + labelPx(), labelPx(), MINT);
+      ctx.restore();
+    }
+  }
+
   function draw(t) {
     const dpr = Math.min(2, devicePixelRatio || 1);
     const { cw, ch } = size;
@@ -425,6 +649,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.strokeStyle = INK;
     ctx.lineWidth = 6 / cam.zoom;
     ctx.stroke(outline);
+
+    // 環境ギミック（#83）。餌より後ろに敷く
+    drawEnvBack(t, { x0: vx0, y0: vy0, x1: vx1, y1: vy1 });
 
     // 餌
     for (const f of food) {
@@ -478,6 +705,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       if (s.y + s.reach < vy0 || s.y - s.reach > vy1) continue;
       drawShark(s, t);
     }
+
+    // いま自分に効いているギミック。サメの上に重ねないと自分のことだと分からない
+    drawEnvFront(t);
 
     // パーティクル
     for (const p of fx) {
@@ -567,6 +797,21 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
 
     mctx.fillStyle = 'rgba(33,48,82,.85)';
     mctx.fill(outline);
+
+    // 環境ギミック。どこで吹くか・どこが湧水かは、行く前に地図で分かるほうがいい
+    if (gim?.runway) {
+      const r = gim.runway;
+      mctx.save();
+      mctx.translate(r.x0, r.y0); mctx.rotate(r.ang);
+      mctx.fillStyle = `rgba(243,181,83,${(0.12 + gim.level(world.envT) * 0.3).toFixed(3)})`;
+      mctx.fillRect(0, -r.w, r.len, r.w * 2);
+      mctx.restore();
+    }
+    for (const z of gim?.springs ?? []) {
+      mctx.beginPath(); mctx.arc(z.x, z.y, z.r, 0, TAU);
+      mctx.fillStyle = 'rgba(163,240,240,.3)'; mctx.fill();
+    }
+
     mctx.fillStyle = 'rgba(243,181,83,.35)';
     const fd = 1.5 / k;
     for (let i = 0; i < food.length; i += 9) mctx.fillRect(food[i].x, food[i].y, fd, fd);
@@ -587,6 +832,25 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     mctx.strokeRect(cam.x - vw / 2, cam.y - vh / 2, vw, vh);
     mctx.setLineDash([]);
     mctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // 一定の流れ（多摩川）は地図の隅にコンパスで出す。盤面へ矢羽根を撒くと
+    // 外接矩形の 34% しか水が無い形では、半分が陸の上に乗ってしまう
+    if (gim?.flow) {
+      const R = 15;
+      mctx.save();
+      mctx.translate(s - R - 7, s - R - 7);
+      mctx.fillStyle = 'rgba(45,45,45,.72)';
+      mctx.beginPath(); mctx.arc(0, 0, R, 0, TAU); mctx.fill();
+      mctx.rotate(gim.def.dir);
+      mctx.strokeStyle = MINT;
+      mctx.lineWidth = 2.5;
+      mctx.lineCap = mctx.lineJoin = 'round';
+      mctx.beginPath();
+      mctx.moveTo(-R * 0.6, 0); mctx.lineTo(R * 0.55, 0);
+      mctx.moveTo(R * 0.15, -R * 0.42); mctx.lineTo(R * 0.55, 0); mctx.lineTo(R * 0.15, R * 0.42);
+      mctx.stroke();
+      mctx.restore();
+    }
   }
 
   // ---------- loop ----------

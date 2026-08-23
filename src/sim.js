@@ -138,6 +138,122 @@ export function makeArena(map) {
   return { inside, bb, home, spot, escape, poly: { xs, ys, n } };
 }
 
+// ---------- 環境ギミック（#83） ----------
+// エリアごとの水流・気流・湧水。数値は data.js の MAPS[].gimmick が全部持っていて、
+// ここにあるのは式だけ。
+//
+// 大前提: 引数の (x, y, t) だけで答えが決まる純関数にすること。
+// サーバとブラウザが同じ盤面を回している以上、盤面の外の何か（乱数・実時計・DOM）を
+// 混ぜた瞬間に「サーバでは吹いているのにこちらでは凪」が起きる。
+// t はワールドの環境時計（world.envT）で、スナップショットで揃えてある。
+
+const NO_WIND = { x: 0, y: 0 };
+
+/**
+ * エリア固有のギミックを、盤面座標の上で答える形に組み立てる。
+ * ギミックの無いエリア（調布駅・布田／つつじヶ丘・仙川）では null を返す ——
+ * 呼び側は null を「従来どおり」として素通しする。
+ *
+ * 位置は data.js が外接矩形の 0..1 で持っているので、ここで実座標へ直す。
+ * こうしておくと size を触っても輪郭に対する位置が動かない。
+ */
+export function makeGimmick(map, arena) {
+  const def = map.gimmick;
+  if (!def) return null;
+  const { bb } = arena;
+  const at = (u, v) => ({ x: bb.x0 + u * bb.w, y: bb.y0 + v * bb.h });
+
+  const g = { kind: def.kind, def, flow: null, runway: null, springs: [] };
+
+  if (def.kind === 'current') {
+    // 急流カレント：どこに居ても同じ一定ベクトル（docs/stage_design_plan.md §3 ④）
+    g.flow = { x: Math.cos(def.dir) * def.speed, y: Math.sin(def.dir) * def.speed };
+  }
+  if (def.kind === 'gust') {
+    // プロペラ気流：滑走路の線分と、その両側 width px の帯
+    const a = at(def.line[0], def.line[1]), b = at(def.line[2], def.line[3]);
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    g.runway = {
+      x0: a.x, y0: a.y, x1: b.x, y1: b.y, len, w: def.width,
+      ux: dx / len, uy: dy / len, ang: Math.atan2(dy, dx),
+    };
+  }
+  if (def.kind === 'spring') {
+    g.springs = def.zones.map(([u, v, r]) => ({ ...at(u, v), r }));
+  }
+
+  /**
+   * 周期ギミックの今の強さ 0..1。period 秒ごとに dur 秒だけ吹く。
+   * 立ち上がりと立ち下がりを sin で丸めてあるのは、角のある窓にすると
+   * 吹き始めた瞬間に帯の中の全員の速度が段差で変わって位置がぶれるから。
+   * 周期を持たないギミック（急流・湧水）は常に 1。
+   */
+  g.level = (t) => {
+    if (!def.period) return 1;
+    // 二重の剰余（(t%p+p)%p）で畳むと、負でない t でも最後の丸めで窓の端が内側へ落ちる
+    // （2.6 が 2.5999999999999996 になる）。floor で引くほうは端が端のまま残る
+    const ph = t - Math.floor(t / def.period) * def.period;
+    return ph < def.dur ? Math.sin((ph / def.dur) * Math.PI) : 0;
+  };
+
+  /** 滑走路のいちばん近い点と、そこまでの距離・帯の効き(0..1、縁で 0) */
+  g.nearRunway = (x, y) => {
+    const r = g.runway;
+    const k = clamp(((x - r.x0) * r.ux + (y - r.y0) * r.uy) / r.len, 0, 1);
+    const cx = r.x0 + r.ux * r.len * k, cy = r.y0 + r.uy * r.len * k;
+    const d = Math.hypot(x - cx, y - cy);
+    return { cx, cy, d, k: d >= r.w ? 0 : 1 - d / r.w };
+  };
+
+  /**
+   * サメの速度ベクトルに足す分。向きは変えないので、
+   * 流れに乗れば速く、逆らえば遅い（＝そのぶん押し戻される）。
+   * 返り値は使い回しの定数オブジェクトを返すことがあるので、呼び側で書き換えない。
+   */
+  g.windAt = (x, y, t) => {
+    if (g.flow) return g.flow;
+    if (!g.runway) return NO_WIND;
+    const lv = g.level(t);
+    if (lv <= 0) return NO_WIND;
+    const { k } = g.nearRunway(x, y);
+    if (k <= 0) return NO_WIND;
+    const m = def.push * lv * k;
+    return { x: g.runway.ux * m, y: g.runway.uy * m };
+  };
+
+  /**
+   * 気流に巻かれた餌の行き先。滑走路へ寄せる成分と、それを 90° 回した成分を
+   * 足すので渦を巻きながら吸い寄せられる。動かないなら null。
+   *
+   * 芯（core）より内側では寄せるのをやめて回すだけにする。ここを入れないと
+   * 帯の餌が何回かの気流で滑走路の1本線に潰れきって、渦にも山にも見えなくなる。
+   * 寄せる量は残り距離で頭を打つので、芯を追い越して反対側へ抜けることもない。
+   */
+  g.swirlFood = (x, y, t, dt) => {
+    if (!g.runway) return null;
+    const lv = g.level(t);
+    if (lv <= 0) return null;
+    const { cx, cy, d, k } = g.nearRunway(x, y);
+    if (k <= 0 || d < 1) return null;
+    const nx = (cx - x) / d, ny = (cy - y) / d;
+    const step = def.pull * lv * k * dt;
+    const pull = d > def.core ? Math.min(d - def.core, step) : 0;
+    const spin = def.swirl * step;
+    return { x: x + nx * pull - ny * spin, y: y + ny * pull + nx * spin };
+  };
+
+  /** 湧水ゾーンの中か */
+  g.springAt = (x, y) => {
+    for (const z of g.springs) {
+      if ((x - z.x) ** 2 + (y - z.y) ** 2 < z.r * z.r) return true;
+    }
+    return false;
+  };
+
+  return g;
+}
+
 /**
  * 盤面をひとつ作る。
  *
@@ -150,20 +266,26 @@ export function makeArena(map) {
 export function createWorld({ map, authority = true, diffs = false }) {
   const W = map.size;
   const arena = makeArena(map);
+  const gimmick = makeGimmick(map, arena);   // ギミックの無いエリアは null
   const sharks = [];
   const food = [];
   const events = [];          // 呼び側が drainEvents() で引き取る
   const fAdd = [], fDel = []; // 前回のスナップショット以降の餌の増減
   const timers = new Set();   // ボットの復活待ち。destroy() で全部止める
   let elapsed = 0, nidSeq = 0, fSeq = 0, running = true, rosterDirty = true;
+  // 環境ギミックの時計。elapsed と分けてあるのは、elapsed が航跡の寿命の基準でもあり、
+  // スナップショットで上書きすると死んだはずの帯が生き返る（または一斉に消える）から。
+  // こちらは誰も参照していないので、サーバの値をそのまま入れて構わない
+  let envT = 0;
   // 餌の最大半径。湧いた粒は 10px 程度だが、大きいサメが死んでばら撒く粒は 20px を超える。
   // 格子の探索はこれを足した半径で引く（減らさないのは、縮めると取りこぼすため）
   let maxFoodR = 0;
   const deaths = [];          // 次のスナップショットに載せる死亡通知（死因つき）
 
   const world = {
-    map, W, arena, sharks, food, authority, diffs,
+    map, W, arena, gimmick, sharks, food, authority, diffs,
     get elapsed() { return elapsed; },
+    get envT() { return envT; },
     /** 人が操っているサメの数。nid の頭文字でボットと見分ける */
     humans: () => sharks.filter((s) => s.nid[0] !== 'b').length,
     drainEvents() { const e = events.slice(); events.length = 0; return e; },
@@ -619,6 +741,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
   // ---------- 1ティック ----------
   world.step = (dt) => {
     elapsed += dt;
+    envT += dt;
 
     for (const s of sharks) {
       if (!s.alive) continue;
@@ -631,6 +754,9 @@ export function createWorld({ map, authority = true, diffs = false }) {
       s.wobble += dt * 6;
 
       const r = radiusOf(s.mass);
+      // 湧水ゾーン（深大寺）。位置は動かす前のもので見る —— サメの速度が
+      // 変わるだけで判定が揺れないよう、1ティックの中で1回だけ引く
+      const inSpring = !!gimmick && gimmick.springAt(s.x, s.y);
 
       if (s.isBot) botThink(s, dt);
       // 人のサメ（自分・他人とも）は aim/boost が外から入る。ここでは何もしない
@@ -641,9 +767,13 @@ export function createWorld({ map, authority = true, diffs = false }) {
         s.stam = Math.max(0, s.stam - DASH_DRAIN * s.def.boostCost * dt);
         if (s.stam === 0) s.winded = true;
       } else {
-        s.stam = Math.min(1, s.stam + DASH_REFILL * dt);
+        s.stam = Math.min(1, s.stam + DASH_REFILL * (inSpring ? gimmick.def.refill : 1) * dt);
         if (s.winded && s.stam >= DASH_MIN) s.winded = false;
       }
+      // 「そばガード効果を一時付与」（docs §3 ⑤）。docs はこれ以上のことを書いていないので、
+      // 深大寺サメのスキルと同じ一撃ぶんの盾（resolve が食う）を、浸かっている間だけ
+      // 張り直し続ける形にした。出ると def.guard 秒で切れる＝「一時」
+      if (inSpring && gimmick.def.guard) s.guard = Math.max(s.guard, gimmick.def.guard);
 
       let sp = BASE_SPEED * s.def.speed * (1 - Math.min(0.26, r / 420));
       if (canBoost) sp *= BOOST_MULT * s.def.boostPower;
@@ -655,8 +785,11 @@ export function createWorld({ map, authority = true, diffs = false }) {
       s.angle = steer(s.angle, s.aim, turn * dt);
 
       const px = s.x, py = s.y;
-      s.x += Math.cos(s.angle) * sp * dt;
-      s.y += Math.sin(s.angle) * sp * dt;
+      // 環境ギミック（#83）。急流も気流も「速度ベクトルへの加算」で、向きは変えない。
+      // 乗れば速く、逆らえば遅い。強さと向きは data.js の gimmick が持つ
+      const wind = gimmick ? gimmick.windAt(px, py, envT) : NO_WIND;
+      s.x += Math.cos(s.angle) * sp * dt + wind.x * dt;
+      s.y += Math.sin(s.angle) * sp * dt + wind.y * dt;
 
       // 壁：すり抜け中と bot は押し戻し、それ以外は死亡
       const phasing = s.def.id === 'yokai' && s.skill > 0;
@@ -719,6 +852,19 @@ export function createWorld({ map, authority = true, diffs = false }) {
       s.body = bodyOf(s);
     }
 
+    // 気流に巻かれた餌。餌の「増減」は authority だけの仕事だが、これは動かすだけなので
+    // 両方が回す —— スナップショットは餌の座標を配り直さない（増えた分と消えた分しか
+    // 送らない）ので、ここを authority に閉じると予測側の餌は吸われずその場に残る。
+    // 同じ式を同じ時計（envT）で回すぶんには答えは揃うし、寄せ先が同じ滑走路なので
+    // 多少ずれても離れていかない
+    if (gimmick && gimmick.runway && gimmick.level(envT) > 0) {
+      for (const f of food) {
+        const p = gimmick.swirlFood(f.x, f.y, envT, dt);
+        // 渦の接線成分は帯を横切る向きにも効くので、外へ弾き出さないか確かめる
+        if (p && arena.inside(p.x, p.y)) { f.x = p.x; f.y = p.y; }
+      }
+    }
+
     // ここから先（餌の増減・生死）は authority だけが回す。答えが2つあると盤面が割れる。
     // 予測側は結果をスナップショットで受け取る（吸引で動いた餌もサーバの座標が正）
     if (world.authority) resolve(dt);
@@ -740,8 +886,12 @@ export function createWorld({ map, authority = true, diffs = false }) {
    * それ以外は差分：サメは全部、餌は増減だけ、名簿は顔ぶれが変わったときだけ。
    */
   world.snapshot = (full = false) => {
-    if (full) return { t: 'full', r: roster(), s: sharks.map(packShark), f: food.map(packFood) };
-    const m = { t: 'snap', s: sharks.map(packShark) };
+    // 環境ギミックの時計。周期もの（プロペラ気流）は両方が同じ位相で回っていないと
+    // 「サーバでは吹いているのにこちらでは凪」になり、帯の中のサメだけ位置が割れる。
+    // ギミックの無いエリアでは載せない（従来どおりのバイト列のまま）
+    const e = gimmick ? { e: +envT.toFixed(2) } : null;
+    if (full) return { t: 'full', ...e, r: roster(), s: sharks.map(packShark), f: food.map(packFood) };
+    const m = { t: 'snap', ...e, s: sharks.map(packShark) };
     if (fAdd.length) m.fa = fAdd.map(packFood);
     if (fDel.length) m.fd = fDel.slice();
     if (deaths.length) m.d = deaths.slice();   // 死因。リザルトの「◯◯に食われた」の出どころ
@@ -757,6 +907,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
    */
   world.applySnapshot = (m, me) => {
     const full = m.t === 'full';
+    if (typeof m.e === 'number') envT = m.e;   // 環境の時計はサーバに合わせる
     if (m.r) {
       const keep = new Set(m.r.map((e) => e[0]));
       for (const [nid, nm, di] of m.r) {
