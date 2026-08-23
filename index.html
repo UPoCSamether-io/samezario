@@ -370,35 +370,59 @@
   <!-- ================= 遊び方 ================= -->
   <section id="s-howto" class="screen">
     <div class="h-full flex items-center justify-center px-6 py-[var(--bar-pad)]">
-      <!-- 文量はブースで15秒で読める量に絞ってある（本文225字）。横持ちでは本文が
-           213px しか映らず、元の368字は2.25画面ぶんスクロールしないと読み切れなかった。
-           2カラム化だけでは 480→347px にしかならず折り返しに収まらない（実測）ので、
-           先に文章を削ってある。増やすときはこの上限を超えないこと。
-           死＝カット。リザルトの見出しが CUT! なので、説明と結果を同じ語でつなぐ -->
+      <!-- 3ページ。1ページ＝デモ1つ＋2行で、全体でも本文は約100字（旧・225字の1画面）。
+           文字で足りない「跡が2.5秒残る」「跡に触れた側がカットされる」は、
+           左（横持ち）／上（縦）のデモが本編と同じ絵で毎回見せる（src/howto-demo.js）。
+           操作の言い回しは .keys / .touch-only で一文まるごと入れ替える。「カーソル」も
+           「クリック」もタッチではその語自体が嘘になるので、断片ではなく文ごと持つ -->
       <div id="howto-panel" class="w-full max-w-2xl bg-paper ink-4 hard-lg rounded-xl overflow-hidden max-h-full flex flex-col">
         <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
-        <div id="howto-body" class="p-7 max-sm:p-4 overflow-auto thin-scroll">
-          <h2 id="howto-title" class="font-display font-extrabold text-3xl mb-5"><ruby>遊<rp>(</rp><rt>あそ</rt><rp>)</rp></ruby>び<ruby>方<rp>(</rp><rt>かた</rt><rp>)</rp></ruby></h2>
-          <ol id="howto-list" class="space-y-4 text-[15px] leading-relaxed">
-            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">1</span>
-              <div><b class="font-display"><ruby>移動<rp>(</rp><rt>いどう</rt><rp>)</rp></ruby></b><span class="keys"> — マウスカーソルの<ruby>方向<rp>(</rp><rt>ほうこう</rt><rp>)</rp></ruby>へ<ruby>進<rp>(</rp><rt>すす</rt><rp>)</rp></ruby>みます。<ruby>頭<rp>(</rp><rt>あたま</rt><rp>)</rp></ruby>は<ruby>常<rp>(</rp><rt>つね</rt><rp>)</rp></ruby>にカーソルを<ruby>追<rp>(</rp><rt>お</rt><rp>)</rp></ruby>いかけます。</span><span class="touch-only"> — <ruby>画面<rp>(</rp><rt>がめん</rt><rp>)</rp></ruby>をなぞった<ruby>方向<rp>(</rp><rt>ほうこう</rt><rp>)</rp></ruby>へ<ruby>進<rp>(</rp><rt>すす</rt><rp>)</rp></ruby>みます。<ruby>指<rp>(</rp><rt>ゆび</rt><rp>)</rp></ruby>を<ruby>置<rp>(</rp><rt>お</rt><rp>)</rp></ruby>いた<ruby>場所<rp>(</rp><rt>ばしょ</rt><rp>)</rp></ruby>が<ruby>基準<rp>(</rp><rt>きじゅん</rt><rp>)</rp></ruby>です。</span></div></li>
-            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">2</span>
-              <div><b class="font-display">ダッシュ</b><span class="keys"> — <kbd class="kbd">左クリック</kbd> / <kbd class="kbd">Space</kbd></span><span class="touch-only"> — <ruby>右下<rp>(</rp><rt>みぎした</rt><rp>)</rp></ruby>の<b>DASH</b>を<ruby>押<rp>(</rp><rt>お</rt><rp>)</rp></ruby>しっぱなし</span>。スタミナを<ruby>使<rp>(</rp><rt>つか</rt><rp>)</rp></ruby>って<ruby>加速<rp>(</rp><rt>かそく</rt><rp>)</rp></ruby>。<ruby>使<rp>(</rp><rt>つか</rt><rp>)</rp></ruby>い<ruby>切<rp>(</rp><rt>き</rt><rp>)</rp></ruby>ると<ruby>息切<rp>(</rp><rt>いきぎ</rt><rp>)</rp></ruby>れします。</div></li>
-            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">3</span>
-              <div><b class="font-display"><ruby>泳<rp>(</rp><rt>およ</rt><rp>)</rp></ruby>いだ<ruby>跡<rp>(</rp><rt>あと</rt><rp>)</rp></ruby></b> — ダッシュ<ruby>中<rp>(</rp><rt>ちゅう</rt><rp>)</rp></ruby>は<ruby>泳<rp>(</rp><rt>およ</rt><rp>)</rp></ruby>いだ<ruby>跡<rp>(</rp><rt>あと</rt><rp>)</rp></ruby>が<ruby>約<rp>(</rp><rt>やく</rt><rp>)</rp></ruby>2.5<ruby>秒残<rp>(</rp><rt>びょうのこ</rt><rp>)</rp></ruby>り、<b><ruby>触<rp>(</rp><rt>ふ</rt><rp>)</rp></ruby>れた<ruby>相手<rp>(</rp><rt>あいて</rt><rp>)</rp></ruby>はカット</b>（<ruby>自分<rp>(</rp><rt>じぶん</rt><rp>)</rp></ruby>は<ruby>平気<rp>(</rp><rt>へいき</rt><rp>)</rp></ruby>）。<ruby>囲<rp>(</rp><rt>かこ</rt><rp>)</rp></ruby>い<ruby>込<rp>(</rp><rt>こ</rt><rp>)</rp></ruby>みが<ruby>決<rp>(</rp><rt>き</rt><rp>)</rp></ruby>め<ruby>手<rp>(</rp><rt>て</rt><rp>)</rp></ruby>です。</div></li>
-            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-yellow ink-2 rounded-full font-mono font-bold hard-sm">4</span>
-              <div><b class="font-display"><ruby>特技<rp>(</rp><rt>とくぎ</rt><rp>)</rp></ruby></b><span class="keys"> — <kbd class="kbd">E</kbd> / <kbd class="kbd">Shift</kbd></span><span class="touch-only"> — <ruby>右下<rp>(</rp><rt>みぎした</rt><rp>)</rp></ruby>の<b><ruby>特技<rp>(</rp><rt>とくぎ</rt><rp>)</rp></ruby></b>ボタン</span>。サメごとの<ruby>特技<rp>(</rp><rt>とくぎ</rt><rp>)</rp></ruby>（クールダウンあり）。</div></li>
-            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-danger text-paper ink-2 rounded-full font-mono font-bold hard-sm">!</span>
-              <div><b class="font-display">カットがかかる<ruby>条件<rp>(</rp><rt>じょうけん</rt><rp>)</rp></ruby></b> — <ruby>外壁<rp>(</rp><rt>がいへき</rt><rp>)</rp></ruby>、または<b><ruby>他<rp>(</rp><rt>ほか</rt><rp>)</rp></ruby>のサメの<ruby>胴体<rp>(</rp><rt>どうたい</rt><rp>)</rp></ruby></b>に<ruby>頭<rp>(</rp><rt>あたま</rt><rp>)</rp></ruby>からぶつかること。<b><ruby>大<rp>(</rp><rt>おお</rt><rp>)</rp></ruby>きさは<ruby>無関係<rp>(</rp><rt>むかんけい</rt><rp>)</rp></ruby></b>で、<ruby>小<rp>(</rp><rt>ちい</rt><rp>)</rp></ruby>さいサメでも<ruby>大物<rp>(</rp><rt>おおもの</rt><rp>)</rp></ruby>にカットをかけられます。</div></li>
-            <!-- マーカーに文字を置くとキー表記（Esc）と紛らわしいのでアイコンにする -->
-            <li class="flex gap-3"><span class="shrink-0 w-8 h-8 grid place-items-center bg-mint ink-2 rounded-full hard-sm"><span class="material-symbols-rounded !text-[18px]">pause</span></span>
-              <div><b class="font-display"><ruby>一時停止<rp>(</rp><rt>いちじていし</rt><rp>)</rp></ruby></b><span class="keys"> — <kbd class="kbd">Esc</kbd></span><span class="touch-only"> — リーダーボード<ruby>横<rp>(</rp><rt>よこ</rt><rp>)</rp></ruby>の<span class="material-symbols-rounded !text-[15px] align-text-bottom">pause</span>ボタン</span>。<ruby>他<rp>(</rp><rt>ほか</rt><rp>)</rp></ruby>の<ruby>人<rp>(</rp><rt>ひと</rt><rp>)</rp></ruby>が<ruby>居<rp>(</rp><rt>い</rt><rp>)</rp></ruby>る<ruby>部屋<rp>(</rp><rt>へや</rt><rp>)</rp></ruby>では<ruby>世界<rp>(</rp><rt>せかい</rt><rp>)</rp></ruby>は<ruby>止<rp>(</rp><rt>と</rt><rp>)</rp></ruby>まりません。</div></li>
-          </ol>
+        <div id="howto-body" class="p-6 max-sm:p-4 min-h-0 overflow-auto thin-scroll">
+          <canvas id="howto-demo" aria-hidden="true"></canvas>
+          <div id="howto-copy">
+            <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">HOW TO PLAY</div>
+
+            <div class="howto-page" data-page="0">
+              <h2 class="howto-h font-display font-extrabold">すすむ</h2>
+              <p class="howto-p">
+                <span class="keys">マウスカーソルのほうへ、ずっと<ruby>泳<rp>(</rp><rt>およ</rt><rp>)</rp></ruby>ぎます。</span><span class="touch-only"><ruby>画面<rp>(</rp><rt>がめん</rt><rp>)</rp></ruby>をゆびでなぞったほうへ、ずっと<ruby>泳<rp>(</rp><rt>およ</rt><rp>)</rp></ruby>ぎます。</span>
+              </p>
+            </div>
+
+            <div class="howto-page" data-page="1" hidden>
+              <h2 class="howto-h font-display font-extrabold">ダッシュ</h2>
+              <p class="howto-p">
+                <span class="keys"><kbd class="kbd">左クリック</kbd> か <kbd class="kbd">Space</kbd> で<ruby>加速<rp>(</rp><rt>かそく</rt><rp>)</rp></ruby>。</span><span class="touch-only"><ruby>右下<rp>(</rp><rt>みぎした</rt><rp>)</rp></ruby>の <b>DASH</b> を<ruby>押<rp>(</rp><rt>お</rt><rp>)</rp></ruby>しっぱなしで<ruby>加速<rp>(</rp><rt>かそく</rt><rp>)</rp></ruby>。</span>
+                <!-- 「泳いだ跡」ではない。跡が出るのはダッシュ中だけ（sim.js の canBoost）。
+                     「ダッシュの跡」と書くと横持ちでカタカナが行またぎで割れるので「その跡」 -->
+                <b>その<ruby>跡<rp>(</rp><rt>あと</rt><rp>)</rp></ruby>が2.5<ruby>秒<rp>(</rp><rt>びょう</rt><rp>)</rp></ruby>のこります。</b>
+              </p>
+            </div>
+
+            <div class="howto-page" data-page="2" hidden>
+              <h2 class="howto-h font-display font-extrabold">カット！</h2>
+              <p class="howto-p">
+                <ruby>跡<rp>(</rp><rt>あと</rt><rp>)</rp></ruby>・ほかのサメの<ruby>胴体<rp>(</rp><rt>どうたい</rt><rp>)</rp></ruby>・<ruby>外壁<rp>(</rp><rt>がいへき</rt><rp>)</rp></ruby>に<b><ruby>頭<rp>(</rp><rt>あたま</rt><rp>)</rp></ruby>からぶつかると おわり。</b>
+                <b><ruby>大<rp>(</rp><rt>おお</rt><rp>)</rp></ruby>きさは<ruby>関係<rp>(</rp><rt>かんけい</rt><rp>)</rp></ruby>なし。</b>
+              </p>
+            </div>
+          </div>
         </div>
         <!-- 行き先とラベルは main.js が差し替える。初回のゲームスタートに挟まったときだけ
-             タイトルへ戻さず、そのままロケ地選択へ送る -->
-        <div id="howto-foot" class="p-5 pt-0 shrink-0 flex justify-center">
-          <button id="howto-go" class="btn primary !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
+             タイトルへ戻さず、そのままロケ地選択へ送る。最終ページ以外は #howto-next -->
+        <div id="howto-foot" class="p-5 pt-0 shrink-0 flex items-center gap-3">
+          <!-- 1ページ目でも場所は空けたまま（invisible）にする。hidden にすると
+               送るたびに中点と次へが左右へずれて、指の下からボタンが逃げる -->
+          <button id="howto-back" class="btn !w-auto invisible" type="button"><div class="cap clapper-stripes"></div>
+            <div class="py-1.5 px-5 max-sm:px-4 font-display font-extrabold text-sm">←<span class="max-sm:hidden"> まえへ</span></div></button>
+          <div id="howto-dots" class="flex items-center gap-2 mx-auto">
+            <button class="howto-dot on" type="button" data-page="0" aria-label="1ページ目"></button>
+            <button class="howto-dot" type="button" data-page="1" aria-label="2ページ目"></button>
+            <button class="howto-dot" type="button" data-page="2" aria-label="3ページ目"></button>
+          </div>
+          <button id="howto-next" class="btn primary !w-auto" type="button"><div class="cap clapper-stripes"></div>
+            <div class="py-1.5 px-8 font-display font-extrabold text-sm">つぎへ →</div></button>
+          <button id="howto-go" class="btn primary !w-auto" data-go="title" hidden><div class="cap clapper-stripes"></div>
             <div id="howto-go-label" class="py-1.5 px-8 font-display font-extrabold text-sm">とじる</div></button>
         </div>
       </div>
