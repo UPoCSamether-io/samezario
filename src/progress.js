@@ -11,6 +11,7 @@
 // main.js が直接書いて persist() する（従来どおり）。混ぜないよう、この2系統だけは意識して分けてある。
 
 import { SHARKS } from './data.js';
+import { STAGE_RATIO } from './salvage.js';
 
 const KEY = 'samezario.save';   // index.html のタイトル用インラインスクリプトも同じキーを読む
 
@@ -30,6 +31,7 @@ const createDefaults = () => ({
   xp: 0,          // 累計経験値。レベル・解放・復元段階はすべてここから導出する
   seed: 0,        // 虫食い位置の種。初回だけ生成し、以後変えない
   seenLevel: 0,   // 史料を最後に開いたときのレベル。赤点の消灯判定
+  seenXp: 0,      // 同じく、そのときの累計XP。ゲージをどこから伸ばすかの起点
   claimedSharks: ['cinema'],   // 能動的に獲得したサメ。見本の映画サメは最初から
   salvageTutorialSeen: false,   // 史料画面の遊び方を一度でも閉じたか
 });
@@ -58,6 +60,9 @@ export const persist = () => localStorage.setItem(KEY, JSON.stringify(save));
 // 埋めたら必ず書き戻す。seed は乱数なので、保存しないまま次の起動を迎えると
 // 別の値が生まれ、マスク位置が総入れ替えになって復元途中の文章が壊れる。
 if (!('xp' in raw)) save.xp = save.best;
+// seenXp が無いセーブは今の位置を起点にする。0 のままだと、次に史料を開いた瞬間に
+// バーが 0 から一気に伸びて「この1プレイで全部稼いだ」という嘘の動きになる
+if (!('seenXp' in raw)) save.seenXp = save.xp;
 if (!save.seed) save.seed = ((Math.random() * 0xffffffff) >>> 0) || 1;
 persist();
 
@@ -108,22 +113,27 @@ export function markShared(spot) {
 }
 
 /**
- * レベルの累計XPしきい値。差分は 1000 + 500n の逓増。
+ * レベルの累計XPしきい値。二次式 250x^2 + 1250x を x=0.5 刻みで引き、50 単位で丸めたもの。
  *
- * 1プレイの到達質量は 1000〜2000（開始 30 から育つ）。旧値は 10 分の 1 の
- * スケールで、レベル1を開始数秒で、史料が完成するレベル3すら初回プレイの
- * 途中で越えていた。段階0〜3 の虫食いが一度も目に入らないまま終わるので、
- * 曲線の形はそのままに 10 倍した。
+ * 1プレイの到達質量は 1000〜2000（開始 30 から育つ）。かつては x=1 刻みの18件で、
+ * 最初の変化が 1,500XP。1プレイでは届かないことがあり、初回プレイの結果で
+ * 1文字も増えないという「最初のごほうびが遠い」状態だった。刻みを半分にして
+ * 最初の変化を 700XP へ下げてある（1プレイ目で必ず泥が落ちる）。
  *
- * この値だとレベル3（＝史料の完成と土偶サメの解放）まで 3〜6 プレイで、
- * 各段階が 1〜2 プレイずつ表示される。全18レベルは 50〜100 プレイの長期目標。
+ * 曲線そのものは変えていないので、各幕の完成XP（6,000 / 16,500 / 31,500 /
+ * 51,000 / 75,000 / 103,500）は1XPも動いていない。既存セーブの xp もそのまま
+ * 使える（段階が細かくなるだけで巻き戻らない）。
  */
 export const LEVEL_XP = [
-  1500, 3500, 6000, 9000, 12500, 16500, 21000, 26000, 31500,
-  37500, 44000, 51000, 58500, 66500, 75000, 84000, 93500, 103500,
+  700, 1500, 2450, 3500, 4700, 6000, 7450, 9000, 10700, 12500, 14450, 16500,
+  18700, 21000, 23450, 26000, 28700, 31500, 34450, 37500, 40700, 44000, 47450, 51000,
+  54700, 58500, 62450, 66500, 70700, 75000, 79450, 84000, 88700, 93500, 98450, 103500,
 ];
 
-const STAGES = 3;   // サメ1種あたりの復元段階数
+// サメ1種あたりの復元段階数。STAGE_RATIO の「段階0から完成まで」の刻み数と
+// 必ず一致していなければならない（ずれると史料が完成しないまま次の幕へ進む、
+// あるいは完成しても最後の泥が落ちない）ので、数えて出す。
+const STAGES = STAGE_RATIO.length - 1;
 
 /** 対戦終了時の到達質量を経験値に入れる。1プレイにつき1回だけ呼ぶこと */
 export const addXp = (mass) => {
@@ -135,22 +145,39 @@ export const addXp = (mass) => {
 
 export const level = () => LEVEL_XP.filter((t) => save.xp >= t).length;
 
+/** 幕1本ぶんのXP区間 [始まり, 完成]。era 1 だけ 0 から始まる */
+const span = (era) => [era <= 1 ? 0 : LEVEL_XP[STAGES * (era - 1) - 1], LEVEL_XP[STAGES * era - 1]];
+
 /**
  * その史料1本ぜんたいの進み具合。{ratio: 0..1, remain: 完成までの残りXP}。
  *
  * レベルごとに0へ戻さない。段階が変わるたびにバーが空になると、1本を
  * どこまで復元したのかが分からなくなるため、始まりから完成までを1本で見せる。
+ *
+ * xp を渡せる形にしてあるのは、史料画面が「前に開いたときの位置（seenXp）」を
+ * 同じ物差しで欲しがるため。省略時は現在値。
  */
-export function salvageProgress(era) {
-  const from = era <= 1 ? 0 : LEVEL_XP[STAGES * (era - 1) - 1];
-  const to = LEVEL_XP[STAGES * era - 1];
+export function salvageProgress(era, xp = save.xp) {
+  const [from, to] = span(era);
   return {
-    ratio: Math.max(0, Math.min(1, (save.xp - from) / (to - from))),
-    remain: Math.max(0, to - save.xp),
+    ratio: Math.max(0, Math.min(1, (xp - from) / (to - from))),
+    remain: Math.max(0, to - xp),
   };
 }
 
-/** そのサメの復元段階(0..3)。era 1 はレベル0から、era 2 はレベル3から始まる */
+/**
+ * 幕の中の段階の区切り（両端を除く STAGES-1 個）を、ゲージ上の位置(%)で返す。
+ *
+ * 等間隔にしてはいけない。XPのしきい値は逓増する（700, 1500, 2450, …）ので、
+ * 等間隔に置くと「あと少しで文字が増える」の位置が実際とずれて嘘になる。
+ */
+export const stageTicks = (era) => {
+  const [from, to] = span(era);
+  return LEVEL_XP.slice(STAGES * (era - 1), STAGES * era - 1)
+    .map((t) => ((t - from) / (to - from)) * 100);
+};
+
+/** そのサメの復元段階(0..STAGES)。era 1 はレベル0から、era 2 はレベル6から始まる */
 export const stageOf = (era) =>
   Math.max(0, Math.min(STAGES, level() - STAGES * (era - 1)));
 
@@ -197,8 +224,8 @@ export const claimShark = (id) =>
     ? save
     : replace({ claimedSharks: [...save.claimedSharks, id] });
 
-// 既存セーブの移行。claimedSharks を持たないセーブへ、旧・自動解放条件（level() >= 3*era）で
-// 到達済みだったサメを埋める。これが無いと、既にレベル3以上の既存プレイヤーは
+// 既存セーブの移行。claimedSharks を持たないセーブへ、旧・自動解放条件（level() >= STAGES*era）で
+// 到達済みだったサメを埋める。これが無いと、既に第1幕を完成させていた既存プレイヤーは
 // 解放済みだったサメが次回起動でロックへ戻る（save.shark がそれを指していれば不整合になる）。
 //
 // level() はアロー関数で巻き上げされないので、上の xp/seed の移行ブロックには書けない。
@@ -217,8 +244,8 @@ if (!('salvageTutorialSeen' in raw) && raw.scriptTutorialSeen) {
   replace({ salvageTutorialSeen: true });
 }
 
-/** 史料を開いた。赤点を消す */
-export const markSalvageSeen = () => replace({ seenLevel: level() });
+/** 史料を開いた。赤点を消し、次に開いたときのゲージの起点を今の位置にする */
+export const markSalvageSeen = () => replace({ seenLevel: level(), seenXp: save.xp });
 
 // 史料が実際に変化しうる最大レベル。データから引くので区分を足せば自動で伸びる
 const SALVAGE_MAX = Math.max(0, ...SHARKS.filter((s) => s.salvageText).map((s) => s.era * STAGES));

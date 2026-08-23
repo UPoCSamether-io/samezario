@@ -55,8 +55,8 @@ test('protectedEnds + maskSet: 冒頭行と末尾行は伏せない（引きを�
   assert.ok(keep.has(toks.length - 1), '末尾行の末尾が保護されていない');
 });
 
-test('STAGE_RATIO: 4段階で単調減少し、最後は0', () => {
-  assert.deepEqual(STAGE_RATIO, [0.40, 0.25, 0.12, 0]);
+test('STAGE_RATIO: 7段階で単調減少し、最後は0', () => {
+  assert.deepEqual(STAGE_RATIO, [0.40, 0.32, 0.25, 0.185, 0.12, 0.06, 0]);
 });
 
 test('renderHTML: 伏せていない塊にはふりがなが付く', () => {
@@ -97,28 +97,37 @@ test('renderHTML: HTML特殊文字をエスケープする', () => {
 
 import { salvageView } from './salvage.js';
 
+const LAST = STAGE_RATIO.length - 1;
+
+// SAMPLE は伏せられる文字が5つしかなく、隣り合う段階（0.40 と 0.32）が同じ数に
+// 丸まって「新出ゼロ」になる。段階の差を見る側では長い本文を使う（本物の史料は
+// 400字超で、そちらは data.test.mjs が全6幕ぶん見ている）
+const LONG = `${SAMPLE}
+`.repeat(8);
+
 test('salvageView: 段階が進むと読める文字が増える', () => {
-  const counts = [0, 1, 2, 3].map((s) => salvageView(SAMPLE, 99, s).readable);
+  const counts = STAGE_RATIO.map((_, s) => salvageView(SAMPLE, 99, s).readable);
   for (let i = 1; i < counts.length; i++) {
     assert.ok(counts[i] >= counts[i - 1], `段階${i} で読める文字が減っている`);
   }
-  assert.ok(counts[3] > counts[0], '最終段階が初期段階より読める');
+  assert.ok(counts[LAST] > counts[0], '最終段階が初期段階より読める');
 });
 
-test('salvageView: 段階3で完全復元される', () => {
-  const v = salvageView(SAMPLE, 99, 3);
+test('salvageView: 最終段階で完全復元される', () => {
+  const v = salvageView(SAMPLE, 99, LAST);
   assert.equal(v.readable, v.total);
   assert.ok(!v.html.includes('■'));
 });
 
 test('salvageView: 段階0では新出ゼロ、段階1以降は新出がある', () => {
-  assert.equal(salvageView(SAMPLE, 99, 0).added, 0);
-  assert.ok(salvageView(SAMPLE, 99, 1).added > 0, '段階1 に新出文字がない');
-  assert.ok(salvageView(SAMPLE, 99, 3).added > 0, '段階3 に新出文字がない');
+  assert.equal(salvageView(LONG, 99, 0).added, 0);
+  for (let s = 1; s <= LAST; s++) {
+    assert.ok(salvageView(LONG, 99, s).added > 0, `段階${s} に新出文字がない`);
+  }
 });
 
 test('salvageView: 新出文字はハイライトされて出力される', () => {
-  const v = salvageView(SAMPLE, 99, 1);
+  const v = salvageView(LONG, 99, 1);
   assert.match(v.html, /<mark class="fresh">/);
 });
 

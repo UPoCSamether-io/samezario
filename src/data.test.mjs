@@ -47,19 +47,23 @@ test('全サメが描画に必要なパラメータを持つ', () => {
   }
 });
 
-test('本物の史料は段階が進むほど読める文字が確実に増える', () => {
-  const { salvageText } = SHARKS.find((d) => d.id === 'dogu');
-  const views = STAGE_RATIO.map((_, s) => salvageView(salvageText, 20260819, s));
+// 段階を刻み直したら（STAGE_RATIO を触ったら）必ずここが番人になる。刻みが細かすぎると
+// 「1段階進んだのに1文字も増えない」空振りが出て、ごほうびそのものが消える。
+// 本文の長さは幕ごとに違うので、6幕ぶん全部を見ないと1本だけ空振る事故が抜ける。
+test('本物の史料は段階が進むほど読める文字が確実に増える（全6幕・全段階）', () => {
+  for (const d of SHARKS.filter((s) => s.salvageText)) {
+    const views = STAGE_RATIO.map((_, s) => salvageView(d.salvageText, 20260819, s));
 
-  for (let s = 1; s < views.length; s++) {
-    assert.ok(
-      views[s].readable > views[s - 1].readable,
-      `段階${s} で読める文字が増えていない（${views[s - 1].readable} -> ${views[s].readable}）`,
-    );
-    assert.ok(views[s].added > 0, `段階${s} で新出文字が1文字も無い`);
+    for (let s = 1; s < views.length; s++) {
+      assert.ok(
+        views[s].readable > views[s - 1].readable,
+        `${d.id} 段階${s} で読める文字が増えていない（${views[s - 1].readable} -> ${views[s].readable}）`,
+      );
+      assert.ok(views[s].added > 0, `${d.id} 段階${s} で新出文字が1文字も無い`);
+    }
+    assert.equal(views[views.length - 1].readable, views[0].total, `${d.id}: 最終段階で全文が読めていない`);
+    assert.equal(views[0].added, 0, `${d.id}: 段階0に新出があるのはおかしい`);
   }
-  assert.equal(views[views.length - 1].readable, views[0].total, '最終段階で全文が読めていない');
-  assert.equal(views[0].added, 0, '段階0に新出があるのはおかしい');
 });
 
 test('史料は era 1..6 の6本で、章の見出しが揃っている', () => {
@@ -72,7 +76,7 @@ test('史料は era 1..6 の6本で、章の見出しが揃っている', () => 
   }
 });
 
-test('史料の本文が全4段階で描画でき、ルビ記法が壊れていない', () => {
+test('史料の本文が全段階で描画でき、ルビ記法が壊れていない', () => {
   for (const d of SHARKS.filter((s) => s.salvageText)) {
     for (let stage = 0; stage < STAGE_RATIO.length; stage++) {
       const v = salvageView(d.salvageText, 12345, stage);

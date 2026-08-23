@@ -124,19 +124,38 @@ test('level: LEVEL_XP のしきい値を超えるたびに1つ上がる', () => 
   assert.equal(P.level(), P.LEVEL_XP.length);
 });
 
-test('stageOf: era 1 はレベル0-3、era 2 はレベル3で0段階目に現れる', () => {
+test('stageOf: era 1 はレベル0-6、era 2 はレベル6で0段階目に現れる', () => {
   P.replace({ xp: 0 });
   assert.equal(P.stageOf(1), 0);
   assert.equal(P.stageOf(2), 0);
-  P.replace({ xp: P.LEVEL_XP[2] });          // レベル3
-  assert.equal(P.level(), 3);
-  assert.equal(P.stageOf(1), 3, '古代が復元完了していない');
+  P.replace({ xp: P.LEVEL_XP[5] });          // レベル6 = 6,000XP
+  assert.equal(P.level(), 6);
+  assert.equal(P.stageOf(1), 6, '古代が復元完了していない');
   assert.equal(P.stageOf(2), 0, '奈良が段階0で現れていない');
 });
 
-test('stageOf: 3を超えて増えない', () => {
+test('stageOf: 6を超えて増えない', () => {
   P.replace({ xp: P.LEVEL_XP[P.LEVEL_XP.length - 1] });
-  assert.equal(P.stageOf(1), 3);
+  assert.equal(P.stageOf(1), 6);
+});
+
+// 段階を細かくした狙いそのもの。1プレイの到達質量は 1000〜2000 なので、
+// 初回プレイの結果でレベル1に届かないと「遊んだのに史料が1文字も増えない」になる
+test('LEVEL_XP: 最初のしきい値は1プレイの到達質量（1000〜2000）より下', () => {
+  assert.ok(P.LEVEL_XP[0] < 1000, `初回プレイで届かない（${P.LEVEL_XP[0]}XP）`);
+  P.replace({ xp: 1000 });
+  assert.ok(P.stageOf(1) > 0, '1プレイぶんのXPで史料が1段階も進まない');
+});
+
+// 段階を倍にしても各幕の完成XPは動かさない、というのが移行の前提
+// （動かすと復元途中の既存プレイヤーが巻き戻る）
+test('LEVEL_XP: 各幕の完成XPは 6000/16500/31500/51000/75000/103500 のまま', () => {
+  const goals = [6000, 16500, 31500, 51000, 75000, 103500];
+  goals.forEach((xp, i) => {
+    P.replace({ xp });
+    assert.equal(P.stageOf(i + 1), 6, `第${i + 1}幕が ${xp}XP で完成していない`);
+    assert.equal(P.salvageProgress(i + 1).remain, 0);
+  });
 });
 
 test('isUnlockedShark: era 0（見本）は常に解放、それ以外は claimShark するまでレベルだけでは解放されない', () => {
@@ -144,7 +163,7 @@ test('isUnlockedShark: era 0（見本）は常に解放、それ以外は claimS
   P.replace({ xp: 0, claimedSharks: ['cinema'] });
   assert.equal(P.isUnlockedShark({ era: 0 }), true);
   assert.equal(P.isUnlockedShark(dogu), false);
-  P.replace({ xp: P.LEVEL_XP[2] });   // 旧・自動解放条件（レベル3）に達しても
+  P.replace({ xp: P.LEVEL_XP[5] });   // 旧・自動解放条件（第1幕の完成）に達しても
   assert.equal(P.isUnlockedShark(dogu), false, 'レベルだけでは解放されない');
   P.claimShark(dogu.id);
   assert.equal(P.isUnlockedShark(dogu), true, 'Claim後は解放');
@@ -178,10 +197,52 @@ test('既存セーブの移行: xp を持たないセーブは best を引き継
 });
 
 test('markSalvageSeen: seenLevel が現在のレベルに揃い、赤点判定が消える', () => {
-  P.replace({ xp: P.LEVEL_XP[2], seenLevel: 0 });
+  P.replace({ xp: P.LEVEL_XP[5], seenLevel: 0 });
   assert.ok(P.level() > P.save.seenLevel, '赤点が点いていない');
   P.markSalvageSeen();
   assert.equal(P.save.seenLevel, P.level());
+});
+
+test('markSalvageSeen: seenXp も今の位置へ進む（次に開いたときのゲージの起点）', () => {
+  P.replace({ xp: 3000, seenXp: 0 });
+  assert.equal(P.salvageProgress(1, P.save.seenXp).ratio, 0, '起点が動いてしまっている');
+  P.markSalvageSeen();
+  assert.equal(P.save.seenXp, 3000);
+  assert.equal(P.salvageProgress(1, P.save.seenXp).ratio, P.salvageProgress(1).ratio,
+    '開いた直後なのに起点と現在値がずれている（もう一度開くとバーが動く）');
+});
+
+test('salvageProgress: xp を渡すとその位置の比率になる（省略時は現在値）', () => {
+  P.replace({ xp: 6000 });
+  assert.equal(P.salvageProgress(1, 0).ratio, 0);
+  assert.equal(P.salvageProgress(1, 3000).ratio, 0.5);
+  assert.equal(P.salvageProgress(1).ratio, 1);
+});
+
+// 目盛りを等間隔で置くと「あと少しで文字が増える」の位置が実際とずれる。
+// XPのしきい値は逓増するので、間隔は必ず右へ行くほど広がる
+test('stageTicks: 段階数-1 本が昇順で 0..100 の内側に並び、等間隔ではない', () => {
+  for (const era of [1, 2, 6]) {
+    const t = P.stageTicks(era);
+    assert.equal(t.length, 5, `era${era}: 目盛りが5本でない`);
+    assert.ok(t[0] > 0 && t[4] < 100, `era${era}: 両端に目盛りが載っている`);
+    const gaps = t.map((x, i) => x - (i ? t[i - 1] : 0));
+    for (let i = 1; i < gaps.length; i++) {
+      assert.ok(gaps[i] > gaps[i - 1], `era${era}: 間隔 ${i} が広がっていない（等間隔になっている）`);
+    }
+  }
+});
+
+// 目盛りは「あと何回で文字が増えるか」を数える印なので、塗りに飲まれる位置と
+// 段階が上がる位置が一致していなければ意味がない
+test('stageTicks: k本目の目盛りは、段階が k+1 へ上がるちょうどその位置', () => {
+  const ticks = P.stageTicks(1);
+  ticks.forEach((pct, k) => {
+    P.replace({ xp: P.LEVEL_XP[k] });
+    assert.equal(P.stageOf(1), k + 1, `段階が ${k + 1} になっていない`);
+    assert.ok(Math.abs(P.salvageProgress(1).ratio * 100 - pct) < 0.001,
+      `段階${k + 1} に上がる位置(${P.salvageProgress(1).ratio * 100}%)と目盛り(${pct}%)がずれている`);
+  });
 });
 
 test('seed: 一度生成したら次の起動でも変わらない（マスク位置が総入れ替えになる）', async () => {
@@ -204,26 +265,26 @@ test('addXp: NaN や負の質量では xp を汚さない（一度入ると回�
 });
 
 test('hasNewSalvage: レベルが seenLevel を超えたときだけ赤点が点く', () => {
-  P.replace({ xp: P.LEVEL_XP[2], seenLevel: P.LEVEL_XP.length });
+  P.replace({ xp: P.LEVEL_XP[5], seenLevel: P.LEVEL_XP.length });
   assert.equal(P.hasNewSalvage(), false, '既読なのに赤点が点いている');
   P.replace({ seenLevel: 0 });
   assert.equal(P.hasNewSalvage(), true, '新出があるのに赤点が点かない');
 });
 
-test('hasNewSalvage: 史料が完成する最大レベル(妖怪=era6→レベル18)の先では、赤点は点かない', () => {
+test('hasNewSalvage: 史料が完成する最大レベル(妖怪=era6→レベル36)の先では、赤点は点かない', () => {
   // 最終幕を読み終えた状態から、さらにXPを積む。頭打ちなので赤点は点かない
-  P.replace({ xp: P.LEVEL_XP[17] * 2, seenLevel: 18 });
+  P.replace({ xp: P.LEVEL_XP[35] * 2, seenLevel: 36 });
   assert.equal(P.hasNewSalvage(), false, '史料完成後のXP加算で赤点が誤って点いている');
 });
 
 test('hasNewSalvage: 第2幕の完成後も、第3幕の泥が落ちれば赤点が点く', () => {
-  P.replace({ xp: P.LEVEL_XP[6], seenLevel: 6 });
+  P.replace({ xp: P.LEVEL_XP[13], seenLevel: 12 });
   assert.equal(P.hasNewSalvage(), true);
 });
 
 test('salvageProgress: 史料1本を通した割合と、完成までの残りXPを返す', () => {
-  // era 1（土偶）は 0 -> LEVEL_XP[2] が1本ぶん
-  const goal = P.LEVEL_XP[2];
+  // era 1（土偶）は 0 -> LEVEL_XP[5]（6,000XP）が1本ぶん
+  const goal = P.LEVEL_XP[5];
   P.replace({ xp: 0 });
   assert.deepEqual(P.salvageProgress(1), { ratio: 0, remain: goal });
 
@@ -239,14 +300,14 @@ test('salvageProgress: 史料1本を通した割合と、完成までの残りXP
 });
 
 test('salvageProgress: 完成後は満杯で止まり、残りは0（マイナスを出さない）', () => {
-  P.replace({ xp: P.LEVEL_XP[2] * 3 });
+  P.replace({ xp: P.LEVEL_XP[5] * 3 });
   assert.deepEqual(P.salvageProgress(1), { ratio: 1, remain: 0 });
 });
 
 test('salvageProgress: era 2 は era 1 の完成地点から始まる（前の区間ぶんは数えない）', () => {
-  P.replace({ xp: P.LEVEL_XP[2] });          // era1 完成 = era2 の起点
+  P.replace({ xp: P.LEVEL_XP[5] });          // era1 完成 = era2 の起点
   assert.equal(P.salvageProgress(2).ratio, 0, 'era2 が途中から始まっている');
-  assert.equal(P.salvageProgress(2).remain, P.LEVEL_XP[5] - P.LEVEL_XP[2]);
+  assert.equal(P.salvageProgress(2).remain, P.LEVEL_XP[11] - P.LEVEL_XP[5]);
 });
 
 test('claimedSharks に無いサメは、レベルがいくつでも解放されない', async () => {
@@ -257,7 +318,7 @@ test('claimedSharks に無いサメは、レベルがいくつでも解放され
   };
   const m = await import('./progress.js?claim1');
   const dogu = SHARKS.find((s) => s.id === 'dogu');
-  assert.equal(m.level() > 3, true, '前提: レベルは3を超えている');
+  assert.equal(m.level() > 6, true, '前提: レベルは第1幕の完成を超えている');
   assert.equal(m.isUnlockedShark(dogu), false, 'Claim前は未解放');
   m.claimShark('dogu');
   assert.equal(m.isUnlockedShark(dogu), true, 'Claim後は解放');
@@ -276,7 +337,7 @@ test('claimShark は冪等（二度押しで配列が伸びない）', async () 
 });
 
 test('claimedSharks を持たない既存セーブは、旧・自動解放条件で埋められる', async () => {
-  // xp 9000 = LEVEL_XP[3] 到達 → 旧条件では level()>=3 の dogu が解放済みだった
+  // xp 9000 は第1幕の完成（6,000XP）を越えている → 旧条件で dogu が解放済みだった
   const store = { 'samezario.save': JSON.stringify({ v: 1, xp: 9000, unlocked: ['chofu', 'tamagawa'], points: 200 }) };
   globalThis.localStorage = {
     getItem: (k) => store[k] ?? null,
@@ -299,15 +360,15 @@ test('第2幕が入って、赤点がレベル6まで反応する', async () => 
     setItem: (k, v) => { store[k] = String(v); },
   };
   const m = await import('./progress.js?smax');
-  // レベル6（16,500XP）で第2幕が完成する。seenLevel が追いつくまで赤点が点く
-  m.replace({ xp: 16500, seenLevel: 3 });
-  assert.equal(m.level(), 6);
+  // 16,500XP（レベル12）で第2幕が完成する。seenLevel が追いつくまで赤点が点く
+  m.replace({ xp: 16500, seenLevel: 6 });
+  assert.equal(m.level(), 12);
   assert.equal(m.hasNewSalvage(), true, 'レベル6の新出をまだ見ていない');
   m.markSalvageSeen();
   assert.equal(m.hasNewSalvage(), false);
 });
 
-test('salvageProgress(2) はレベル3で0、レベル6で1', async () => {
+test('salvageProgress(2) は 6,000XP で0、16,500XP で1', async () => {
   const store = {};
   globalThis.localStorage = {
     getItem: (k) => store[k] ?? null,
@@ -341,26 +402,26 @@ test('defaultChapter: 第1幕が進行中ならそこに留まる', () => {
 });
 
 test('defaultChapter: 第1幕が完成済みだが未獲得なら、ロック中の第2幕へは飛ばず第1幕に留まる', () => {
-  // ここが今回の回帰対象。第1幕が復元完了(stageOf=3)しても claim していなければ
+  // ここが今回の回帰対象。第1幕が復元完了(stageOf=6)しても claim していなければ
   // 第2幕はまだロック中なので、defaultChapter はロック中の章を返してはいけない
-  P.replace({ xp: P.LEVEL_XP[2], claimedSharks: ['cinema'] });
-  assert.equal(P.stageOf(1), 3, '前提: 第1幕は復元完了している');
+  P.replace({ xp: P.LEVEL_XP[5], claimedSharks: ['cinema'] });
+  assert.equal(P.stageOf(1), 6, '前提: 第1幕は復元完了している');
   assert.equal(P.chapterLocked(1), true, '前提: 土偶未獲得なので第2幕はロック中');
   assert.equal(P.defaultChapter(), 0, '完成済み未獲得なのにロック中の第2幕へ飛んでいる');
 });
 
 test('defaultChapter: 第1幕を獲得済みで第2幕が進行中ならそちらへ進む', () => {
-  P.replace({ xp: P.LEVEL_XP[2], claimedSharks: ['cinema', 'dogu'] });
+  P.replace({ xp: P.LEVEL_XP[5], claimedSharks: ['cinema', 'dogu'] });
   assert.equal(P.defaultChapter(), 1);
 });
 
 test('defaultChapter: 完成・獲得済みの先に未完成の章があれば、そこへ進む', () => {
-  P.replace({ xp: P.LEVEL_XP[5], claimedSharks: ['cinema', 'dogu', 'tamagawa'] });
-  assert.equal(P.stageOf(2), 3, '前提: 第2幕も復元完了している');
+  P.replace({ xp: P.LEVEL_XP[11], claimedSharks: ['cinema', 'dogu', 'tamagawa'] });
+  assert.equal(P.stageOf(2), 6, '前提: 第2幕も復元完了している');
   assert.equal(P.defaultChapter(), 2, '第3幕（未完成）が次の行き先');
 });
 
-test('unclaimedFinishedChapter: 段階3に到達した未獲得の章だけを返す', async () => {
+test('unclaimedFinishedChapter: 最終段階に到達した未獲得の章だけを返す', async () => {
   const store = {};
   globalThis.localStorage = {
     getItem: (k) => store[k] ?? null,
@@ -371,12 +432,12 @@ test('unclaimedFinishedChapter: 段階3に到達した未獲得の章だけを�
   m.replace({ xp: 0, claimedSharks: ['cinema'] });
   assert.equal(m.unclaimedFinishedChapter(), null, '復元途中では告知しない');
 
-  m.replace({ xp: 6000, claimedSharks: ['cinema'] });   // レベル3 = 第1幕が完成
+  m.replace({ xp: 6000, claimedSharks: ['cinema'] });   // 6,000XP = 第1幕が完成
   assert.equal(m.unclaimedFinishedChapter()?.id, 'dogu', '完成した未獲得の章を返す');
 
   m.replace({ xp: 6000, claimedSharks: ['cinema', 'dogu'] });
   assert.equal(m.unclaimedFinishedChapter(), null, '獲得済みなら告知しない');
 
-  m.replace({ xp: 16500, claimedSharks: ['cinema', 'dogu'] });   // レベル6 = 第2幕が完成
+  m.replace({ xp: 16500, claimedSharks: ['cinema', 'dogu'] });   // 16,500XP = 第2幕が完成
   assert.equal(m.unclaimedFinishedChapter()?.id, 'tamagawa');
 });

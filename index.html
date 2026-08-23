@@ -124,8 +124,7 @@
               <!-- 旧・角ボタンの手描き SVG と同じ「線の入った書類」。history_edu の羽ペンは
                    24px の FILL=1 だと潰れて何の絵か読めない。menu_book（図鑑）とも輪郭で分かれる -->
               <span class="material-symbols-rounded">description</span>
-              <span id="salvage-dot"
-                    class="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-danger border-2 border-ink hidden"></span>
+              <span class="salvage-dot absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-danger border-2 border-ink hidden"></span>
             </span>
           </div>
         </button>
@@ -547,8 +546,10 @@
             <div class="py-2 px-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap text-center">もう<ruby>一度撮<rp>(</rp><rt>いちどと</rt><rp>)</rp></ruby>る</div></button>
           <button class="btn" data-go="map"><div class="cap clapper-stripes"></div>
             <div class="py-2 px-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap text-center">ロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>を<ruby>変<rp>(</rp><rt>か</rt><rp>)</rp></ruby>える</div></button>
-          <button class="btn" data-go="title"><div class="cap clapper-stripes"></div>
-            <div class="py-2 px-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap text-center">タイトルへ</div></button>
+          <!-- 赤点はボタンの内側へ。外周だとカチンコの腕（.btn::before）と重なる（タイトル側と同じ理由） -->
+          <button class="btn" data-go="title" aria-label="タイトルへ"><div class="cap clapper-stripes"></div>
+            <div class="py-2 px-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap text-center relative">タイトルへ<span
+              class="salvage-dot absolute -top-1 -right-0.5 w-3 h-3 rounded-full bg-danger border-2 border-ink hidden"></span></div></button>
         </div>
       </div>
     </div>
