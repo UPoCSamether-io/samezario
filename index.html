@@ -56,23 +56,21 @@
 
   <!-- ================= タイトル ================= -->
   <section id="s-title" class="screen on">
-    <!-- 史料はタイトルからだけ開く。帯の中ではなく帯の下に、図鑑の閉じるボタンと同じ語彙で置く。
+    <!-- 遊び方はここからだけ開き直せる。初回の「ゲームスタート」は main.js が
+         save.seenHowto を見て遊び方へ寄り道させるので、この角ボタンは二度目以降の
+         読み直し用。nav の枠は新キャラ解放の入口である史料に譲った。
          この section の中にあるので、対戦中に隠す処理は要らない（.screen の display が持つ）。
          左下なのは、max-height:500px で組みが2カラムになると nav が右列を上から下まで
          占めるため（style.css の #title-stage）。右上も右下も nav と重なる。実測で
          667x375 / 932x430 / 1024x768 / 1920x1080 のいずれでも空いていたのは左下だけ。
-         画面ごとに位置を変えると覚えられないので、どの幅でもここに固定する -->
-    <button id="salvage-btn" type="button" aria-label="史料"
+         画面ごとに位置を変えると覚えられないので、どの幅でもここに固定する。
+         アイコンは #salvage-help と同じ help。ヘルプの見た目は一つに揃える。
+         data-go だけで足りる（main.js のグローバル click が拾い、aimHowto('title') も効く） -->
+    <button id="howto-btn" type="button" data-go="howto" aria-label="遊び方"
             class="absolute bottom-[var(--bar-pad)] left-4 z-10 grid place-items-center
                    w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-yellow ink-2 md:ink-3 hard-sm
                    transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
-      <svg viewBox="0 0 24 24" class="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" stroke-width="2.2"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M5 3h11l4 4v14H5z"/><path d="M16 3v4h4"/>
-        <path d="M9 11h6"/><path d="M9 15h6"/>
-      </svg>
-      <span id="salvage-dot"
-            class="absolute -top-1 -right-1 w-3.5 h-3.5 md:w-4 md:h-4 rounded-full bg-danger border-2 border-ink hidden"></span>
+      <span class="material-symbols-rounded !text-2xl md:!text-3xl" aria-hidden="true">help</span>
     </button>
     <div id="title-stage" class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[var(--bar-pad)]">
       <header class="text-center -rotate-1 relative">
@@ -113,11 +111,22 @@
             <span class="material-symbols-rounded">menu_book</span>
           </div>
         </button>
-        <button class="btn" data-go="howto">
+        <!-- 史料は新キャラ解放の入口。以前は nav の外（左下の角）に小さく置いていたが、
+             スマホでは見つからないまま終わる。4つ目に足すと nav が潰れるので、
+             初回に自動で出る遊び方（main.js の save.seenHowto）と枠を交換した。
+             data-go を使わないのは、開く前に chapterIdx を復元中の章へ戻すため（main.js） -->
+        <button id="salvage-btn" class="btn" type="button" aria-label="史料">
           <div class="cap clapper-stripes"></div>
           <div class="py-2.5 px-6 flex items-center justify-between">
-            <span class="font-display font-extrabold text-xl"><ruby>遊<rp>(</rp><rt>あそ</rt><rp>)</rp></ruby>び<ruby>方<rp>(</rp><rt>かた</rt><rp>)</rp></ruby></span>
-            <span class="material-symbols-rounded">sports_esports</span>
+            <span class="font-display font-extrabold text-xl"><ruby>史料<rp>(</rp><rt>しりょう</rt><rp>)</rp></ruby></span>
+            <!-- 赤点の親。ボタンの外周に付けるとカチンコの腕（.btn::before）と重なるので内側へ -->
+            <span class="relative grid place-items-center">
+              <!-- 旧・角ボタンの手描き SVG と同じ「線の入った書類」。history_edu の羽ペンは
+                   24px の FILL=1 だと潰れて何の絵か読めない。menu_book（図鑑）とも輪郭で分かれる -->
+              <span class="material-symbols-rounded">description</span>
+              <span id="salvage-dot"
+                    class="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-danger border-2 border-ink hidden"></span>
+            </span>
           </div>
         </button>
       </nav>
