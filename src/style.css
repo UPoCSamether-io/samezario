@@ -1112,23 +1112,39 @@ rp {
   .salvage-nav:not([disabled]):hover { transform: translateY(-2px); }
 }
 
-/* 次に文字が増えるまでの進み具合。復元率ではなく経験値なので、目盛りは刻まず連続で伸ばす */
+/* 次に文字が増えるまでの進み具合。塗りは復元率ではなく経験値（連続量）で、目盛りは段階の区切り */
 .salvage-gauge {
+  position: relative;           /* 段階の目盛り(.tick)の基準 */
   height: 10px; overflow: hidden;
   border: 2px solid var(--color-ink); border-radius: 99px;
   background: color-mix(in srgb, var(--color-ink) 12%, transparent);
 }
 .salvage-gauge > i {
   display: block; height: 100%; width: var(--pct);
+  position: relative; z-index: 1;   /* 目盛りの上に乗せる。通り過ぎた印は塗りに飲まれる */
   background: var(--color-yellow);
-  transition: width .5s cubic-bezier(.2, .9, .3, 1);
+  /* 泥が落ちた量を見せる一瞬なので、ゆっくり伸ばす。時間だけでなくイージングも変えてある
+     —— 旧 cubic-bezier(.2,.9,.3,1) は最初の1/4で距離の7割を走り抜けるので、秒数を伸ばしても
+     「跳ねてから止まる」に見えて速く感じる。等速寄りに減速するだけの曲線にした */
+  transition: width 1.2s cubic-bezier(.4, 0, .2, 1);
 }
 @media (prefers-reduced-motion: reduce) { .salvage-gauge > i { transition: none; } }
+
+/* 段階の区切り。位置は LEVEL_XP の実測比（progress.js の stageTicks）で、等間隔ではない。
+   到達済みの印は塗りに飲まれて消えるので、色の出し分けはしない —— 残っている印の数が
+   そのまま「あと何回で文字が増えるか」になる */
+.salvage-gauge .tick {
+  position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px;
+  background: color-mix(in srgb, var(--color-ink) 40%, transparent);
+}
 
 /* 史料画面ではゲージが紺地の上に載る。ink の枠線だと背景に沈むので紙色で描く */
 #salvage-gauge-row .salvage-gauge {
   border-color: var(--color-paper);
   background: color-mix(in srgb, var(--color-paper) 18%, transparent);
+}
+#salvage-gauge-row .salvage-gauge .tick {
+  background: color-mix(in srgb, var(--color-paper) 60%, transparent);
 }
 
 /* 復元しきった史料の獲得ボタン。押してほしいので金色に脈打たせる */
@@ -1162,7 +1178,9 @@ rp {
 
   #salvage-gauge-row { margin-top: 0.3rem; }
   #salvage-gauge-row > div:first-child { font-size: 10px; }
-  #salvage-gauge-row .salvage-gauge { height: 6px; margin-top: 0.15rem; }
+  /* 枠を 1px に落とすのは目盛りのため。box-sizing: border-box なので 6px - 2px枠 では
+     内側が 2px しか残らず、段階の印がほぼ見えない。外形は変えずに内側だけ倍にする */
+  #salvage-gauge-row .salvage-gauge { height: 6px; margin-top: 0.15rem; border-width: 1px; }
   /* :last-child ではなくクラスで当てる。復元％の行を消したとき、:last-child が
      黙ってゲージ本体に移っていた（ページ送りを移したときと同じ踏み方） */
   .salvage-gain { margin-top: 0.15rem; font-size: 9px; }

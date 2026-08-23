@@ -4,21 +4,23 @@ import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
 import { mountHowtoDemo } from './howto-demo.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, stageTicks, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
 import { salvageView, STAGE_RATIO } from './salvage.js';
 
-// 審査・開発用。?demo=1 は「獲得経験値を10倍」にする。以前はレベルを最大へ飛ばして
+// 審査・開発用。?demo=1 は「獲得経験値を3倍」にする。以前はレベルを最大へ飛ばして
 // いたが、飛ばすと肝心の場面——泥が落ちて文字が増えるところ——を見せられないまま
-// 「もう全部読める史料」が出てくるだけになる。10倍だと1プレイの到達質量 1000〜2000 が
-// 10000〜20000 になり、レベル3（＝第1幕の完成と土偶サメの解放）を1試合で越える。
-// 遊ぶ→泥が落ちる→サメを獲得、という筋が1回で通る。
+// 「もう全部読める史料」が出てくるだけになる。
 //
-// 引き換えに段階0→3 が一息に進むので、途中段階の見た目は飛ぶ。段階の移り変わりを
-// 見せたい相手には 3 くらいへ落とす（1試合で1〜2段階）。
-const DEMO_XP_MULT = 10;
+// 3倍だと1プレイの到達質量 1000〜2000 が 3000〜6000 になり、1試合で段階3〜6 まで進む。
+// 第1幕の完成（6,000XP＝土偶サメの解放）は 1〜2 試合。10倍だったころは1試合で
+// 必ず完成まで飛んでいたが、それだと途中の段階——泥が少しずつ落ちていくところ——が
+// 一度も画面に出ないまま「完成しました」になる。見せたいのはそこなので3倍に落とした。
+//
+// デモで「遊ぶ→泥が落ちる→サメを獲得」まで1試合で通したいときは 10 へ戻す。
+const DEMO_XP_MULT = 3;
 const demo = new URLSearchParams(location.search).get('demo');
 const xpMult = demo === '1' ? DEMO_XP_MULT : 1;
 if (demo === '0') replace({ xp: 0, seenLevel: 0, claimedSharks: ['cinema'], salvageTutorialSeen: false });
@@ -102,15 +104,22 @@ function show(name) {
   }, CLAP);
 }
 
-// 史料に新しい文字が現れたことを赤点で知らせる。
-// ボタンは #s-title の中にあるので、表示制御は .screen の display が持つ。
-const salvageDot = $('#salvage-dot');
-const salvageBtn = $('#salvage-btn');
+// 史料に新しい文字が現れたことを赤点で知らせる。点は2か所——タイトルの史料ボタンと、
+// リザルトの「タイトルへ」——にあり、リザルトからはタイトルの点が見えないので、
+// 「なぜタイトルへ戻るのか」を伝えるのはリザルト側の点だけ。
+//
+// id ではなく .salvage-dot を全部まとめて掴む。1つずつ配線すると、3つ目を足したときに
+// 同期漏れが必ず出る（片方だけ点きっぱなしになる）。
+const salvageDots = $$('.salvage-dot');
+
+// 赤点は視覚だけなので、スクリーンリーダーには持ち主のボタンの aria-label で言い換える。
+// 素の文言はここで控える。付け外しのたびに読み直すと「（新着あり）」が二重に積む
+const dotLabels = salvageDots.map((d) => [d.closest('button'), d.closest('button').getAttribute('aria-label')]);
+
 const syncSalvageDot = () => {
   const news = hasNewSalvage();
-  salvageDot.classList.toggle('hidden', !news);
-  // 赤点は視覚だけなので、スクリーンリーダーには aria-label の言い換えで伝える
-  salvageBtn.setAttribute('aria-label', news ? '史料（新着あり）' : '史料');
+  for (const dot of salvageDots) dot.classList.toggle('hidden', !news);
+  for (const [btn, base] of dotLabels) btn.setAttribute('aria-label', news ? `${base}（新着あり）` : base);
 };
 
 // ---------- 史料 ----------
@@ -179,13 +188,17 @@ function renderSalvage() {
   const v = salvageView(d.salvageText, save.seed, stage);
   const html = isNew ? v.html : v.html.replace(/<mark class="fresh">(.*?)<\/mark>/gs, '$1');
   const added = isNew ? v.added : 0;
-  // ゲージの塗りは復元率ではなく大きさ（XP）。復元率は 67→79→90→100（第1幕）/
-  // 69→81→91→100（第2幕）の4値しか取らない。この％はゲージのすぐ下に置くと
+  // ゲージの塗りは復元率ではなく大きさ（XP）。復元率は 67→74→79→85→90→95→100
+  // （第1幕）のような7値しか取らない。この％はゲージのすぐ下に置くと
   // ゲージの目盛りに見えるが、両者は別の量なので数字と塗りが一致せず嘘になる。
   // しかも連続量ではないので、％で出す意味がない。数字は出さず、増えた瞬間だけ
   // 「何字読めるようになったか」を言葉で出す（下の added）
   const p = salvageProgress(d.era);
   const bar = Math.round((done ? 1 : p.ratio) * 100);
+  // 前に開いたときの位置。ここを初期値にして今の位置へ伸ばすと、伸びた分が
+  // 「＋N字 読めるようになった！」と同じ量になり、数と動きが一致する。
+  // markSalvageSeen()（この関数の末尾）で seenXp が今の値へ進むので、続けて開けば動かない
+  const from = Math.round(salvageProgress(d.era, save.seenXp).ratio * 100);
 
   salvageBody.innerHTML = `
     <div class="salvage-slug">${rubify(d.salvageTagline)}</div>
@@ -200,11 +213,20 @@ function renderSalvage() {
       <!-- 単位はリザルトの「大きさ」と同じ値。同じ言葉にしないと何を溜めるのか繋がらない -->
       <span class="font-mono">${done ? '' : `${plainText('大きさ')} あと ${p.remain.toLocaleString()}`}</span>
     </div>
-    <div class="salvage-gauge mt-1" style="--pct:${bar}%"
+    <div class="salvage-gauge mt-1" style="--pct:${from}%"
          role="progressbar" aria-valuenow="${bar}" aria-valuemin="0" aria-valuemax="100"
-         aria-label="${done ? '復元完了' : '全部読めるまで'}"><i></i></div>
+         aria-label="${done ? '復元完了' : '全部読めるまで'}"
+      >${stageTicks(d.era).map((x) => `<span class="tick" style="left:${x}%"></span>`).join('')}<i></i></div>
     ${added ? `<div class="salvage-gain text-[11px] font-bold text-yellow mt-1.5">${rubify(
       `＋${added}｜字《じ》 ｜読《よ》めるようになった！`)}</div>` : ''}`;
+
+  // 初期値（from）を一度描いてから今の値へ差し替える。既存の transition: width .5s が
+  // そのまま効く。SHUT ぶん待つのは、帯（シャッター）が開く前に始めると動きの前半が
+  // 幕の裏で終わってしまうため。prefers-reduced-motion は CSS 側で transition が切れる
+  if (from !== bar) {
+    const gauge = $('.salvage-gauge', salvageGaugeRow);
+    setTimeout(() => gauge.style.setProperty('--pct', `${bar}%`), SHUT);
+  }
 
   const claimed = save.claimedSharks.includes(d.id);
   if (done && !claimed) {
