@@ -3,10 +3,24 @@ import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
+import { salvageView, STAGE_RATIO } from './salvage.js';
+
+// 審査・開発用。?demo=1 は「獲得経験値を10倍」にする。以前はレベルを最大へ飛ばして
+// いたが、飛ばすと肝心の場面——泥が落ちて文字が増えるところ——を見せられないまま
+// 「もう全部読める史料」が出てくるだけになる。10倍だと1プレイの到達質量 1000〜2000 が
+// 10000〜20000 になり、レベル3（＝第1幕の完成と土偶サメの解放）を1試合で越える。
+// 遊ぶ→泥が落ちる→サメを獲得、という筋が1回で通る。
+//
+// 引き換えに段階0→3 が一息に進むので、途中段階の見た目は飛ぶ。段階の移り変わりを
+// 見せたい相手には 3 くらいへ落とす（1試合で1〜2段階）。
+const DEMO_XP_MULT = 10;
+const demo = new URLSearchParams(location.search).get('demo');
+const xpMult = demo === '1' ? DEMO_XP_MULT : 1;
+if (demo === '0') replace({ xp: 0, seenLevel: 0, claimedSharks: ['cinema'], salvageTutorialSeen: false });
 
 preloadSharks(SHARKS);   // タイトルを出している間に全種そろえる（下の理由は shark-art.js 側）
 
@@ -25,12 +39,16 @@ document.fonts.load("1.75rem 'Material Symbols Rounded'", 'movie')
 // タイトル画面と同じ Material Symbols Rounded（FILL=1 / wght=700 の塗りつぶし）で統一する。
 const ICON = {
   cinema: 'highlight',       // スポットライト
-  yokai: 'blur_on',          // すり抜け
+  dogu: 'terrain',           // 土がえり（土に埋まる）
   tamagawa: 'double_arrow',  // 直線ダッシュ
   jindaiji: 'shield',        // そばガード
+  kondo: 'autorenew',        // 天然理心流（急な切り返し）
   airport: 'rotate_right',   // 旋回飛行
+  yokai: 'blur_on',          // すり抜け
 };
-const icon = (name, cls) => `<span class="material-symbols-rounded ${cls}" aria-hidden="true">${name}</span>`;
+// 未知の id でも「undefined」という文字列だけは出さない（Material Symbols は合字フォントなので
+// 存在しない合字名はリテラル文字列としてそのまま描画されてしまう）
+const icon = (name, cls) => `<span class="material-symbols-rounded ${cls}" aria-hidden="true">${name || 'help'}</span>`;
 const portrait = (d) => `/img/sharks/${d.id}_side.webp`;   // 立ち絵（タイトルと図鑑で使う）
 // 立ち絵は DOM の <img> なので preloadSharks（canvas 用の原画）の対象外。
 // 先に取っておかないと、タイトルや図鑑へ移った瞬間に取りに行くことになり、
@@ -68,8 +86,10 @@ function show(name) {
       screens[cur]?.classList.remove('on');
       screens[name]?.classList.add('on');
       cur = name;
+      syncSalvageDot();
       if (name === 'shark') renderSharks();
-      if (name === 'dex') renderDex();
+      if (name === 'dex') { renderDex(); if (pendingClaim) { openDex(pendingClaim, true); pendingClaim = null; } }
+      if (name === 'salvage') renderSalvage();
       if (name === 'title') paintTitleShark();
       if (name === 'game') stopAttract(); else startAttract();
       chrome.classList.remove('shut');
@@ -79,6 +99,192 @@ function show(name) {
     }, SHUT);
   }, CLAP);
 }
+
+// 史料に新しい文字が現れたことを赤点で知らせる。
+// ボタンは #s-title の中にあるので、表示制御は .screen の display が持つ。
+const salvageDot = $('#salvage-dot');
+const salvageBtn = $('#salvage-btn');
+const syncSalvageDot = () => {
+  const news = hasNewSalvage();
+  salvageDot.classList.toggle('hidden', !news);
+  // 赤点は視覚だけなので、スクリーンリーダーには aria-label の言い換えで伝える
+  salvageBtn.setAttribute('aria-label', news ? '史料（新着あり）' : '史料');
+};
+
+// ---------- 史料 ----------
+// 章の状態判定（chapters/chapterLocked/defaultChapter）は save 由来の純粋なロジックなので
+// progress.js 側に置いてある。ここはビュー状態（chapterIdx）と DOM 配線だけを持つ。
+
+// 獲得したサメの詳細は図鑑のものを流用する。#dex-detail は #s-dex の子で、
+// .screen が display:none を持つため史料画面のままでは映らない。
+// show('dex') の完了後に開きたいので、ここで受け渡す
+let pendingClaim = null;
+
+// 表示中の章の添字。セーブしない。どの章を最後に見ていたかを永続化しても、
+// 次に開くとき「復元中の章」以外を見せる理由がない
+let chapterIdx = 0;
+
+const salvageBody = $('#salvage-body');
+const salvageGaugeRow = $('#salvage-gauge-row');
+const salvageAction = $('#salvage-action');
+
+/** 史料画面を組み立てる。show('salvage') から呼ばれる唯一の入口 */
+function renderSalvage() {
+  // 既読フラグを更新する前に退避する。そうしないと、完成済みの史料を何度開いても
+  // 直近の段階差分（+29 など）が毎回ハイライトされたままになる
+  const isNew = hasNewSalvage();
+  // 初回だけ自動で遊び方を出す。ロック中の章の早期 return より前に置くことで、
+  // 未解放の章を最初に開いた場合でも漏れなくチュートリアルが出る
+  if (!save.salvageTutorialSeen) openSalvageHelp();
+  const cs = chapters();
+  chapterIdx = Math.max(0, Math.min(cs.length - 1, chapterIdx));
+  const d = cs[chapterIdx];
+  const locked = chapterLocked(chapterIdx);
+
+  $('#salvage-era').textContent = `HISTORICAL ARCHIVE #${d.era} / ${d.en}`;
+  // 紙面の左の管理ラベル。aria-hidden の飾りなので読み上げには出さない（同じ内容が
+  // 上の #salvage-era にある）。長い名前でも縦帯が伸びないよう overflow で切る
+  $('#salvage-rail').textContent = `ARCHIVE No.${d.era} · ${d.en.toUpperCase()}`;
+  // 鍵は絵文字を使わない。端末ごとに絵柄が変わるうえ、他のUIが全部 Material Symbols
+  // なので1つだけ質感が浮く。rubify() は HTML を escape するので span は外で組む
+  const lockIcon = (cls) =>
+    `<span class="material-symbols-rounded ${cls} align-middle" aria-hidden="true">lock</span>`;
+  $('#salvage-chapter').innerHTML =
+    `${rubify(`｜第《だい》${d.era}｜幕《まく》`)} ${locked ? lockIcon('!text-lg') : rubify(d.salvageTitle)}`;
+  salvageBody.style.setProperty('--stain', d.color);
+
+  $('#salvage-prev').disabled = chapterIdx === 0;
+  $('#salvage-next').disabled = chapterIdx >= cs.length - 1;
+
+  // ロック中は本文を組み立てない。salvageView() を呼ぶと未解放の章の全文が
+  // DOM に載り、全選択コピーで露出する（伏せ字を ■ にしている意味が消える）
+  if (locked) {
+    const prev = cs[chapterIdx - 1];
+    // ink/60 は紙地に対して 3.6:1 で、小さくない文字でも下限 4.5:1 を割る
+    salvageBody.innerHTML = `
+      <p class="text-center text-ink/75 py-10 leading-loose">${lockIcon('!text-xl mr-1.5')}${rubify(
+        `｜第《だい》${prev.era}｜幕《まく》のサメを｜映画《えいが》に｜登場《とうじょう》させると、\nここが｜読《よ》めるようになる。`)}</p>`;
+    salvageBody.scrollTop = 0;
+    salvageGaugeRow.innerHTML = '';
+    salvageAction.innerHTML = '';
+    markSalvageSeen();
+    syncSalvageDot();
+    return;
+  }
+
+  const stage = stageOf(d.era);
+  const done = stage >= STAGE_RATIO.length - 1;
+  const v = salvageView(d.salvageText, save.seed, stage);
+  const html = isNew ? v.html : v.html.replace(/<mark class="fresh">(.*?)<\/mark>/gs, '$1');
+  const added = isNew ? v.added : 0;
+  // ゲージの塗りは復元率ではなく大きさ（XP）。復元率は 67→79→90→100（第1幕）/
+  // 69→81→91→100（第2幕）の4値しか取らない。この％はゲージのすぐ下に置くと
+  // ゲージの目盛りに見えるが、両者は別の量なので数字と塗りが一致せず嘘になる。
+  // しかも連続量ではないので、％で出す意味がない。数字は出さず、増えた瞬間だけ
+  // 「何字読めるようになったか」を言葉で出す（下の added）
+  const p = salvageProgress(d.era);
+  const bar = Math.round((done ? 1 : p.ratio) * 100);
+
+  salvageBody.innerHTML = `
+    <div class="salvage-slug">${rubify(d.salvageTagline)}</div>
+    <p class="salvage-text mt-5 leading-loose">${html}</p>`;
+  salvageBody.scrollTop = 0;
+
+  salvageGaugeRow.innerHTML = `
+    <div class="flex items-baseline justify-between text-[11px] text-paper/70">
+      <span class="font-bold">${done
+        ? rubify('｜復元《ふくげん》｜完了《かんりょう》')
+        : rubify('｜全部《ぜんぶ》｜読《よ》めるまで')}</span>
+      <!-- 単位はリザルトの「大きさ」と同じ値。同じ言葉にしないと何を溜めるのか繋がらない -->
+      <span class="font-mono">${done ? '' : `${plainText('大きさ')} あと ${p.remain.toLocaleString()}`}</span>
+    </div>
+    <div class="salvage-gauge mt-1" style="--pct:${bar}%"
+         role="progressbar" aria-valuenow="${bar}" aria-valuemin="0" aria-valuemax="100"
+         aria-label="${done ? '復元完了' : '全部読めるまで'}"><i></i></div>
+    ${added ? `<div class="salvage-gain text-[11px] font-bold text-yellow mt-1.5">${rubify(
+      `＋${added}｜字《じ》 ｜読《よ》めるようになった！`)}</div>` : ''}`;
+
+  const claimed = save.claimedSharks.includes(d.id);
+  if (done && !claimed) {
+    salvageAction.innerHTML = `
+      <button id="salvage-claim" type="button" class="btn primary !w-fit max-w-full mx-auto claim-pulse">
+        <div class="cap clapper-stripes"></div>
+        <div class="px-6 py-3 font-display font-extrabold text-base md:text-lg">🎬 ${rubify(
+          '｜史料《しりょう》をもとにサメを｜映画《えいが》に｜登場《とうじょう》させる！')}</div>
+      </button>`;
+    $('#salvage-claim').onclick = () => {
+      claimShark(d.id);
+      renderSalvage();      // ボタンを消し、次の幕のロックを解く
+      pendingClaim = d;    // 図鑑へ着いたら詳細を開く（Step 0）
+      show('dex');
+    };
+  } else if (done) {
+    // 最終章では「次の幕へ進める」が嘘になる（#salvage-next は disabled のまま、
+    // 第3幕はまだ存在しない）。最終章かどうかで文言を分ける
+    salvageAction.innerHTML = `<p class="text-[12px] text-paper/70 text-center">${rubify(
+      chapterIdx >= cs.length - 1
+        ? 'つぎの｜史料《しりょう》をさがしている。'
+        : '｜復元《ふくげん》｜完了《かんりょう》。｜次《つぎ》の｜幕《まく》へ｜進《すす》める。')}</p>`;
+  } else {
+    salvageAction.innerHTML = `<p class="text-[12px] text-paper/70 text-center">${rubify(
+      '｜海《うみ》でサメを｜大《おお》きく｜育《そだ》てると、｜泥《どろ》が｜落《お》ちて｜文字《もじ》が｜読《よ》めるようになる。')}</p>`;
+  }
+
+  markSalvageSeen();
+  syncSalvageDot();
+}
+
+// ---------- 史料の遊び方（チュートリアル兼ヘルプ） ----------
+// 初回に自動で出るオーバーレイと、ヘッダーの [?] で出し直す内容は同じ1枚。
+// 出す条件だけが異なるので、開閉のロジックを共通化する。
+const salvageHelpSheet = $('#salvage-help-sheet');
+
+// 本文は先に組み立てておく。rubify() はルビ記法以外をすべてエスケープするので、
+// 強調の <span> を文字列に混ぜると &lt;span&gt; がそのまま画面に出てしまう。
+// 強調は rubify() の外側で掛ける
+const HELP_STEPS = [
+  ['① ｜映画《えいが》の「｜原作《げんさく》」になる｜史料《しりょう》をさがそう',
+   rubify('ここは｜映画《えいが》のまち・｜調布《ちょうふ》。｜次《つぎ》のサメ｜映画《えいが》をつくるには、｜原作《げんさく》になる「｜史料《しりょう》（｜昔《むかし》の｜記録《きろく》）」が｜必要《ひつよう》です。でも｜海《うみ》の｜底《そこ》で｜見《み》つけた1｜枚《まい》は、｜泥《どろ》で｜汚《よご》れてまだ｜読《よ》めません。')],
+  ['② ｜海《うみ》でサメを｜大《おお》きく｜育《そだ》てて｜汚《よご》れを｜落《お》とそう',
+   rubify('ゲームでサメを｜大《おお》きく｜育《そだ》てるほど、｜泥汚《どろよご》れが｜落《お》ちて｜文字《もじ》が｜読《よ》めるようになります。')],
+  ['③ ｜記録《きろく》がすべて｜復元《ふくげん》されると、サメが｜登場《とうじょう》！',
+   rubify('｜史料《しりょう》が100%｜復元《ふくげん》されると、｜映画監督《えいがかんとく》がその｜歴史《れきし》をもとに')
+   + `<span class="text-danger font-bold">${rubify('「｜新《あたら》しいサメ」')}</span>`
+   + rubify('を｜映画《えいが》にスカウト（｜解放《かいほう》）します。')],
+];
+
+function openSalvageHelp() {
+  $('#salvage-help-body').innerHTML = HELP_STEPS
+    .map(([h, b]) => `<div>
+      <h3 class="font-display font-extrabold text-[15px]">${rubify(h)}</h3>
+      <p class="mt-1 text-ink/80">${b}</p>
+    </div>`).join('');
+  salvageHelpSheet.style.display = 'grid';
+}
+
+const closeSalvageHelp = () => {
+  salvageHelpSheet.style.display = 'none';
+  if (!save.salvageTutorialSeen) { save.salvageTutorialSeen = true; persist(); }
+};
+
+$('#salvage-help').onclick = openSalvageHelp;
+$('#salvage-help-close').onclick = closeSalvageHelp;
+salvageHelpSheet.onclick = (e) => { if (e.target === salvageHelpSheet) closeSalvageHelp(); };
+// #dex-detail・unlockPanel と同じ Escape 対応。ただしこちらの close は
+// salvageTutorialSeen を書いて persist() するので、他の2枚と違って閉じている間の
+// Escape まで拾うと無意味な persist() が起きる。開いている間だけ拾うよう絞る
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && salvageHelpSheet.style.display === 'grid') closeSalvageHelp(); });
+
+const goChapter = (delta) => {
+  const cs = chapters();
+  chapterIdx = Math.max(0, Math.min(cs.length - 1, chapterIdx + delta));
+  renderSalvage();
+};
+$('#salvage-prev').onclick = () => goChapter(-1);
+$('#salvage-next').onclick = () => goChapter(+1);
+
+// 進入のたびに「復元中の章」へ戻す。ナビの位置は画面を出た時点で忘れる
+$('#salvage-btn').onclick = () => { chapterIdx = defaultChapter(); show('salvage'); };
 
 // ---------- タイトルの立ち絵 ----------
 function paintTitleShark() {
@@ -587,8 +793,11 @@ async function share() {
 
 // ---------- サメ選択 ----------
 // 直前に遊んだサメ。タイトルの立ち絵とサメ選択の初期値を兼ねる（初回は映画サメ）
-let selShark = SHARKS.find((s) => s.id === save.shark) || SHARKS[0];
+// 未解放のサメが選ばれたままになることがある（LEVEL_XP を変えたときなど）。
+// 見本の映画サメへ落とす
+let selShark = SHARKS.find((s) => s.id === save.shark && isUnlockedShark(s)) || SHARKS[0];
 paintTitleShark();   // 起動直後のタイトルは show() を通らないのでここで描く
+syncSalvageDot();     // 同じ理由で赤点もここで一度合わせる
 
 const STAT_KEYS = [
   ['スピード', 'スピード', (d) => d.speed],
@@ -606,9 +815,10 @@ function renderSharks() {
     // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ戻す
     for (let copy = 0; copy < DIAL_COPIES; copy++) {
       SHARKS.forEach((d, i) => {
+        const locked = !isUnlockedShark(d);
         const b = document.createElement('button');
         b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
-          'transition-transform hover:-translate-x-1 active:translate-y-0.5';
+          'transition-transform hover:-translate-x-1 active:translate-y-0.5' + (locked ? ' shark-locked' : '');
         b.dataset.i = i;
         b.dataset.copy = copy;
         b.innerHTML = `
@@ -619,15 +829,28 @@ function renderSharks() {
             <span class="tile-name block font-display font-extrabold text-base leading-tight">${rubify(d.name)}</span>
             <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${rubify(d.tag)}</span>
           </span>`;
+        if (locked) { b.disabled = true; b.setAttribute('aria-disabled', 'true'); }
         b.onclick = () => selectShark(d);
         list.appendChild(b);
       });
     }
     mountDial(list);
   }
+  paintLocks();
   selectShark(selShark);
   // ダイヤルでは選択中が中央に居ないと辻褄が合わないので、開くたびに寄せ直す
   if (isDial()) centerTile($('#shark-list'), SHARKS.indexOf(selShark), 'auto');
+}
+
+// タイルの生成はキャッシュされるが解放状態はレベルアップで変わるので、
+// 表示のたびに施錠状態だけ塗り直す（3面ぶん・data-i で当てる）
+function paintLocks() {
+  $$('.shark-tile').forEach((n) => {
+    const locked = !isUnlockedShark(SHARKS[+n.dataset.i]);
+    n.classList.toggle('shark-locked', locked);
+    n.disabled = locked;
+    n.toggleAttribute('aria-disabled', locked);
+  });
 }
 
 // スマホ横画面のサメ選択はダイヤル。中央で止まったサメがそのまま選ばれる。
@@ -699,6 +922,9 @@ function mountDial(list) {
 }
 
 function selectShark(d) {
+  // 全呼び出し元がここを通る。ダイヤルのスクロール選択は button の disabled を
+  // 迂回できるので、押せるかどうかではなく選ばれるかどうかで止める
+  if (!isUnlockedShark(d)) return;
   selShark = d;
   if (mainPreview) mainPreview.def = d;
   // 面を3つ持っているので、位置ではなく data-i で当てる
@@ -752,35 +978,90 @@ const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10
 $('#start-btn').onclick = () => play();
 
 // ---------- 図鑑 ----------
-let dexBuilt = false;
+// カードは7枚・全ポートレート起動時プリロード済みで、開くのも手動遷移のみ。
+// キャッシュすると解放状態（claimedSharks）とのズレが再発するので、毎回作り直す
 function renderDex() {
-  if (dexBuilt) return;
-  dexBuilt = true;
   const wrap = $('#dex-list');
   wrap.innerHTML = '';
   for (const d of SHARKS) {
+    const locked = !isUnlockedShark(d);
     const card = document.createElement('button');
     card.className = 'bg-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col text-left ' +
       'transition-transform hover:-translate-y-1 active:translate-y-0.5';
     card.innerHTML = `
       <div class="dex-cap clapper-stripes h-5 border-b-4 border-ink w-full"></div>
       <div class="dex-thumb w-full aspect-square p-3" style="background:${d.color}22">
-        <img src="${portrait(d)}" alt="${plainText(d.name)}" loading="lazy" decoding="async"
-             class="w-full h-full object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.22)]">
+        <img src="${portrait(d)}" alt="${locked ? '' : plainText(d.name)}" loading="lazy" decoding="async"
+             class="w-full h-full object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.22)] ${locked ? 'dex-silhouette' : ''}">
       </div>
       <div class="dex-name w-full border-t-4 border-ink px-3 py-2.5">
-        <h3 class="font-display font-extrabold text-lg leading-tight">${rubify(d.name)}</h3>
+        <h3 class="font-display font-extrabold text-lg leading-tight">${locked ? '????' : rubify(d.name)}</h3>
       </div>`;
-    card.onclick = () => openDex(d);
+    // aria-disabled は付けない。押すと解放条件が出る＝実際に押せるボタンなので、
+    // 「無効」と言うと嘘になる（支援技術がフォーカスを飛ばすし、Playwright も
+    // enabled 待ちで固まる）。条件はラベルに入れて、吹き出しを開かなくても伝わるようにする
+    if (locked) card.setAttribute('aria-label', plainText(unlockCopy(d)));
+    card.onclick = () => (locked ? showDexHint(card, d) : openDex(d));
     wrap.appendChild(card);
   }
 }
 
+// ロック中のカードを押したときの解放条件。カードは overflow:hidden なので中に
+// 入れると切れる。1つだけ #dex-list の外に置いて、位置を JS で動かす。
+// position:fixed なのは、offset-parent を探さずに getBoundingClientRect() の値を
+// そのまま使えるため（#dex-list はスクロールするので相対座標だとズレる）
+const dexHint = $('#dex-hint');
+const dexList = $('#dex-list');
+let hintCard = null;                       // 吹き出しが指しているカード
+const hideDexHint = () => { hintCard = null; dexHint.classList.add('hidden'); };
+
+/** 解放条件の文面。吹き出し（ルビ付き）と aria-label（ルビ無し）で同じ文を使う */
+function unlockCopy(d) {
+  return `｜史料《しりょう》の｜第《だい》${d.era}｜幕《まく》を｜復元《ふくげん》すると｜解放《かいほう》`;
+}
+
+function showDexHint(card, d) {
+  dexHint.innerHTML = rubify(unlockCopy(d));
+  dexHint.classList.remove('hidden');      // 先に出す。隠れたままだと寸法が取れない
+  hintCard = card;
+  placeDexHint();
+}
+
+function placeDexHint() {
+  if (!hintCard) return;
+  const c = hintCard.getBoundingClientRect();
+  const list = dexList.getBoundingClientRect();
+  // 送ってカードが一覧から出たら、指す先が無いので消す
+  if (c.bottom <= list.top || c.top >= list.bottom) return hideDexHint();
+
+  const b = dexHint.getBoundingClientRect();
+  const pad = 8;
+  const left = Math.min(Math.max(pad, c.left + c.width / 2 - b.width / 2), innerWidth - b.width - pad);
+  // 既定はカードの下。上を既定にすると、1行目のカードでは必ず「サメ図鑑」の
+  // 見出しに重なる（実測）。カードは縦に長いので、下は普通に空いている。
+  // 下に入らない最終行だけ上へ回して、尻尾の向きも入れ替える
+  const below = c.bottom + 10 + b.height <= innerHeight - pad;
+  dexHint.classList.toggle('below', below);
+  dexHint.style.left = `${Math.round(left)}px`;
+  dexHint.style.top = `${Math.round(below ? c.bottom + 10 : c.top - b.height - 10)}px`;
+}
+
+// 次にどこかを押したら消す。pointerdown → click の順で来るので、カードを押した
+// ときは「前の吹き出しを消す」→「新しいのを出す」になって取り合いにならない
+document.addEventListener('pointerdown', hideDexHint);
+// 送ったら消すのではなく追わせる。押した瞬間にブラウザがカードへフォーカスを
+// 送ってスクロールすることがあり、「消す」だと出した端から自分で消していた
+dexList.addEventListener('scroll', placeDexHint, { passive: true });
+
 const dexDetail = $('#dex-detail');
 const closeDex = () => { dexDetail.style.display = 'none'; };
 
-function openDex(d) {
+/** 図鑑の詳細。claimed=true のときは史料からの「獲得しました」演出として使う */
+function openDex(d, claimed = false) {
   $('#dex-body').innerHTML = `
+    ${claimed ? `<div class="bg-yellow ink-3 border-b-4 border-ink px-6 py-3 text-center font-display font-extrabold text-lg">
+      🎬 ${rubify('｜新《あたら》しいサメが｜映画《えいが》に｜登場《とうじょう》した！')}
+    </div>` : ''}
     <div class="grid gap-6 p-6 md:p-8 md:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
         <div>
           <div class="rounded-xl ink-3 p-4" style="background:${d.color}22">
@@ -814,10 +1095,18 @@ function openDex(d) {
             <span class="absolute -top-3 left-4 bg-yellow ink-2 rounded px-2 py-0.5 font-mono font-bold text-[10px] tracking-widest">CHOFU TIPS</span>
             <p class="text-[12.5px] leading-relaxed text-ink/80">${rubify(d.lore)}</p>
           </div>
+
+          ${claimed ? `<button id="dex-sail" type="button" class="btn primary w-full mt-6">
+            <div class="cap clapper-stripes"></div>
+            <div class="px-6 py-3 font-display font-extrabold">${rubify('このサメで｜海《うみ》へ｜行《い》く')}</div>
+          </button>` : ''}
         </div>
     </div>`;
   dexDetail.style.display = 'grid';
   $('#dex-body').scrollTop = 0;
+  if (claimed) {
+    $('#dex-sail').onclick = () => { closeDex(); selectShark(d); show('title'); };
+  }
 }
 
 $('#dex-close').onclick = closeDex;
@@ -850,7 +1139,7 @@ async function play() {
     show('game');
     pausePanel.style.display = 'none';
     $('#hud-online').classList.toggle('hidden', !net);
-    $('#hud-skill-icon').textContent = ICON[selShark.id];
+    $('#hud-skill-icon').textContent = ICON[selShark.id] || 'help';
     $('#hud-skill-name').innerHTML = rubify(selShark.skill.name);
     myName = net ? save.name : 'YOU';
     ctl = startGame({
@@ -924,6 +1213,11 @@ function showResult(r) {
   const isBest = r.mass > save.best;
   save.best = best; persist();
 
+  // 経験値。到達質量をそのまま入れる。呼ぶのはここだけ（二重加算を場所で潰す）。
+  // 倍率が 1 以外になるのは ?demo=1 のときだけ（冒頭の DEMO_XP_MULT）
+  addXp(r.mass * xpMult);
+  syncSalvageDot();
+
   show('result');
   $('#res-sub').innerHTML = `${rubify(selMap.name)} ／ ${rubify(selShark.name)}`
     + (r.cause ? `<br><span class="text-danger">${rubifyCause(r.cause)}${rubify('に｜接触《せっしょく》')}</span>` : '');
@@ -937,5 +1231,15 @@ function showResult(r) {
       <div class="res-stat-v font-mono font-bold text-xl sm:text-3xl leading-tight my-0.5">${val}</div>
       <div class="font-mono text-[9px] text-ink/50">${sub}</div>
     </div>`).join('');
+  // ここに出すのは「史料が1本読みきれた」ときだけ。レベル番号そのものは、それを見て
+  // プレイヤーが何かできるわけではない裸の数字で、削った他の情報より価値が低い。
+  //
+  // 「使えるようになった」とは書かない。解放が起きるのは史料画面で自分でボタンを
+  // 押したときだけで、ここで所有を告げると、サメ選択へ行ってロックを見ることになる
+  const done = unclaimedFinishedChapter();
+  $('#res-level').innerHTML = done
+    ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">${rubify('｜完成《かんせい》')}</span>
+       ${rubify(`｜第《だい》${done.era}｜幕《まく》`)}${rubify('の｜史料《しりょう》がすべて｜読《よ》めるようになった！')}`
+    : '';
   $('#res-tip').innerHTML = rubify(TIPS[(Math.random() * TIPS.length) | 0]);
 }

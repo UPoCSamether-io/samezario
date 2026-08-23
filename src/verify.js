@@ -12,9 +12,13 @@ const HASH_W = 9, HASH_H = 8;   // 9×8 に潰して隣接ピクセルの明暗�
 const MAX_EDGE = 1280;          // 照合・送信前の長辺。スマホ写真は 5〜12MB あるので必ず通す
 const JPEG_Q = 0.85;
 
-/** ?demo=1 —— 調布市外のデモ会場向けに、ジオフェンスと照合を両方飛ばす */
-export const isDemo = () =>
-  typeof location !== 'undefined' && new URLSearchParams(location.search).has('demo');
+/** ?demo=1（または値なしの ?demo） —— 調布市外のデモ会場向けに、ジオフェンスと照合を両方飛ばす。
+ *  ?demo=0 は main.js が xp を戻すためだけの値で、デモ扱いにはしない */
+export const isDemo = () => {
+  if (typeof location === 'undefined') return false;
+  const p = new URLSearchParams(location.search);
+  return p.has('demo') && p.get('demo') !== '0';
+};
 
 // ---------- 判定（素の関数。ここが「答え」） ----------
 

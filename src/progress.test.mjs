@@ -2,7 +2,7 @@
 // progress.js は localStorage を import 時には読むだけ（失敗しても初期値へ落ちる）なので、
 // 先に偽物を置いてから動的 import すれば Node でそのまま回せる。
 import assert from 'node:assert/strict';
-import { MAPS } from './data.js';
+import { MAPS, SHARKS } from './data.js';
 
 const store = {};
 globalThis.localStorage = {
@@ -102,3 +102,281 @@ assert.deepEqual([...save.unlocked].sort(), [...new Set([...opened, 'chofu'])].s
 }
 
 console.log('progress ok');
+
+import test from 'node:test';
+
+const P = await import('./progress.js');
+
+test('addXp: 到達質量が累計XPに加算される', () => {
+  const before = P.save.xp;
+  P.addXp(120.7);
+  assert.equal(P.save.xp, before + 121);   // 丸める
+});
+
+test('level: LEVEL_XP のしきい値を超えるたびに1つ上がる', () => {
+  P.replace({ xp: 0 });
+  assert.equal(P.level(), 0);
+  P.replace({ xp: P.LEVEL_XP[0] });
+  assert.equal(P.level(), 1);
+  P.replace({ xp: P.LEVEL_XP[0] - 1 });
+  assert.equal(P.level(), 0);
+  P.replace({ xp: P.LEVEL_XP[P.LEVEL_XP.length - 1] });
+  assert.equal(P.level(), P.LEVEL_XP.length);
+});
+
+test('stageOf: era 1 はレベル0-3、era 2 はレベル3で0段階目に現れる', () => {
+  P.replace({ xp: 0 });
+  assert.equal(P.stageOf(1), 0);
+  assert.equal(P.stageOf(2), 0);
+  P.replace({ xp: P.LEVEL_XP[2] });          // レベル3
+  assert.equal(P.level(), 3);
+  assert.equal(P.stageOf(1), 3, '古代が復元完了していない');
+  assert.equal(P.stageOf(2), 0, '奈良が段階0で現れていない');
+});
+
+test('stageOf: 3を超えて増えない', () => {
+  P.replace({ xp: P.LEVEL_XP[P.LEVEL_XP.length - 1] });
+  assert.equal(P.stageOf(1), 3);
+});
+
+test('isUnlockedShark: era 0（見本）は常に解放、それ以外は claimShark するまでレベルだけでは解放されない', () => {
+  const dogu = SHARKS.find((s) => s.era === 1);
+  P.replace({ xp: 0, claimedSharks: ['cinema'] });
+  assert.equal(P.isUnlockedShark({ era: 0 }), true);
+  assert.equal(P.isUnlockedShark(dogu), false);
+  P.replace({ xp: P.LEVEL_XP[2] });   // 旧・自動解放条件（レベル3）に達しても
+  assert.equal(P.isUnlockedShark(dogu), false, 'レベルだけでは解放されない');
+  P.claimShark(dogu.id);
+  assert.equal(P.isUnlockedShark(dogu), true, 'Claim後は解放');
+});
+
+test('レベルがいくつでも、史料がある章のサメは先回りして配られない', () => {
+  const dogu = SHARKS.find((s) => s.id === 'dogu');
+  P.replace({ xp: 0, claimedSharks: ['cinema'] });
+  P.addXp(P.LEVEL_XP[P.LEVEL_XP.length - 1]);   // 最大レベル
+  assert.ok(!P.save.claimedSharks.includes('dogu'),
+    '史料がある章は100%復元して自分で押すのが解放の意味。先回りで配ると獲得ボタンが無意味になる');
+});
+
+test('isUnlockedShark: 史料のあるサメ（土偶）はレベルが最大でも自動解放されない', () => {
+  const dogu = SHARKS.find((s) => s.id === 'dogu');
+  P.replace({ xp: P.LEVEL_XP[P.LEVEL_XP.length - 1], claimedSharks: ['cinema'] });
+  assert.equal(P.isUnlockedShark(dogu), false, '史料がある章は claim 抜きで解放されてはいけない');
+});
+
+test('seed: 生成済みで、0 ではない（虫食い位置が固定されること）', () => {
+  assert.equal(typeof P.save.seed, 'number');
+  assert.notEqual(P.save.seed, 0);
+});
+
+test('既存セーブの移行: xp を持たないセーブは best を引き継ぐ', async () => {
+  // 別モジュールとして読み直す。localStorage を先に古い形のセーブで埋めておく
+  store['samezario.save'] = JSON.stringify({ v: 1, unlocked: ['chofu'], best: 4321, points: 0, spots: {} });
+  const fresh = await import('./progress.js?migrate');
+  assert.equal(fresh.save.xp, 4321, 'best が引き継がれていない');
+  assert.notEqual(fresh.save.seed, 0, 'seed が生成されていない');
+});
+
+test('markSalvageSeen: seenLevel が現在のレベルに揃い、赤点判定が消える', () => {
+  P.replace({ xp: P.LEVEL_XP[2], seenLevel: 0 });
+  assert.ok(P.level() > P.save.seenLevel, '赤点が点いていない');
+  P.markSalvageSeen();
+  assert.equal(P.save.seenLevel, P.level());
+});
+
+test('seed: 一度生成したら次の起動でも変わらない（マスク位置が総入れ替えになる）', async () => {
+  store['samezario.save'] = JSON.stringify({ v: 1, unlocked: ['chofu'], best: 100, points: 0, spots: {} });
+  const first = await import('./progress.js?seed-1');
+  const seed = first.save.seed;
+  assert.ok(seed, 'seed が生成されていない');
+  assert.equal(JSON.parse(store['samezario.save']).seed, seed, 'seed が localStorage に書き戻されていない');
+
+  const second = await import('./progress.js?seed-2');
+  assert.equal(second.save.seed, seed, '起動のたびに seed が振り直されている');
+});
+
+test('addXp: NaN や負の質量では xp を汚さない（一度入ると回復不能なため）', () => {
+  P.replace({ xp: 500 });
+  P.addXp(NaN);
+  P.addXp(-10);
+  P.addXp(undefined);
+  assert.equal(P.save.xp, 500);
+});
+
+test('hasNewSalvage: レベルが seenLevel を超えたときだけ赤点が点く', () => {
+  P.replace({ xp: P.LEVEL_XP[2], seenLevel: P.LEVEL_XP.length });
+  assert.equal(P.hasNewSalvage(), false, '既読なのに赤点が点いている');
+  P.replace({ seenLevel: 0 });
+  assert.equal(P.hasNewSalvage(), true, '新出があるのに赤点が点かない');
+});
+
+test('hasNewSalvage: 史料が完成する最大レベル(妖怪=era6→レベル18)の先では、赤点は点かない', () => {
+  // 最終幕を読み終えた状態から、さらにXPを積む。頭打ちなので赤点は点かない
+  P.replace({ xp: P.LEVEL_XP[17] * 2, seenLevel: 18 });
+  assert.equal(P.hasNewSalvage(), false, '史料完成後のXP加算で赤点が誤って点いている');
+});
+
+test('hasNewSalvage: 第2幕の完成後も、第3幕の泥が落ちれば赤点が点く', () => {
+  P.replace({ xp: P.LEVEL_XP[6], seenLevel: 6 });
+  assert.equal(P.hasNewSalvage(), true);
+});
+
+test('salvageProgress: 史料1本を通した割合と、完成までの残りXPを返す', () => {
+  // era 1（土偶）は 0 -> LEVEL_XP[2] が1本ぶん
+  const goal = P.LEVEL_XP[2];
+  P.replace({ xp: 0 });
+  assert.deepEqual(P.salvageProgress(1), { ratio: 0, remain: goal });
+
+  P.replace({ xp: Math.round(goal / 2) });
+  const mid = P.salvageProgress(1);
+  assert.ok(Math.abs(mid.ratio - 0.5) < 0.01, `半分で ratio が ${mid.ratio}`);
+
+  // 段階が上がってもバーは0へ戻らない。レベル1をまたいだ直後でも割合は増え続ける
+  P.replace({ xp: P.LEVEL_XP[0] });
+  const afterLevelUp = P.salvageProgress(1);
+  assert.ok(afterLevelUp.ratio > 0, 'レベルアップでバーが空に戻っている');
+  assert.ok(Math.abs(afterLevelUp.ratio - P.LEVEL_XP[0] / goal) < 0.01);
+});
+
+test('salvageProgress: 完成後は満杯で止まり、残りは0（マイナスを出さない）', () => {
+  P.replace({ xp: P.LEVEL_XP[2] * 3 });
+  assert.deepEqual(P.salvageProgress(1), { ratio: 1, remain: 0 });
+});
+
+test('salvageProgress: era 2 は era 1 の完成地点から始まる（前の区間ぶんは数えない）', () => {
+  P.replace({ xp: P.LEVEL_XP[2] });          // era1 完成 = era2 の起点
+  assert.equal(P.salvageProgress(2).ratio, 0, 'era2 が途中から始まっている');
+  assert.equal(P.salvageProgress(2).remain, P.LEVEL_XP[5] - P.LEVEL_XP[2]);
+});
+
+test('claimedSharks に無いサメは、レベルがいくつでも解放されない', async () => {
+  const store = { 'samezario.save': JSON.stringify({ v: 1, xp: 999999, claimedSharks: ['cinema'] }) };
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?claim1');
+  const dogu = SHARKS.find((s) => s.id === 'dogu');
+  assert.equal(m.level() > 3, true, '前提: レベルは3を超えている');
+  assert.equal(m.isUnlockedShark(dogu), false, 'Claim前は未解放');
+  m.claimShark('dogu');
+  assert.equal(m.isUnlockedShark(dogu), true, 'Claim後は解放');
+});
+
+test('claimShark は冪等（二度押しで配列が伸びない）', async () => {
+  const store = { 'samezario.save': JSON.stringify({ v: 1, xp: 0, claimedSharks: ['cinema'] }) };
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?claim2');
+  m.claimShark('dogu');
+  m.claimShark('dogu');
+  assert.deepEqual(m.save.claimedSharks, ['cinema', 'dogu']);
+});
+
+test('claimedSharks を持たない既存セーブは、旧・自動解放条件で埋められる', async () => {
+  // xp 9000 = LEVEL_XP[3] 到達 → 旧条件では level()>=3 の dogu が解放済みだった
+  const store = { 'samezario.save': JSON.stringify({ v: 1, xp: 9000, unlocked: ['chofu', 'tamagawa'], points: 200 }) };
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?claim3');
+  assert.ok(m.save.claimedSharks.includes('dogu'), '到達済みのサメが取り上げられていない');
+  assert.ok(m.save.claimedSharks.includes('cinema'), '見本は常に入る');
+  assert.equal(m.save.v, 1, 'スキーマ版を上げていない');
+  assert.deepEqual(m.save.unlocked, ['chofu', 'tamagawa'], 'エリア解放が保持されている');
+  assert.equal(m.save.points, 200, 'ポイントが保持されている');
+  // 書き戻されていること（次回起動で再計算に頼らない）
+  assert.ok(JSON.parse(store['samezario.save']).claimedSharks.includes('dogu'));
+});
+
+test('第2幕が入って、赤点がレベル6まで反応する', async () => {
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?smax');
+  // レベル6（16,500XP）で第2幕が完成する。seenLevel が追いつくまで赤点が点く
+  m.replace({ xp: 16500, seenLevel: 3 });
+  assert.equal(m.level(), 6);
+  assert.equal(m.hasNewSalvage(), true, 'レベル6の新出をまだ見ていない');
+  m.markSalvageSeen();
+  assert.equal(m.hasNewSalvage(), false);
+});
+
+test('salvageProgress(2) はレベル3で0、レベル6で1', async () => {
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?sp2');
+  m.replace({ xp: 6000 });
+  assert.equal(m.salvageProgress(2).ratio, 0);
+  m.replace({ xp: 16500 });
+  assert.equal(m.salvageProgress(2).ratio, 1);
+  assert.equal(m.salvageProgress(2).remain, 0);
+});
+
+test('chapterLocked: 第1幕は claimedSharks に関係なく常にロックされない', () => {
+  P.replace({ claimedSharks: [] });
+  assert.equal(P.chapterLocked(0), false, 'claimedSharks が空でも第1幕はロックされない');
+  P.replace({ claimedSharks: ['cinema', 'dogu', 'tamagawa'] });
+  assert.equal(P.chapterLocked(0), false);
+});
+
+test('chapterLocked: 第2幕は前の幕（土偶）を獲得するまでロック', () => {
+  P.replace({ claimedSharks: ['cinema'] });
+  assert.equal(P.chapterLocked(1), true, '土偶未獲得なのにロックが外れている');
+  P.replace({ claimedSharks: ['cinema', 'dogu'] });
+  assert.equal(P.chapterLocked(1), false, '土偶獲得後もロックが残っている');
+});
+
+test('defaultChapter: 第1幕が進行中ならそこに留まる', () => {
+  P.replace({ xp: 0, claimedSharks: ['cinema'] });
+  assert.equal(P.defaultChapter(), 0);
+});
+
+test('defaultChapter: 第1幕が完成済みだが未獲得なら、ロック中の第2幕へは飛ばず第1幕に留まる', () => {
+  // ここが今回の回帰対象。第1幕が復元完了(stageOf=3)しても claim していなければ
+  // 第2幕はまだロック中なので、defaultChapter はロック中の章を返してはいけない
+  P.replace({ xp: P.LEVEL_XP[2], claimedSharks: ['cinema'] });
+  assert.equal(P.stageOf(1), 3, '前提: 第1幕は復元完了している');
+  assert.equal(P.chapterLocked(1), true, '前提: 土偶未獲得なので第2幕はロック中');
+  assert.equal(P.defaultChapter(), 0, '完成済み未獲得なのにロック中の第2幕へ飛んでいる');
+});
+
+test('defaultChapter: 第1幕を獲得済みで第2幕が進行中ならそちらへ進む', () => {
+  P.replace({ xp: P.LEVEL_XP[2], claimedSharks: ['cinema', 'dogu'] });
+  assert.equal(P.defaultChapter(), 1);
+});
+
+test('defaultChapter: 完成・獲得済みの先に未完成の章があれば、そこへ進む', () => {
+  P.replace({ xp: P.LEVEL_XP[5], claimedSharks: ['cinema', 'dogu', 'tamagawa'] });
+  assert.equal(P.stageOf(2), 3, '前提: 第2幕も復元完了している');
+  assert.equal(P.defaultChapter(), 2, '第3幕（未完成）が次の行き先');
+});
+
+test('unclaimedFinishedChapter: 段階3に到達した未獲得の章だけを返す', async () => {
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?jcc');
+
+  m.replace({ xp: 0, claimedSharks: ['cinema'] });
+  assert.equal(m.unclaimedFinishedChapter(), null, '復元途中では告知しない');
+
+  m.replace({ xp: 6000, claimedSharks: ['cinema'] });   // レベル3 = 第1幕が完成
+  assert.equal(m.unclaimedFinishedChapter()?.id, 'dogu', '完成した未獲得の章を返す');
+
+  m.replace({ xp: 6000, claimedSharks: ['cinema', 'dogu'] });
+  assert.equal(m.unclaimedFinishedChapter(), null, '獲得済みなら告知しない');
+
+  m.replace({ xp: 16500, claimedSharks: ['cinema', 'dogu'] });   // レベル6 = 第2幕が完成
+  assert.equal(m.unclaimedFinishedChapter()?.id, 'tamagawa');
+});
