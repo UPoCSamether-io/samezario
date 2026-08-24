@@ -439,41 +439,55 @@
     <!-- HUD -->
     <div id="hud" class="absolute inset-0 pointer-events-none flex flex-col justify-between">
       <div class="flex justify-between items-start gap-4">
-        <!-- サイズゲージ -->
-        <div id="hud-size" class="w-[300px]">
-          <div class="flex items-end gap-2 mb-1">
-            <span class="font-mono font-bold text-xs tracking-[0.25em] text-paper/80 bg-ink/70 px-2 py-1 rounded">SIZE</span>
-            <span id="hud-mass" class="font-mono font-bold text-4xl text-yellow leading-none"
-                  style="text-shadow:3px 3px 0 #2d2d2d">0</span>
-            <span id="hud-rank" class="font-mono font-bold text-xs text-paper/90 bg-ink/70 px-2 py-1 rounded ml-auto">#1</span>
+        <!-- 左上: サイズとシネマメタデータ ＆ ミニマップ -->
+        <div id="hud-top-left" class="flex flex-col items-start gap-2 sm:gap-2.5">
+          <!-- メタデータとSIZE -->
+          <div id="hud-size" class="w-[240px] sm:w-[300px] md:w-[360px] xl:w-[420px]">
+            <!-- 映画風メタデータバー（全画面対応、スマホでもコンパクトに表示） -->
+            <div class="flex items-center gap-1.5 sm:gap-2 mb-1 md:mb-1.5 font-mono text-[10px] md:text-[12px] lg:text-[13px] xl:text-[15px] font-bold text-paper/90 tracking-wider">
+              <span class="bg-ink/75 px-1.5 py-0.5 sm:px-2 rounded flex items-center gap-1 sm:gap-1.5">
+                <span class="text-yellow">SCENE</span>
+                <span id="hud-scene" class="text-paper truncate max-w-[80px] sm:max-w-[130px] md:max-w-[170px] xl:max-w-[210px]">調布</span>
+              </span>
+              <span class="bg-ink/75 px-1.5 py-0.5 sm:px-2 rounded flex items-center gap-1 sm:gap-1.5">
+                <span class="text-yellow">TIME</span>
+                <span id="hud-time" class="text-paper">0:00</span>
+              </span>
+            </div>
+            <!-- メインのSIZE表示 -->
+            <div class="flex items-end gap-2 md:gap-3">
+              <span class="font-mono font-bold text-xs md:text-sm lg:text-base xl:text-lg tracking-[0.25em] text-paper/80 bg-ink/75 px-2 py-0.5 md:py-1 rounded">SIZE</span>
+              <span id="hud-mass" class="font-mono font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl text-yellow leading-none"
+                    style="text-shadow:3px 3px 0 #2d2d2d">0</span>
+            </div>
           </div>
-          <div class="h-7 bg-paper ink-4 hard relative overflow-hidden">
-            <div id="hud-bar" class="h-full bg-teal border-r-4 border-ink transition-[width] duration-150" style="width:6%"></div>
-            <div class="absolute inset-x-0 top-0 h-[6px] sprockets opacity-70"></div>
-            <div class="absolute inset-x-0 bottom-0 h-[6px] sprockets opacity-70"></div>
+          <!-- ミニマップ（SIZEの下に配置） -->
+          <div id="hud-mini" class="bg-paper ink-4 hard-lg p-1 sm:p-1.5">
+            <canvas id="mini" width="400" height="400" class="block ink-2"></canvas>
           </div>
         </div>
+
         <!-- リーダーボード。⏸ はタッチのときだけ出る（Esc が無いため） -->
         <div class="flex items-start gap-2.5">
           <button id="hud-pause" aria-label="一時停止"
                   class="hidden shrink-0 w-11 h-11 bg-paper ink-4 hard grid place-items-center pointer-events-auto active:translate-x-1 active:translate-y-1 transition-transform">
             <span class="material-symbols-rounded !text-2xl">pause</span>
           </button>
-          <div class="w-[250px] bg-paper ink-4 hard-lg">
+          <div id="hud-board-card" class="w-[220px] md:w-[260px] lg:w-[290px] xl:w-[320px] bg-paper ink-4 hard-lg overflow-hidden">
             <div class="clapper-stripes h-4 border-b-4 border-ink"></div>
-            <div id="hud-online" class="hidden border-b-4 border-ink bg-navy text-mint font-mono text-[10px] tracking-[0.2em] px-2.5 py-1"></div>
-            <ul id="hud-board" class="p-2.5 space-y-0.5 text-[13px]"></ul>
+            <ul id="hud-board" class="p-2 md:p-2.5 space-y-0.5 text-[11px] md:text-[13px] lg:text-[14px] xl:text-[16px]"></ul>
           </div>
         </div>
       </div>
 
-      <div class="flex justify-between items-end gap-4">
-        <div id="hud-actions" class="flex items-end gap-4 pointer-events-auto">
+      <!-- 下段: 右下にスキル＆ダッシュ -->
+      <div class="flex justify-end items-end">
+        <div id="hud-actions" class="flex items-end gap-3 sm:gap-4 pointer-events-auto">
           <!-- スキル -->
-          <button id="hud-skill" class="w-[104px] h-[104px] bg-yellow ink-4 hard-lg relative overflow-hidden group flex flex-col active:translate-x-1 active:translate-y-1 transition-transform">
+          <button id="hud-skill" class="bg-yellow ink-4 hard-lg relative overflow-hidden group flex flex-col active:translate-x-1 active:translate-y-1 transition-transform">
             <div class="h-6 shrink-0 clapper-stripes border-b-4 border-ink origin-bottom-left group-hover:-rotate-12 transition-transform"></div>
             <div class="flex-1 grid place-content-center place-items-center pt-1">
-              <!-- 大きさは style.css（画面が短いときに縮めるので、id セレクタで持つ） -->
+              <!-- 大きさは style.css（画面サイズに応じて拡大） -->
               <div id="hud-skill-icon" class="material-symbols-rounded leading-none"></div>
               <div id="hud-skill-name" class="font-display font-extrabold text-[11px] mt-0.5 px-1 text-center leading-tight">スキル</div>
             </div>
@@ -481,7 +495,7 @@
             <span class="kbd-badge absolute -top-2 -right-2 w-8 h-8 bg-paper ink-2 rounded-full grid place-items-center font-mono font-bold text-sm hard-sm">E</span>
           </button>
           <!-- ダッシュ（フィルムリール） -->
-          <div id="hud-dash" class="w-[104px] h-[104px] rounded-full ink-4 hard-lg bg-paper relative grid place-items-center">
+          <div id="hud-dash" class="rounded-full ink-4 hard-lg bg-paper relative grid place-items-center">
             <div id="hud-reel" class="absolute inset-1.5 rounded-full overflow-hidden">
               <div class="absolute inset-0 rounded-full" style="background:conic-gradient(from 0deg,#2a7b7c 0 25%,#1b5a5b 0 50%,#2a7b7c 0 75%,#1b5a5b 0)"></div>
               <div class="absolute inset-0 rounded-full"
@@ -489,13 +503,9 @@
             </div>
             <!-- スタミナゲージ。使った分だけリールが暗く欠ける -->
             <div id="hud-stam" class="absolute inset-1.5 rounded-full pointer-events-none"></div>
-            <div class="relative w-9 h-9 rounded-full bg-yellow ink-3 grid place-items-center font-mono font-bold text-[10px] leading-none text-center">DASH</div>
+            <div id="hud-dash-label" class="relative rounded-full bg-yellow ink-3 grid place-items-center font-mono font-bold text-[10px] leading-none text-center">DASH</div>
             <span class="kbd-badge absolute -bottom-1 -left-1 px-1.5 py-0.5 bg-paper ink-2 rounded-full font-mono font-bold text-[9px] hard-sm">SPACE</span>
           </div>
-        </div>
-        <!-- ミニマップ -->
-        <div id="hud-mini" class="bg-paper ink-4 hard-lg p-1.5">
-          <canvas id="mini" width="150" height="150" class="block w-[150px] h-[150px] ink-2"></canvas>
         </div>
       </div>
     </div>

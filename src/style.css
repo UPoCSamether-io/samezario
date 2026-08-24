@@ -416,10 +416,21 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 }
 
 /* ゲーム画面の四隅の落ち。旧実装は draw() の createRadialGradient + fillRect で、
-   canvas 全面を毎フレーム塗り直していた（実測 4.8ms/frame）。絵が動かないので CSS に出す。 */
+   canvas 全面を毎フレーム塗り直していた（実測 4.8ms/frame）。絵が動かないので CSS に出す。
+   壁接近時は --warn (0..1) で赤いビネットを重ねて警告する（#76）。 */
 #vignette {
+  --warn: 0;
   background: radial-gradient(circle farthest-corner at 50% 50%,
     transparent 44%, rgb(11 32 34 / .35) 100%);
+}
+#vignette::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle farthest-corner at 50% 50%,
+    transparent 40%, rgb(186 26 26 / .65) 100%);
+  opacity: var(--warn, 0);
+  transition: opacity 120ms ease-out;
 }
 
 /* サメ選択を1列に畳んだときの並び。
@@ -596,97 +607,190 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
            max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
 }
-@media (width >= 48rem) {
+@media (min-width: 48rem) {
   #hud {
     padding: max(1.5rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right))
              max(1.5rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left));
   }
 }
-
-/* スキルのアイコン。.material-symbols-rounded の 1.75rem を上書きするだけなので
-   text-* ユーティリティではなくここで持つ（上の Google フォントのコメントと同じ理由）。
-   クラスだと画面が短いときの縮小を !important 合戦にしないと書けない */
-#hud-skill-icon { font-size: 34px; }
-
-/* 横持ちスマホ。固定幅のままだと 300+250+ミニマップ150 が画面幅の半分を食う。
-   幅ではなく coarse+高さで見るのは、横持ちスマホが「幅広・縦短」だから。
-   667/844/932 はどれも 640px を超えるので、幅条件では一度も発動しない
-   （発動するのは縦持ちだけで、そこは回転ガードでゲーム自体が止まっている）。
-   実測 844x390: このルール無しだと leaderboard 250x181 + minimap 150x150 で幅の 50% */
 @media (pointer: coarse) and (max-height: 500px) {
-  #hud-size { width: 46vw; min-width: 150px; }
-  #hud-board { font-size: 11px; }
-  /* 上位3名だけ。圏外のとき末尾に足される自分の行も一緒に消えるが、順位は #hud-rank に出る */
-  #hud-board li:nth-child(n+4) { display: none; }
-  #mini { width: 96px; height: 96px; }
-
-  /* 横持ちスマホは幅が 768px を超えるので上の 1.5rem を拾ってしまう。
-     狭い画面が欲しいのではなく「coarse かつ縦が短い」ときに詰めたい */
   #hud {
-    padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
-             max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right))
+             max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
   }
+}
+
+/* ミニマップ基本（スマホ・小型画面） */
+#mini {
+  width: 96px;
+  height: 96px;
+}
+
+/* スキル・ダッシュ基本（スマホ・小型画面） */
+#hud-skill, #hud-dash {
+  width: 84px;
+  height: 84px;
+}
+#hud-skill-icon { font-size: 24px; }
+#hud-skill-name { font-size: 10px; padding: 0 0.25rem; }
+#hud-dash-label { width: 2.25rem; height: 2.25rem; font-size: 10px; }
+
+/* タブレット / 中画面 (768px〜, min-height: 501px) */
+@media (min-width: 48rem) and (min-height: 501px) {
+  #mini { width: 170px; height: 170px; }
+  #hud-skill, #hud-dash { width: 126px; height: 126px; }
+  #hud-skill-icon { font-size: 40px; }
+  #hud-skill-name { font-size: 13px; }
+  #hud-dash-label { width: 2.9rem; height: 2.9rem; font-size: 11px; }
+}
+
+/* PC・標準デスクトップ (1024px〜) */
+@media (min-width: 64rem) and (min-height: 501px) {
+  #mini { width: 210px; height: 210px; }
+  #hud-skill, #hud-dash { width: 144px; height: 144px; }
+  #hud-skill-icon { font-size: 46px; }
+  #hud-skill-name { font-size: 14px; }
+  #hud-dash-label { width: 3.3rem; height: 3.3rem; font-size: 12px; }
+}
+
+/* 大画面PC (1440px〜) */
+@media (min-width: 90rem) and (min-height: 501px) {
+  #mini { width: 250px; height: 250px; }
+  #hud-skill, #hud-dash { width: 160px; height: 160px; }
+  #hud-skill-icon { font-size: 52px; }
+  #hud-skill-name { font-size: 16px; }
+  #hud-dash-label { width: 3.7rem; height: 3.7rem; font-size: 14px; }
 }
 
 /* タッチ版の言い回し。既定は隠しておき、pointer:coarse でだけ .keys と入れ替わる */
 .touch-only { display: none; }
 
-/* ---- タッチ端末の HUD 組み替え ----
-   操舵は画面のどこでも効くので、左親指が操舵・右親指がアクションになる。
-   既定の配置はボタンが左下＝操舵と同じ側にあり、必ず喧嘩する。 */
+/* ---- タッチ端末の HUD 調整 ---- */
 @media (pointer: coarse) {
   #hud-pause { display: grid; }
-  /* タッチでは押せないキーの名前を出しても場所を食うだけ。
-     遊び方の本文は「— <kbd>E</kbd> / <kbd>Shift</kbd>」ごと .keys で包んであるので、
-     消しても見出しの直後に句点が続いて文が壊れない。
-     ただし消すだけだと操作方法そのものが消える文（移動・ダッシュ・スキル・一時停止）が
-     あるので、対になる .touch-only にタッチ版の言い方を置いて入れ替える */
+  /* タッチでは押せないキーの名前を出しても場所を食うだけ */
   .kbd-badge,
   .keys { display: none; }
   .touch-only { display: inline; }
 
-  /* ミニマップは SIZE ゲージの下へ。左下のままだと、左親指で左下方向へ
-     操舵している間ずっと自分の指で完全に隠れる。左下は丸ごと明け渡す。
-     絶対配置の子は親の padding box を基準にするので、#hud のパディングでは
-     寄らない。safe-area をここでも自分で足す */
-  #hud-mini {
-    position: absolute;
-    left: max(1rem, env(safe-area-inset-left));
-    top: calc(max(1rem, env(safe-area-inset-top)) + 4.5rem);
-  }
+  /* 右親指の可動域に合わせてSKILLを少し持ち上げる */
+  #hud-actions > #hud-skill { margin-bottom: 2.75rem; }
 
-  /* DASH を右下、SKILL をその左上へ。親指は根元を支点に弧を描くので、
-     その軌道上に並べる。使用頻度の高い DASH を一番近い位置に置く */
-  #hud-actions {
-    position: absolute;
-    right: max(1rem, env(safe-area-inset-right));
-    bottom: max(1rem, env(safe-area-inset-bottom));
-  }
-  #hud-actions > #hud-skill { margin-bottom: 3.25rem; }
-
-  /* 横持ちの高さ 390px では 84px のボタンが画面の 21% を占める。
-     右下からの寄りが死角になるので、待機中は水面を透かす。
-     この2値は実機で見ながら詰める調整つまみ */
-  #hud-actions > * { opacity: .6; transition: opacity .1s; }
+  /* 待機中は水面を少し透かし、タップで明瞭に */
+  #hud-actions > * { opacity: .7; transition: opacity .1s; }
   #hud-actions > *:active { opacity: 1; }
 }
 
-/* スマホ横。104px は縦の 27% を食うので落とす（44px の倍近くは残る）。
-   coarse でゲートするのは、#hud-skill/#hud-dash が id セレクタで Tailwind の
-   w-[104px] (クラス) を特異度で必ず上回るため。ゲートしないと縦の短いマウス
-   ウィンドウでもボタンが縮み、デスクトップ据え置きの約束を破る */
-@media (pointer: coarse) and (max-height: 500px) {
-  #hud-skill, #hud-dash { width: 84px; height: 84px; }
-  #hud-actions > #hud-skill { margin-bottom: 2.5rem; }
+/* 横持ちスマホ特有の調整（高さ500px以下） */
+@media (max-height: 500px) {
+  #hud-top-left { gap: 0.25rem; }
+  #hud-size { width: auto; min-width: 120px; }
 
-  /* 84px のボタンで中身に使えるのは 84 − 枠8 − 帯24 = 52.2px。
-     34px のアイコン + 11px の名前では、名前が幅 76px に収まらず2行になり
-     （スポットライト 27.6px、急流ブースト 33.6px）、合計 67〜73px が
-     overflow-hidden に切られていた（実測 844x390）。ふりがなで 19.8px に
-     伸びた「旋回飛行」は1行でも溢れる。
-     名前を1行に収まる大きさまで落とし、その分アイコンも一段小さくする */
+  /* ミニマップ: 元の96pxを維持 */
+  #mini { width: 96px; height: 96px; }
+
+  /* 一時停止ボタン: スリム帯に合わせた高さに小型化 */
+  #hud-pause {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-width: 2px;
+    box-shadow: 2px 2px 0 0 var(--color-ink);
+  }
+  #hud-pause > span { font-size: 1.15rem !important; }
+
+  /* リーダーボード: 1行のシネマ風スリム帯（幅固定で順位変動による伸縮を防止） */
+  #hud-board-card {
+    background: rgba(18, 29, 51, 0.9);
+    color: var(--color-paper);
+    border: 2px solid var(--color-ink);
+    box-shadow: 2px 2px 0 0 var(--color-ink);
+    border-radius: 0.4rem;
+    padding: 0.2rem 0.5rem;
+    width: 240px;
+    cursor: pointer;
+  }
+  #hud-board-card > .clapper-stripes { display: none; }
+  #hud-board {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0;
+    margin: 0;
+    font-size: 11px;
+    width: 100%;
+  }
+  #hud-board > li {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 0.2rem;
+    margin: 0;
+    border: none;
+  }
+  /* 通常時（自分が1位でない時）: 1位と自分を表示 */
+  #hud-board > li:not(.board-lead):not(.board-me) { display: none; }
+
+  /* 自分が1位の時: 1位（自分）と 2位 を表示 */
+  #hud-board-card.is-lead #hud-board > li:not(.board-lead):not(.board-second) { display: none; }
+  #hud-board-card.is-lead #hud-board > li.board-second { display: flex; }
+
+  #hud-board > li.board-lead:not(.board-me) { color: var(--color-mint); }
+  #hud-board > li.board-second:not(.board-me) { color: var(--color-mint); }
+  #hud-board > li.board-me {
+    background: var(--color-yellow);
+    color: var(--color-ink);
+    padding: 0.05rem 0.35rem;
+    border-radius: 0.2rem;
+    border: 1px solid var(--color-ink);
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* タップ展開時（.expanded）: 上位一覧をドロップダウン表示 */
+  #hud-board-card.expanded {
+    position: absolute;
+    right: max(0.75rem, env(safe-area-inset-right));
+    top: max(0.75rem, env(safe-area-inset-top));
+    z-index: 50;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    width: 220px;
+    max-width: 90vw;
+    border: 3px solid var(--color-ink);
+    box-shadow: 5px 5px 0 0 var(--color-ink);
+    padding: 0;
+  }
+  #hud-board-card.expanded > .clapper-stripes {
+    display: block;
+    height: 0.75rem;
+  }
+  #hud-board-card.expanded > #hud-board {
+    display: block;
+    padding: 0.4rem;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  #hud-board-card.expanded > #hud-board > li {
+    display: flex;
+    padding: 0.15rem 0.3rem;
+  }
+  #hud-board-card.expanded > #hud-board > li.board-lead:not(.board-me) {
+    color: var(--color-ink);
+  }
+  #hud-board-card.expanded > #hud-board > li.board-me {
+    padding: 0.15rem 0.3rem;
+    border-radius: 0;
+    border: 2px solid var(--color-ink);
+    box-shadow: 2px 2px 0 0 var(--color-ink);
+  }
+
+  /* 操作ボタン */
+  #hud-skill, #hud-dash { width: 84px; height: 84px; }
   #hud-skill-icon { font-size: 24px; }
   #hud-skill-name { font-size: 10px; padding: 0; }
+  #hud-actions > #hud-skill { margin-bottom: 2.25rem; }
+  #hud-actions > * { opacity: .6; }
 }
 
 /* 縦持ちガード。.io 系は左右の視界が生命線で、縦だと横からの寄りに反応できない。
