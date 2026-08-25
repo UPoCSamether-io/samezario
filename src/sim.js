@@ -135,7 +135,23 @@ export function makeArena(map) {
     return null;
   };
 
-  return { inside, bb, home, spot, escape, poly: { xs, ys, n } };
+  /** 多角形の全辺への最短距離(px) */
+  const edgeDist = (x, y) => {
+    let minD = Infinity;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const x1 = xs[i], y1 = ys[i], x2 = xs[j], y2 = ys[j];
+      const dx = x2 - x1, dy = y2 - y1;
+      const l2 = dx * dx + dy * dy;
+      const t = l2 > 0 ? clamp(((x - x1) * dx + (y - y1) * dy) / l2, 0, 1) : 0;
+      const px = x1 + t * dx, py = y1 + t * dy;
+      const d = Math.hypot(x - px, y - py);
+      if (d < minD) minD = d;
+    }
+    return minD;
+  };
+
+  return { inside, bb, home, spot, escape, edgeDist, poly: { xs, ys, n } };
 }
 
 /**

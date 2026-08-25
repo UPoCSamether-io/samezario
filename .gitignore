@@ -33,6 +33,8 @@ docs/private/
 
 # git worktree (parallel-impl skill)
 .worktrees/
+.claude/
+.playwright-cli/
 
 # 発表スライド（作成スクリプト・生成物・仮想環境）
 /slides/
