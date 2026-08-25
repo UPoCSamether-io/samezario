@@ -56,21 +56,21 @@
 
   <!-- ================= タイトル ================= -->
   <section id="s-title" class="screen on">
-    <!-- 遊び方はここからだけ開き直せる。初回の「ゲームスタート」は main.js が
-         save.seenHowto を見て遊び方へ寄り道させるので、この角ボタンは二度目以降の
-         読み直し用。nav の枠は新キャラ解放の入口である史料に譲った。
+    <!-- タイトルに置ける角ボタンは1つだけ。実測（48x48 を四隅で当てた結果）:
+           667x375 … 左上=看板と 6x12 / 右上=nav と 40x11 / 右下=nav と 40x11 / 左下=ここ
+           390x844 … 左下の nav（史料ボタン）と 40x8 だけ重なるが、他の隅は空き
+         横持ちでは四隅すべてに看板・nav・サメのいずれかが乗るため、2つ目は置けない。
+         そこで「遊び方」に明け渡していたこの枠をメニューにして、サウンドと遊び方の
+         2枚へ分岐させる。初回の遊び方は main.js の寄り道（to==='map' かつ
+         !save.seenHowto）が拾うので、この枠を通らない＝1タップ深くなっても届く。
          この section の中にあるので、対戦中に隠す処理は要らない（.screen の display が持つ）。
          左下なのは、max-height:500px で組みが2カラムになると nav が右列を上から下まで
-         占めるため（style.css の #title-stage）。右上も右下も nav と重なる。実測で
-         667x375 / 932x430 / 1024x768 / 1920x1080 のいずれでも空いていたのは左下だけ。
-         画面ごとに位置を変えると覚えられないので、どの幅でもここに固定する。
-         アイコンは #salvage-help と同じ help。ヘルプの見た目は一つに揃える。
-         data-go だけで足りる（main.js のグローバル click が拾い、aimHowto('title') も効く） -->
-    <button id="howto-btn" type="button" data-go="howto" aria-label="遊び方"
+         占めるため（style.css の #title-stage）。画面ごとに位置を変えると覚えられない -->
+    <button id="menu-btn" type="button" aria-label="メニュー"
             class="absolute bottom-[var(--bar-pad)] left-4 z-10 grid place-items-center
                    w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-yellow ink-2 md:ink-3 hard-sm
                    transition-transform hover:-translate-y-0.5 active:translate-y-0.5">
-      <span class="material-symbols-rounded !text-2xl md:!text-3xl" aria-hidden="true">help</span>
+      <span class="material-symbols-rounded !text-2xl md:!text-3xl" aria-hidden="true">tune</span>
     </button>
     <div id="title-stage" class="h-full flex flex-col items-center justify-center gap-2 px-6 py-[var(--bar-pad)]">
       <header class="text-center -rotate-1 relative">
@@ -130,6 +130,36 @@
         </button>
       </nav>
 
+    </div>
+
+    <!-- 角ボタンから開くメニュー。#pause と同じ作り（背景を暗くして、板を1枚置く）。
+         行が3つで実測 277px、横持ち 667x375 の使える高さ 343px に収まる。
+         「とじる」を板の中に持つのは、右上の × だと 300px 幅では1行目のボタンに
+         重なるため（#salvage-help-sheet の × は 640px 幅だから成立している） -->
+    <div id="title-menu" class="absolute inset-0 bg-navy/85 backdrop-blur-sm hidden place-items-center z-20 px-6 py-[var(--bar-pad)]">
+      <div class="w-full max-w-[300px] bg-paper ink-4 hard-lg rounded-xl overflow-hidden">
+        <div class="clapper-stripes h-6 border-b-4 border-ink"></div>
+        <div class="p-5 flex flex-col gap-3">
+          <button class="btn" type="button" data-go="sound">
+            <div class="cap clapper-stripes"></div>
+            <div class="py-2.5 px-5 flex items-center justify-between">
+              <span class="font-display font-extrabold text-xl">サウンド</span>
+              <span class="material-symbols-rounded" aria-hidden="true">volume_up</span>
+            </div>
+          </button>
+          <button class="btn" type="button" data-go="howto">
+            <div class="cap clapper-stripes"></div>
+            <div class="py-2.5 px-5 flex items-center justify-between">
+              <span class="font-display font-extrabold text-xl"><ruby>遊<rp>(</rp><rt>あそ</rt><rp>)</rp></ruby>び<ruby>方<rp>(</rp><rt>かた</rt><rp>)</rp></ruby></span>
+              <span class="material-symbols-rounded" aria-hidden="true">help</span>
+            </div>
+          </button>
+          <button id="title-menu-close" class="btn" type="button">
+            <div class="cap clapper-stripes"></div>
+            <div class="py-2 font-display font-extrabold text-sm">とじる</div>
+          </button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -423,6 +453,54 @@
             <div class="py-1.5 px-8 font-display font-extrabold text-sm">つぎへ →</div></button>
           <button id="howto-go" class="btn primary !w-auto" data-go="title" hidden><div class="cap clapper-stripes"></div>
             <div id="howto-go-label" class="py-1.5 px-8 font-display font-extrabold text-sm">とじる</div></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= サウンド ================= -->
+  <!-- タイトル → メニュー → ここ。ゲーム中には出さない（一時停止の板は 310x279px あり、
+       横持ち 667x375 の 74% をすでに使っていて、つまみ2本ぶんの行を足せない）。
+       1ラウンド数分のゲームなので、入る前に決めれば足りると判断した。
+       つまみは <input type=range>。タッチのドラッグをブラウザに任せられるのが理由で、
+       見た目だけフィルムの一片に作り替えてある（style.css の .vol-range） -->
+  <section id="s-sound" class="screen">
+    <div class="h-full grid place-items-center px-6 py-[var(--bar-pad)]">
+      <div class="w-full max-w-[520px] max-h-full bg-paper ink-4 hard-lg rounded-xl overflow-hidden flex flex-col">
+        <div class="clapper-stripes h-6 border-b-4 border-ink shrink-0"></div>
+        <div class="min-h-0 overflow-auto thin-scroll p-4 md:p-6">
+          <div class="font-mono text-[10px] tracking-[0.3em] text-ink/55">SOUND</div>
+          <h2 class="font-display font-extrabold text-xl md:text-2xl leading-tight mt-0.5">【 サウンド 】</h2>
+
+          <div class="sound-rows mt-4 md:mt-6 grid gap-4 md:gap-6">
+            <div>
+              <div class="flex items-end gap-2.5 mb-1.5">
+                <span class="font-mono font-bold text-[11px] tracking-[0.25em] text-paper bg-ink px-2 py-1 rounded">MUSIC</span>
+                <span class="font-display font-extrabold text-base md:text-lg"><ruby>音楽<rp>(</rp><rt>おんがく</rt><rp>)</rp></ruby></span>
+                <span id="vol-music-num" class="font-mono font-bold text-xl md:text-2xl leading-none ml-auto tabular-nums">100</span>
+              </div>
+              <input id="vol-music" class="vol-range" type="range" min="0" max="100" step="5" value="100"
+                     aria-label="音楽の音量">
+            </div>
+
+            <div>
+              <div class="flex items-end gap-2.5 mb-1.5">
+                <span class="font-mono font-bold text-[11px] tracking-[0.25em] text-paper bg-ink px-2 py-1 rounded">SFX</span>
+                <span class="font-display font-extrabold text-base md:text-lg"><ruby>効果音<rp>(</rp><rt>こうかおん</rt><rp>)</rp></ruby></span>
+                <span id="vol-sfx-num" class="font-mono font-bold text-xl md:text-2xl leading-none ml-auto tabular-nums">100</span>
+              </div>
+              <!-- 動かしても何も鳴らないと決められないので、離したときにカチンコが1回鳴る
+                   （main.js の bindVol）。「試しに鳴らす」ボタンを別に置かずに済ませる -->
+              <input id="vol-sfx" class="vol-range" type="range" min="0" max="100" step="5" value="100"
+                     aria-label="効果音の音量">
+            </div>
+          </div>
+        </div>
+        <div class="p-4 md:p-6 pt-0 shrink-0 flex justify-center">
+          <button class="btn !w-auto" type="button" data-go="title">
+            <div class="cap clapper-stripes"></div>
+            <div class="py-1.5 px-8 font-display font-extrabold text-sm">とじる</div>
+          </button>
         </div>
       </div>
     </div>

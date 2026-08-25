@@ -9,6 +9,7 @@ import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
 import { salvageView, STAGE_RATIO } from './salvage.js';
+import { bgm, sfx, volume, BGM_MAIN } from './audio.js';
 
 // 審査・開発用。?demo=1 は「獲得経験値を3倍」にする。以前はレベルを最大へ飛ばして
 // いたが、飛ばすと肝心の場面——泥が落ちて文字が増えるところ——を見せられないまま
@@ -99,7 +100,10 @@ function show(name) {
       if (name === 'salvage') renderSalvage();
       if (name === 'howto') goHowtoPage(0);   // 入り直したら1ページ目から
       if (name === 'title') paintTitleShark();
+      closeTitleMenu();   // 開いたまま出ていくと、戻ってきたときに乗ったままになる
       if (name === 'game') stopAttract(); else startAttract();
+      // ゲームとリザルトはロケ地の曲、それ以外はメインテーマ
+      bgm(name === 'game' || name === 'result' ? selMap.id : BGM_MAIN);
       chrome.classList.remove('shut');
       shutting = false;
       // ゲームは全画面。帯が開ききってから消す（閉じたまま消すとハードカットになる）
@@ -342,6 +346,7 @@ function startAttract() {
 }
 function stopAttract() { attract?.stop(); attract = null; }
 startAttract();  // 起動時は show() を通らずタイトルが表示されている
+bgm(BGM_MAIN);   // 同上。実際に鳴り出すのは最初のクリック以降（audio.js の unlock）
 
 // ---------- 初回だけ挟む遊び方 ----------
 // 「ダッシュの航跡に触れたらカット」「サイズは無関係」という中核ルールは遊び方にしか
@@ -380,6 +385,47 @@ howtoNext.onclick = () => goHowtoPage(howtoPage + 1);
 howtoBack.onclick = () => goHowtoPage(howtoPage - 1);
 howtoDots.forEach((n, i) => { n.onclick = () => goHowtoPage(i); });
 paintHowto();
+
+// ---------- タイトルのメニューとサウンド ----------
+// 角ボタンは1つしか置けない（index.html の #menu-btn に四隅の実測がある）ので、
+// 「サウンド」と「遊び方」はここから分岐させる。
+// 中の [data-go] はグローバルの click ハンドラがそのまま拾う（'howto' なら
+// aimHowto('title') も効くので、読み終わりはタイトルへ戻る）。
+// 畳むのは show() の中——押した瞬間に消すと、カチンコが鳴る前に板ごと消えてしまう
+const titleMenu = $('#title-menu');
+const closeTitleMenu = () => { titleMenu.style.display = 'none'; };
+$('#menu-btn').onclick = () => { titleMenu.style.display = 'grid'; };
+$('#title-menu-close').onclick = closeTitleMenu;
+titleMenu.onclick = (e) => { if (e.target === titleMenu) closeTitleMenu(); };
+addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTitleMenu(); });
+
+/**
+ * 音量のつまみ1本。触った瞬間に効く（audio.js 側はバスの gain を書くだけなので、
+ * 鳴っている曲を作り直さずに大小する）。
+ * 効果音は鳴っていないと決めようがないので、つまみを離したときに1回鳴らす。
+ * 「試しに鳴らす」ボタンを別に置かなくて済むし、説明もいらない
+ */
+function bindVol(kind, input, num) {
+  const paint = () => {
+    input.style.setProperty('--fill', `${input.value}%`);
+    num.textContent = input.value;
+  };
+  input.value = Math.round(volume(kind) * 100);
+  paint();
+  input.oninput = () => { volume(kind, +input.value / 100); paint(); };
+  if (kind !== 'sfx') return;
+  // change は指を離したときに1回だが、矢印キーは1打ごとに飛ぶ。押しっぱなしの
+  // オートリピートでカチンコが連射されるので、餌の音と同じように間引く
+  let last = 0;
+  input.onchange = () => {
+    const now = performance.now();
+    if (now - last < 150) return;
+    last = now;
+    sfx.clap();
+  };
+}
+bindVol('music', $('#vol-music'), $('#vol-music-num'));
+bindVol('sfx', $('#vol-sfx'), $('#vol-sfx-num'));
 
 // デモは本編と同じ絵で描く。主役は選んでいるサメ、相手は別の1匹。
 // selShark はこの下で宣言されるが、読むのは rAF の中（＝モジュール評価後）なので触れる
@@ -946,6 +992,9 @@ document.addEventListener('click', (e) => {
 // カチンコを鳴らす。
 function clap(b) {
   if (!b || b.disabled) return;
+  // 音が付くのは .btn だけ。あれは「画面が切り替わる」の合図で、同じ画面の中で
+  // 光る #hud-skill（ゲーム中に何度も押す）まで鳴らすと、合図が合図でなくなる
+  if (b.classList.contains('btn')) sfx.clap();
   b.classList.remove('clapping');
   void b.offsetWidth;
   b.classList.add('clapping');
