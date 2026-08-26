@@ -473,9 +473,9 @@ export const MAPS = [
       // 上から河川敷・流れ・急流。境目は blend ぶんだけ混ぜ、またいだ瞬間に
       // 速度が跳ねないようにする。until は外接矩形の v（上が 0）
       bands: [
-        { until: 0.34, speed: 0, label: '｜河川敷《かせんじき》' },
-        { until: 0.67, speed: 48, label: '｜流《なが》れ' },
-        { until: 1, speed: 110, label: '｜急流《きゅうりゅう》' },
+        { until: 0.34, speed: 0 },      // 河川敷（陸側のよどみ）
+        { until: 0.67, speed: 48 },     // 流れ
+        { until: 1, speed: 110 },       // 急流
       ],
       blend: 0.04,
     },

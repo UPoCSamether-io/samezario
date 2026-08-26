@@ -4,7 +4,6 @@
 // 餌の増減や生死は決めない —— オンラインなら world.authority=false で
 // サーバの宣告を待ち、繋がらなければ world.goSolo() で自分が正になる。
 import { BOT_NAMES } from './data.js';
-import { plainText } from './ruby.js';
 import { paintShark, paintSpriteShark } from './shark-art.js';
 import { makeSteer } from './steer.js';
 import { sfx } from './audio.js';
@@ -104,9 +103,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // 環境ギミック（#83）。効き目そのものは sim.js が決めていて、ここは見せ方だけ。
   // ギミックの無いエリアでは null なので、以下はまるごと素通りする
   const gim = world.gimmick;
-  // 気流・湧水はエリアにひとつの名前を持つ。多摩川は帯ごとに名前が違うので
-  // def.label を持たず、見出しは drawCurrent が帯から引く
-  const gimLabel = plainText(gim?.def.label);
   const stripes = ctx.createPattern(stripeTile(), 'repeat');
   const dots = ctx.createPattern(dotTile(), 'repeat');
   const gravel = ctx.createPattern(gravelTile(), 'repeat');
@@ -459,56 +455,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // 効き目の値は sim.js から引くので、絵と盤面が食い違うことはない。
 
   /**
-   * 高さ y で水になっている区間のうち、x にいちばん近いところへ幅 pad*2 の
-   * 見出しを収める。多摩川は斜めに細く、外接矩形の横中央はほとんどの高さで
-   * 輪郭の外＝ clip で消えるので、置ける場所をここで探す。
-   *
-   * 輪郭と走査線の交点をそのまま拾う（当たり判定と同じ頂点・同じ式）ので、
-   * 標本化の取りこぼしが無い。どの区間にも収まらなければ、いちばん広い区間の
-   * 真ん中へ置く。その高さに水が無ければ null。
-   */
-  function inWater(x, y, pad) {
-    const { xs, ys, n } = arena.poly;
-    const cuts = [];
-    for (let i = 0, j = n - 1; i < n; j = i++) {
-      if ((ys[i] > y) !== (ys[j] > y)) {
-        cuts.push(((xs[j] - xs[i]) * (y - ys[i])) / (ys[j] - ys[i]) + xs[i]);
-      }
-    }
-    cuts.sort((a, b) => a - b);
-    let near = null, nd = Infinity, wide = null, ww = 0;
-    for (let i = 0; i + 1 < cuts.length; i += 2) {
-      if (cuts[i + 1] - cuts[i] > ww) {
-        ww = cuts[i + 1] - cuts[i];
-        wide = (cuts[i] + cuts[i + 1]) / 2;
-      }
-      const a = cuts[i] + pad, b = cuts[i + 1] - pad;
-      if (b <= a) continue;
-      const p = clamp(x, a, b);
-      if (Math.abs(p - x) < nd) { nd = Math.abs(p - x); near = p; }
-    }
-    return near ?? wide;
-  }
-
-  // 見出しの大きさ。ワールド px 固定にすると引きの絵（zoom 0.34）で読めなくなり、
-  // 画面 px 固定にすると寄った絵で画面を覆う。下限だけ画面側で押さえる
-  const labelPx = () => Math.max(30, 26 / cam.zoom);
-
-  /** ワールド座標に置く見出し。サメの名前と同じ「白抜き＋墨の縁」 */
-  function worldLabel(text, x, y, px, fill) {
-    ctx.save();
-    ctx.font = `700 ${px}px "Space Grotesk", "M PLUS Rounded 1c", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 5 / cam.zoom;
-    ctx.strokeStyle = INK;
-    ctx.strokeText(text, x, y);
-    ctx.fillStyle = fill;
-    ctx.fillText(text, x, y);
-    ctx.restore();
-  }
-
-  /**
    * ワールドの矩形 box を、流れ（ang）の座標系へ移したときの外接範囲。
    * この (u, v) の上に格子を置くと、行は流れに直交して並び、
    * 流すのは u を増やすだけで済む。
@@ -645,18 +591,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         }
         ctx.restore();
       }
-
-      // 見出しはカメラに追わせる。帯は 1800px 高く、輪郭は斜めに細いので、
-      // 外接矩形の中央や帯の中央へ固定すると画面の外か clip の外へ落ちて、
-      // 河川敷と急流の名前は一度も読めない。横は水の中へ寄せる（inWater）
-      const label = plainText(bands[i].label);
-      const ly = clamp(view.y0 + labelPx() * 1.6, y0 + labelPx(), y1 - labelPx());
-      const lx = inWater(cam.x, ly, labelPx() * label.length * 0.5);
-      if (lx !== null) {
-        ctx.globalAlpha = 0.55 + strength * 0.35;
-        worldLabel(label, lx, ly, labelPx(), speed ? MINT : PAPER);
-        ctx.globalAlpha = 1;
-      }
     }
   }
 
@@ -715,12 +649,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         ctx.restore();
       }
     }
-
-    // 見出しは帯の縁の少し外。滑走路は斜めなので、ずらす向きも滑走路の法線で取る
-    const mx = (r.x0 + r.x1) / 2, my = (r.y0 + r.y1) / 2;
-    ctx.globalAlpha = 0.35 + lv * 0.55;
-    worldLabel(gimLabel, mx - r.uy * (r.w + 40), my + r.ux * (r.w + 40), labelPx(), YELLOW);
-    ctx.globalAlpha = 1;
   }
 
   /** 深大寺の湧水。縁の破線が「ここから中」の線で、泡は t だけで決まる（端末で絵が割れない） */
@@ -754,9 +682,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         ctx.arc(z.x + Math.cos(a) * rr, z.y + Math.sin(a) * rr - ph * z.r * 0.3, 3 + (1 - ph) * 7, 0, TAU);
         ctx.fill();
       }
-      ctx.globalAlpha = here ? 1 : 0.6;
-      worldLabel(gimLabel, z.x, z.y + z.r - 30, labelPx(), MINT);
-      ctx.globalAlpha = 1;
     }
   }
 
@@ -810,7 +735,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       ctx.globalAlpha = 0.5 + 0.35 * Math.sin(t * 5);
       ctx.beginPath(); ctx.arc(player.x, player.y, hr * 3.9, 0, TAU); ctx.stroke();
       ctx.globalAlpha = 1;
-      worldLabel(gimLabel, player.x, player.y + hr * 3.9 + labelPx(), labelPx(), MINT);
       ctx.restore();
     }
   }
