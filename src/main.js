@@ -600,6 +600,11 @@ function selectMap(m) {
       <div class="font-mono text-[10px] tracking-[0.25em] text-yellow mb-1">HISTORY</div>
       <p class="text-[13px] leading-relaxed text-paper/80">${rubify(m.lore)}</p>
     </div>
+    ${m.gimmick ? `
+    <div class="mt-3">
+      <div class="font-mono text-[10px] tracking-[0.25em] text-mint mb-1">GIMMICK ／ ${rubify(m.gimmick.label)}</div>
+      <p class="text-[13px] leading-relaxed text-paper/80">${rubify(m.gimmick.hint)}</p>
+    </div>` : ''}
     ${spotCard(m)}
     <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${rubify(m.blurb)}</p>
     <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · ${rubify('｜実際《じっさい》の｜地形《ちけい》')}</div>`;
@@ -1250,6 +1255,7 @@ const vignette = $('#vignette');
 const hudMass = $('#hud-mass'), hudScene = $('#hud-scene'), hudTime = $('#hud-time');
 const hudBoard = $('#hud-board'), hudCd = $('#hud-cd'), hudReel = $('#hud-reel');
 const hudStam = $('#hud-stam');
+const hudGuard = $('#hud-guard');   // そばガード（湧水/スキル）が張られている間だけ出す
 
 let net = null;
 let myName = 'YOU';   // リーダーボードに自分の行を足すときに使う
@@ -1313,6 +1319,7 @@ function paintHud(h) {
   hudReel.style.filter = h.boost ? '' : 'grayscale(1) brightness(.75)';
   const spent = h.winded ? 'rgba(186,26,26,.66)' : 'rgba(11,32,34,.74)';
   hudStam.style.background = `conic-gradient(transparent ${h.stam}turn, ${spent} 0)`;
+  hudGuard.classList.toggle('hidden', !h.guard);
 }
 
 $('#resume').onclick = () => ctl?.resume();
