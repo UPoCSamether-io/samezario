@@ -10,7 +10,7 @@
 // shark / name / best / seenHowto は進捗ではなく「前回の選択」や既読の印なので、
 // main.js が直接書いて persist() する（従来どおり）。混ぜないよう、この2系統だけは意識して分けてある。
 
-import { SHARKS } from './data.js';
+import { SHARKS, MAPS } from './data.js';
 import { STAGE_RATIO } from './salvage.js';
 
 const KEY = 'samezario.save';   // index.html のタイトル用インラインスクリプトも同じキーを読む
@@ -34,6 +34,7 @@ const createDefaults = () => ({
   seenXp: 0,      // 同じく、そのときの累計XP。ゲージをどこから伸ばすかの起点
   claimedSharks: ['cinema'],   // 能動的に獲得したサメ。見本の映画サメは最初から
   salvageTutorialSeen: false,   // 史料画面の遊び方を一度でも閉じたか
+  played: [],     // 対戦を1試合終えたエリアの id。tier の「遊べば解放」はこれだけを見る
 });
 
 const DEFAULTS = createDefaults();
@@ -73,7 +74,20 @@ export function replace(next) {
   return save;
 }
 
-export const isUnlocked = (map) => map.unlocked || save.unlocked.includes(map.id);
+// tier の解放判定用。MAPS 側から引く（played には tier を持たない id しか積まない前提）
+const tierOf = (id) => MAPS.find((m) => m.id === id)?.tier;
+
+/**
+ * エリアが開いているか。解放の道は2本ある。
+ *   1) 現地写真（従来どおり。map.unlocked / save.unlocked ＝ clearSpot が書く）
+ *   2) tier。ひとつ下の tier のエリアで一度でも対戦を終えていれば開く（save.played ＝ markPlayed が書く）
+ * 2) は U☆PoC 審査会のデモ用に足した「甘い解放」。1) を置き換えるものではなく、
+ * どちらか先に満たしたほうで開く。tier を書いていないエリア（今は無い）は対象外
+ */
+export const isUnlocked = (map) =>
+  map.unlocked
+  || save.unlocked.includes(map.id)
+  || (map.tier > 1 && save.played.some((id) => tierOf(id) === map.tier - 1));
 export const isCleared = (spot) => !!(spot && save.spots[spot.id]);
 export const isShared = (spot) => !!(spot && save.spots[spot.id]?.shared);
 
@@ -96,6 +110,16 @@ export function clearSpot(map, score = 100) {
       },
     },
   });
+}
+
+/**
+ * 対戦を1試合終えた。tier の「遊べば解放」に使う唯一の書き込み口（main.js の
+ * showResult からだけ呼ぶ）。points/unlocked には触れない —— clearSpot/markShared の
+ * 書き込み口をこの機能のために増やさず、played という別の列で解放を導出する
+ */
+export function markPlayed(mapId) {
+  if (save.played.includes(mapId)) return save;
+  return replace({ played: [...save.played, mapId] });
 }
 
 /**
