@@ -531,6 +531,12 @@
                 <span class="text-yellow">TIME</span>
                 <span id="hud-time" class="text-paper">0:00</span>
               </span>
+              <!-- 湧水・そばガードで盾が張られている間だけ出す。効いているか消えるまで
+                   分からないと「1回だけ防ぐ」の実感が薄いので、張られた瞬間から見せる -->
+              <span id="hud-guard" class="hidden bg-yellow ink-2 px-1.5 py-0.5 sm:px-2 rounded flex items-center gap-1 sm:gap-1.5">
+                <span class="material-symbols-rounded !text-sm leading-none text-ink">shield</span>
+                <span class="text-ink">GUARD</span>
+              </span>
             </div>
             <!-- メインのSIZE表示 -->
             <div class="flex items-end gap-2 md:gap-3">
