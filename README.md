@@ -73,6 +73,13 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 - `WAKE_LIFE` / `WAKE_R` — 航跡の寿命と太さ。囲い込みの成否はこれと `DASH_DRAIN`（＝航跡の長さ）で決まる
 - `SEGS` — rope の骨の数。体長は `shark-art.js` の `bodyLength()`（太さ × `def.aspect`）
 
+エリア固有の環境ギミック（多摩川の急流カレント・飛行場のプロペラ気流・深大寺の湧水ゾーン）は
+`src/data.js` の `MAPS[].gimmick` が数値を全部持ち、`src/sim.js` の `makeGimmick()` は式だけを持つ。
+多摩川の流れは外接矩形の上下位置に依存し、河川敷・流れ・急流の3帯で強さが変わる。
+位置は外接矩形の 0..1 で書くので `size` を動かしても輪郭に対する位置は変わらない。
+周期ものはサーバとブラウザで位相が揃っている必要があるので、環境の時計（`world.envT`）を
+スナップショットに載せて同期している。実測値と判断の経緯は `docs/stage_design_plan.md` §4.5。
+
 サメ・マップ個別のパラメータは `src/data.js`。デバッグ中は `window.__sz` から
 `cam` / `sharks` / `player` / `food` を直接触れる。
 

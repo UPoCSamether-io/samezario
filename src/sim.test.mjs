@@ -2,7 +2,7 @@
 // サーバとブラウザが同じこのファイルを回すので、ここが壊れると両方が同時に壊れる。
 import assert from 'node:assert/strict';
 import { MAPS } from './data.js';
-import { createWorld, makeArena } from './sim.js';
+import { createWorld, makeArena, makeGimmick } from './sim.js';
 
 const chofu = MAPS.find((m) => m.id === 'chofu');
 
@@ -428,6 +428,237 @@ for (const map of MAPS) {
   assert.strictEqual(hunter.boost, true, 'mass=300 で 280px 以内の時はダッシュ急襲する');
 
   w.destroy();
+}
+
+// ---------------------------------------------------------------------------
+// 15〜20. 環境ギミック（#83）。
+//
+// 数値は data.js が持っていて、sim.js にあるのは式だけ。ここで見るのは
+// 「式が docs の言うとおりに効くこと」と「ギミックの無いエリアが従来どおりであること」、
+// そして「サーバとブラウザで同じ位相が回ること」の3つ。
+const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
+
+// 15. 定義の健全性：持っているのは3エリアだけ。帯もゾーンも輪郭の内側に収まっている
+{
+  for (const map of MAPS) {
+    const arena = makeArena(map);
+    const g = makeGimmick(map, arena);
+    if (!GIMMICKED.includes(map.id)) {
+      assert.equal(g, null, `${map.id} にギミックが付いている（従来どおりのはず）`);
+      continue;
+    }
+    assert.ok(g, `${map.id} のギミックが組み立てられない`);
+
+    if (g.runway) {
+      // 帯（滑走路の両側 w px）が丸ごとエリアの中にあること。
+      // はみ出していると、吸い寄せた餌が壁の外へ消える見た目になる
+      const r = g.runway;
+      for (let t = 0; t <= 1.0001; t += 0.02) {
+        for (let u = -1; u <= 1.0001; u += 0.1) {
+          const x = r.x0 + (r.x1 - r.x0) * t - r.uy * r.w * u;
+          const y = r.y0 + (r.y1 - r.y0) * t + r.ux * r.w * u;
+          assert.ok(arena.inside(x, y),
+            `${map.id}: 滑走路の帯が壁の外へ出ている (t=${t.toFixed(2)}, u=${u.toFixed(1)})`);
+        }
+      }
+    }
+    for (const z of g.springs) {
+      for (let k = 0; k < 32; k++) {
+        const a = (k / 32) * Math.PI * 2;
+        assert.ok(arena.inside(z.x + Math.cos(a) * z.r, z.y + Math.sin(a) * z.r),
+          `${map.id}: 湧水ゾーンが壁の外へはみ出している`);
+      }
+      assert.ok(g.springAt(z.x, z.y), `${map.id}: ゾーンの中心がゾーン判定に入らない`);
+      assert.ok(!g.springAt(z.x + z.r + 1, z.y), `${map.id}: ゾーンの外がゾーン判定に入る`);
+    }
+  }
+}
+
+// 16. 多摩川の3帯カレント：上は凪、中は流れ、下はより強い急流
+{
+  const map = MAPS.find((m) => m.id === 'tamagawa');
+  const w = createWorld({ map });
+  const g = w.gimmick;
+  const dir = map.gimmick.dir;
+
+  // 帯ごとに、流れ方向へ前後1000px開けた場所を探す。壁際で測ると押し戻しが混ざる。
+  const pointInBand = (i) => {
+    const y0 = i ? g.bands[i - 1].y : w.arena.bb.y0;
+    const y1 = g.bands[i].y;
+    for (let n = 0; n < 20000; n++) {
+      const q = w.arena.spot();
+      if (q.y <= y0 + map.gimmick.blend * w.arena.bb.h || q.y >= y1 - map.gimmick.blend * w.arena.bb.h) continue;
+      let open = true;
+      for (let d = -1000; d <= 1000 && open; d += 60) {
+        open = w.arena.inside(q.x + Math.cos(dir) * d, q.y + Math.sin(dir) * d);
+      }
+      if (open) return q;
+    }
+    return null;
+  };
+
+  // 進んだ距離を「向いている向き」へ射影して測る。餌は毎ティック空にする ——
+  // 拾って質量が増えると速度（1 - r/420 の項）が動いて、比較にならない
+  const run = (p, a) => {
+    const s = w.addPlayer({ nid: 'run', sharkId: 'cinema', name: 'R' });
+    s.x = p.x; s.y = p.y; s.angle = s.aim = a; s.path = [{ x: s.x, y: s.y }];
+    const x0 = s.x, y0 = s.y;
+    for (let i = 0; i < 60; i++) { s.aim = a; w.food.length = 0; w.step(1 / 30); w.drainEvents(); }
+    const d = (s.x - x0) * Math.cos(a) + (s.y - y0) * Math.sin(a);
+    w.removeShark('run');
+    return d;
+  };
+  const distances = g.bands.map((_, i) => {
+    const p = pointInBand(i);
+    assert.ok(p, `多摩川の第${i + 1}帯に流れ方向へ開けた直線が見つからない`);
+    return { down: run(p, dir), up: run(p, dir + Math.PI) };
+  });
+  const [upper, middle, lower] = distances;
+  assert.ok(Math.abs(upper.down - upper.up) < 8,
+    `河川敷で流されている: ${upper.down.toFixed(0)} / ${upper.up.toFixed(0)}`);
+  assert.ok(middle.down > middle.up + 100,
+    `中帯の下流が速くない: ${middle.down.toFixed(0)} / ${middle.up.toFixed(0)}`);
+  assert.ok(lower.down - lower.up > middle.down - middle.up,
+    `急流が中帯より強くない: 中 ${middle.down - middle.up} / 下 ${lower.down - lower.up}`);
+
+  // 盤面が使うベクトルを直接見る。向きは全帯共通で、強さだけが変わる。
+  const vectors = g.bands.map((_, i) => {
+    const y0 = i ? g.bands[i - 1].y : w.arena.bb.y0;
+    return g.windAt(w.arena.bb.x0, (y0 + g.bands[i].y) / 2, 0);
+  });
+  assert.deepEqual(vectors[0], { x: 0, y: 0 }, '河川敷に流れがある');
+  const mags = vectors.map((v) => Math.hypot(v.x, v.y));
+  assert.ok(mags[2] > mags[1] && mags[1] > 0, `帯の強さが正しくない: ${mags.join(', ')}`);
+  for (const v of vectors.slice(1)) {
+    assert.ok(Math.abs(Math.atan2(v.y, v.x) - dir) < 1e-9, '帯で流れの向きがずれている');
+  }
+
+  // vを細かく走査しても、クロスフェードの隣接値が段差にならない。
+  let prev = 0;
+  for (let i = 0; i <= 1000; i++) {
+    const y = w.arena.bb.y0 + (i / 1000) * w.arena.bb.h;
+    const v = g.windAt(w.arena.bb.x0, y, 0);
+    const m = Math.hypot(v.x, v.y);
+    if (i) assert.ok(Math.abs(m - prev) < 4, `流速が段差になっている: ${prev} -> ${m}`);
+    prev = m;
+  }
+  w.destroy();
+}
+
+// 17. 飛行場のプロペラ気流：周期的に発生し、帯の中の餌が滑走路へ吸い寄せられる
+{
+  const map = MAPS.find((m) => m.id === 'airport');
+  const w = createWorld({ map });
+  const g = w.gimmick;
+  const { period, dur, width } = map.gimmick;
+
+  // 周期のどこかで必ず吹き、どこかで必ず止む。窓の端は 0（速度に段差を作らない）
+  const lv = [...Array(180)].map((_, i) => g.level((i * period) / 180));
+  assert.ok(Math.max(...lv) > 0.99, `気流が最大まで吹かない: ${Math.max(...lv)}`);
+  assert.ok(lv.filter((v) => v === 0).length > 10, '気流が止む時間が無い');
+  assert.equal(g.level(0), 0, '窓の入口は 0');
+  assert.equal(g.level(dur), 0, '窓の出口は 0');
+  assert.equal(g.level(period * 3 + dur / 2), g.level(dur / 2), '周期が繰り返していない');
+
+  // 帯の中のサメは滑走路の向きへ押され、帯の外と凪の間は押されない
+  const r = g.runway;
+  const mid = { x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2 };
+  const peak = dur / 2;
+  const wind = g.windAt(mid.x, mid.y, peak);
+  assert.ok(Math.hypot(wind.x, wind.y) > map.gimmick.push * 0.9, '滑走路の真上で気流が弱い');
+  assert.ok(Math.abs(Math.atan2(wind.y, wind.x) - r.ang) < 1e-9, '気流が滑走路の向きを向いていない');
+  assert.equal(g.windAt(mid.x - r.uy * width * 1.2, mid.y + r.ux * width * 1.2, peak).x, 0,
+    '帯の外にまで気流が届いている');
+  assert.deepEqual(g.windAt(mid.x, mid.y, dur + 0.5), { x: 0, y: 0 }, '凪の間も押している');
+
+  // 帯の中に置いた餌は吹いている間に滑走路へ寄る。帯の外に置いた餌は動かない
+  const bait = (u, id) => ({
+    x: mid.x - r.uy * width * u, y: mid.y + r.ux * width * u,
+    v: 4, r: 5, kind: 0, hue: '#fff', ph: 0, gone: false, id,
+  });
+  const near = bait(0.8, 90001), far = bait(2.4, 90002);
+  assert.ok(w.arena.inside(far.x, far.y), '比較用の餌が壁の外に置かれている');
+  const d0 = g.nearRunway(near.x, near.y).d;
+  const farWas = { x: far.x, y: far.y };
+  w.food.push(near, far);
+  for (let i = 0; i < 45; i++) w.step(1 / 30);     // 1.5秒 ＝ 吹いている最中
+  const d1 = g.nearRunway(near.x, near.y).d;
+  assert.ok(d1 < d0 - 40, `餌が吸い寄せられていない: ${d0.toFixed(0)} -> ${d1.toFixed(0)}px`);
+  assert.ok(Math.hypot(far.x - farWas.x, far.y - farWas.y) < 1e-9, '帯の外の餌まで動いている');
+  w.destroy();
+}
+
+// 18. 深大寺の湧水ゾーン：スタミナの戻りが速く、そばガードが張られる
+{
+  const map = MAPS.find((m) => m.id === 'jindaiji');
+  const w = createWorld({ map });
+  const z = w.gimmick.springs[0];
+
+  // ゾーンからじゅうぶん離れた比較点。近いと泳いで入ってしまう
+  let out = null;
+  for (let i = 0; i < 20000 && !out; i++) {
+    const q = w.arena.spot();
+    if (w.gimmick.springs.every((s) => Math.hypot(q.x - s.x, q.y - s.y) > s.r + 900)) out = q;
+  }
+  assert.ok(out, '湧水ゾーンから離れた場所が見つからない');
+
+  const a = w.addPlayer({ nid: 'in', sharkId: 'cinema', name: 'IN' });
+  const b = w.addPlayer({ nid: 'out', sharkId: 'cinema', name: 'OUT' });
+  a.stam = b.stam = 0.2;
+  // 泳いでゾーンを出入りしないよう、毎ティック置き直してから回す
+  for (let i = 0; i < 45; i++) {
+    a.x = z.x; a.y = z.y; b.x = out.x; b.y = out.y;
+    w.step(1 / 30);
+  }
+  const gained = (a.stam - 0.2) / (b.stam - 0.2);
+  assert.ok(gained > 1.8 && gained < 2.2, `スタミナの戻りが2倍になっていない: ${gained.toFixed(2)}倍`);
+  assert.ok(a.guard > 0, '湧水ゾーンでそばガードが張られない');
+  assert.equal(b.guard, 0, 'ゾーンの外でガードが張られている');
+
+  // 出れば切れる（「一時付与」）
+  for (let i = 0; i < 45; i++) { a.x = out.x; a.y = out.y; b.x = z.x; b.y = z.y; w.step(1 / 30); }
+  assert.equal(a.guard, 0, 'ゾーンを出てもガードが残り続けている');
+  w.destroy();
+}
+
+// 19. サーバとブラウザで同じ位相が回ること。
+//     気流は周期ものなので、時計がずれていると「サーバでは吹いているのにこちらでは凪」に
+//     なり、帯の中のサメだけ位置が割れる（オンライン対戦でいちばん見える形のズレ）
+{
+  const map = MAPS.find((m) => m.id === 'airport');
+  const server = createWorld({ map, authority: true, diffs: true });
+  const client = createWorld({ map, authority: false });
+  server.addPlayer({ nid: 'me', sharkId: 'cinema', name: 'ME' });
+  client.addPlayer({ nid: 'me', sharkId: 'cinema', name: 'ME' });
+
+  for (let i = 0; i < 111; i++) client.step(1 / 30);        // 3.7秒ぶん先に回して位相をずらす
+  assert.ok(Math.abs(client.envT - server.envT) > 3, '前提: 時計がずれていない');
+
+  server.snapshot();
+  client.applySnapshot(server.snapshot(true), 'me');
+  assert.ok(Math.abs(client.envT - server.envT) < 0.02, `環境の時計が揃わない: ${client.envT} / ${server.envT}`);
+  assert.ok(Math.abs(client.gimmick.level(client.envT) - server.gimmick.level(server.envT)) < 0.02,
+    '時計を揃えても気流の強さが一致しない');
+
+  // 揃えたあとは、同じ dt で回すかぎり同じ答えを出し続ける
+  for (let i = 0; i < 90; i++) {
+    server.step(1 / 30); server.drainEvents();
+    client.step(1 / 30); client.drainEvents();
+  }
+  assert.ok(Math.abs(client.envT - server.envT) < 0.02, '同じ dt で回して時計がずれた');
+  server.destroy(); client.destroy();
+}
+
+// 20. ギミックの無いエリア（調布駅・布田／つつじヶ丘・仙川）は従来どおり。
+//     スナップショットに環境の時計を積まない＝配信のバイト列も増えない
+{
+  for (const id of ['chofu', 'sengawa']) {
+    const w = createWorld({ map: MAPS.find((m) => m.id === id), authority: true, diffs: true });
+    assert.equal(w.gimmick, null, `${id} にギミックがある`);
+    assert.equal(w.snapshot().e, undefined, `${id} のスナップショットに環境の時計が載っている`);
+    assert.equal(w.snapshot(true).e, undefined, `${id} の full に環境の時計が載っている`);
+    w.destroy();
+  }
 }
 
 console.log('sim ok');
