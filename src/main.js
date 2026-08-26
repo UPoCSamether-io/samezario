@@ -600,6 +600,11 @@ function selectMap(m) {
       <div class="font-mono text-[10px] tracking-[0.25em] text-yellow mb-1">HISTORY</div>
       <p class="text-[13px] leading-relaxed text-paper/80">${rubify(m.lore)}</p>
     </div>
+    ${m.gimmick ? `
+    <div class="mt-3">
+      <div class="font-mono text-[10px] tracking-[0.25em] text-mint mb-1">GIMMICK ／ ${rubify(m.gimmick.label)}</div>
+      <p class="text-[13px] leading-relaxed text-paper/80">${rubify(m.gimmick.hint)}</p>
+    </div>` : ''}
     ${spotCard(m)}
     <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${rubify(m.blurb)}</p>
     <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · ${rubify('｜実際《じっさい》の｜地形《ちけい》')}</div>`;
