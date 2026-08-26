@@ -104,8 +104,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // 環境ギミック（#83）。効き目そのものは sim.js が決めていて、ここは見せ方だけ。
   // ギミックの無いエリアでは null なので、以下はまるごと素通りする
   const gim = world.gimmick;
-  // 気流・湧水はエリアにひとつの名前を持つ。多摩川は帯ごとに名前が違うので
-  // def.label を持たず、見出しは drawCurrent が帯から引く
+  // 盤面に名前を出すのは湧水ゾーンだけ（急流と気流は流れそのものが見えていれば足りる）
   const gimLabel = plainText(gim?.def.label);
   const stripes = ctx.createPattern(stripeTile(), 'repeat');
   const dots = ctx.createPattern(dotTile(), 'repeat');
@@ -458,38 +457,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // 目的は2つだけ。「流れがどちらを向いているか」と「いまゾーンの中に居るか」。
   // 効き目の値は sim.js から引くので、絵と盤面が食い違うことはない。
 
-  /**
-   * 高さ y で水になっている区間のうち、x にいちばん近いところへ幅 pad*2 の
-   * 見出しを収める。多摩川は斜めに細く、外接矩形の横中央はほとんどの高さで
-   * 輪郭の外＝ clip で消えるので、置ける場所をここで探す。
-   *
-   * 輪郭と走査線の交点をそのまま拾う（当たり判定と同じ頂点・同じ式）ので、
-   * 標本化の取りこぼしが無い。どの区間にも収まらなければ、いちばん広い区間の
-   * 真ん中へ置く。その高さに水が無ければ null。
-   */
-  function inWater(x, y, pad) {
-    const { xs, ys, n } = arena.poly;
-    const cuts = [];
-    for (let i = 0, j = n - 1; i < n; j = i++) {
-      if ((ys[i] > y) !== (ys[j] > y)) {
-        cuts.push(((xs[j] - xs[i]) * (y - ys[i])) / (ys[j] - ys[i]) + xs[i]);
-      }
-    }
-    cuts.sort((a, b) => a - b);
-    let near = null, nd = Infinity, wide = null, ww = 0;
-    for (let i = 0; i + 1 < cuts.length; i += 2) {
-      if (cuts[i + 1] - cuts[i] > ww) {
-        ww = cuts[i + 1] - cuts[i];
-        wide = (cuts[i] + cuts[i + 1]) / 2;
-      }
-      const a = cuts[i] + pad, b = cuts[i + 1] - pad;
-      if (b <= a) continue;
-      const p = clamp(x, a, b);
-      if (Math.abs(p - x) < nd) { nd = Math.abs(p - x); near = p; }
-    }
-    return near ?? wide;
-  }
-
   // 見出しの大きさ。ワールド px 固定にすると引きの絵（zoom 0.34）で読めなくなり、
   // 画面 px 固定にすると寄った絵で画面を覆う。下限だけ画面側で押さえる
   const labelPx = () => Math.max(30, 26 / cam.zoom);
@@ -645,18 +612,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         }
         ctx.restore();
       }
-
-      // 見出しはカメラに追わせる。帯は 1800px 高く、輪郭は斜めに細いので、
-      // 外接矩形の中央や帯の中央へ固定すると画面の外か clip の外へ落ちて、
-      // 河川敷と急流の名前は一度も読めない。横は水の中へ寄せる（inWater）
-      const label = plainText(bands[i].label);
-      const ly = clamp(view.y0 + labelPx() * 1.6, y0 + labelPx(), y1 - labelPx());
-      const lx = inWater(cam.x, ly, labelPx() * label.length * 0.5);
-      if (lx !== null) {
-        ctx.globalAlpha = 0.55 + strength * 0.35;
-        worldLabel(label, lx, ly, labelPx(), speed ? MINT : PAPER);
-        ctx.globalAlpha = 1;
-      }
     }
   }
 
@@ -715,12 +670,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         ctx.restore();
       }
     }
-
-    // 見出しは帯の縁の少し外。滑走路は斜めなので、ずらす向きも滑走路の法線で取る
-    const mx = (r.x0 + r.x1) / 2, my = (r.y0 + r.y1) / 2;
-    ctx.globalAlpha = 0.35 + lv * 0.55;
-    worldLabel(gimLabel, mx - r.uy * (r.w + 40), my + r.ux * (r.w + 40), labelPx(), YELLOW);
-    ctx.globalAlpha = 1;
   }
 
   /** 深大寺の湧水。縁の破線が「ここから中」の線で、泡は t だけで決まる（端末で絵が割れない） */
