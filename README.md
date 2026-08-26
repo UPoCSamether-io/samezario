@@ -75,6 +75,7 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 
 エリア固有の環境ギミック（多摩川の急流カレント・飛行場のプロペラ気流・深大寺の湧水ゾーン）は
 `src/data.js` の `MAPS[].gimmick` が数値を全部持ち、`src/sim.js` の `makeGimmick()` は式だけを持つ。
+多摩川の流れは外接矩形の上下位置に依存し、河川敷・流れ・急流の3帯で強さが変わる。
 位置は外接矩形の 0..1 で書くので `size` を動かしても輪郭に対する位置は変わらない。
 周期ものはサーバとブラウザで位相が揃っている必要があるので、環境の時計（`world.envT`）を
 スナップショットに載せて同期している。実測値と判断の経緯は `docs/stage_design_plan.md` §4.5。
@@ -238,4 +239,3 @@ dHash の経験則は、同じ被写体の別撮影が距離 6〜12、無関係�
   - `src/ruby.js` の `rubify()` が HTML `<ruby>親文字<rt>よみ</rt></ruby>` に展開。
   - SVG `<text>`（地図ラベル）や `alt` 属性、共有文などには `plainText()` で親文字のみを展開。
   - 通常モード時は CSS（`html:not(.kids-mode) rt { display: none; }`）でルビを非表示にし、こどもモード有効時のみ見やすくルビを表示。
-

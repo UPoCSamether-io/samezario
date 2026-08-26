@@ -163,11 +163,12 @@ export function makeGimmick(map, arena) {
   const { bb } = arena;
   const at = (u, v) => ({ x: bb.x0 + u * bb.w, y: bb.y0 + v * bb.h });
 
-  const g = { kind: def.kind, def, flow: null, runway: null, springs: [] };
+  const g = { kind: def.kind, def, bands: [], runway: null, springs: [] };
 
   if (def.kind === 'current') {
-    // 急流カレント：どこに居ても同じ一定ベクトル（docs/stage_design_plan.md §3 ④）
-    g.flow = { x: Math.cos(def.dir) * def.speed, y: Math.sin(def.dir) * def.speed };
+    // 多摩川は横ではなく上下の3帯で流速が変わる。v の境目を先に実 y へ直し、
+    // 毎 tick の windAt() で外接矩形を割らないようにする。
+    g.bands = def.bands.map((band) => ({ ...band, y: bb.y0 + band.until * bb.h }));
   }
   if (def.kind === 'gust') {
     // プロペラ気流：滑走路の線分と、その両側 width px の帯
@@ -212,7 +213,21 @@ export function makeGimmick(map, arena) {
    * 返り値は使い回しの定数オブジェクトを返すことがあるので、呼び側で書き換えない。
    */
   g.windAt = (x, y, t) => {
-    if (g.flow) return g.flow;
+    if (g.bands.length) {
+      let speed = g.bands[g.bands.length - 1].speed;
+      for (let i = 0; i < g.bands.length - 1; i++) {
+        const a = g.bands[i], b = g.bands[i + 1];
+        const edge = a.y;
+        const half = def.blend * bb.h;
+        if (y < edge - half) { speed = a.speed; break; }
+        if (y <= edge + half) {
+          const k = (y - (edge - half)) / (half * 2);
+          speed = a.speed + (b.speed - a.speed) * k;
+          break;
+        }
+      }
+      return speed ? { x: Math.cos(def.dir) * speed, y: Math.sin(def.dir) * speed } : NO_WIND;
+    }
     if (!g.runway) return NO_WIND;
     const lv = g.level(t);
     if (lv <= 0) return NO_WIND;
@@ -221,6 +236,9 @@ export function makeGimmick(map, arena) {
     const m = def.push * lv * k;
     return { x: g.runway.ux * m, y: g.runway.uy * m };
   };
+
+  // 描画も盤面と同じ流速を参照する。速度だけが要る帯模様でベクトルを組み立て直さない。
+  g.currentSpeedAt = (y) => Math.hypot(g.windAt(0, y, 0).x, g.windAt(0, y, 0).y);
 
   /**
    * 気流に巻かれた餌の行き先。滑走路へ寄せる成分と、それを 90° 回した成分を

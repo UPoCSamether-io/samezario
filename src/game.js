@@ -448,12 +448,64 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.restore();
   }
 
-  /** 多摩川の急流。水面いちめんの矢羽根が下流へ流れる */
+  /** 多摩川の上下3帯。盤面と同じ流速から、水面の筋の密度・長さ・速さを決める。 */
   function drawCurrent(t, view) {
-    ctx.save();
-    ctx.globalAlpha = 0.4;
-    chevrons(t, gim.def.dir, gim.def.speed, view, 200, 320, PAPER, Math.max(2.8 / cam.zoom, 3.4));
-    ctx.restore();
+    const bands = gim.bands;
+    const bb = arena.bb;
+    const blend = gim.def.blend * bb.h;
+    const maxSpeed = Math.max(...bands.map((b) => b.speed));
+    const ux = Math.cos(gim.def.dir), uy = Math.sin(gim.def.dir);
+    const nx = -uy, ny = ux;
+
+    // 境目を線で区切らず、帯の速さに応じた明るさをグラデーションで溶かす。
+    for (let i = 0, y0 = bb.y0; i < bands.length; y0 = bands[i++].y) {
+      const b = bands[i], y1 = b.y;
+      const speed = gim.currentSpeedAt((y0 + y1) / 2);
+      ctx.save();
+      ctx.globalAlpha = 0.035 + (speed / maxSpeed) * 0.13;
+      const fade = ctx.createLinearGradient(0, y0 - blend, 0, y1 + blend);
+      fade.addColorStop(0, 'transparent');
+      fade.addColorStop(0.5, speed ? MINT : PAPER);
+      fade.addColorStop(1, 'transparent');
+      ctx.fillStyle = fade;
+      ctx.fillRect(bb.x0, y0 - blend, bb.w, y1 - y0 + blend * 2);
+      ctx.restore();
+    }
+
+    for (let i = 0, y0 = bb.y0; i < bands.length; y0 = bands[i++].y) {
+      const b = bands[i], y1 = b.y;
+      const speed = gim.currentSpeedAt((y0 + y1) / 2);
+      const strength = speed / maxSpeed;
+      const gap = 240 - strength * 100;
+      const length = 36 + strength * 150;
+      const drift = t * speed;
+      ctx.save();
+      ctx.strokeStyle = speed ? PAPER : MINT;
+      ctx.globalAlpha = 0.1 + strength * 0.38;
+      ctx.lineWidth = Math.max(1.4 / cam.zoom, 1.8 + strength * 2.4);
+      for (let row = y0 + gap / 2; row < y1; row += gap) {
+        for (let col = bb.x0 - gap; col < bb.x1 + gap; col += gap) {
+          const phase = speed ? ((drift + col * ux + row * uy) % gap + gap) % gap : 0;
+          const x = col + ux * phase, y = row + uy * phase;
+          ctx.beginPath();
+          ctx.moveTo(x - ux * length / 2 - nx * 9, y - uy * length / 2 - ny * 9);
+          ctx.lineTo(x + ux * length / 2 - nx * 9, y + uy * length / 2 - ny * 9);
+          ctx.stroke();
+          if (strength > 0.7) {
+            ctx.globalAlpha = 0.12 + strength * 0.22;
+            ctx.beginPath();
+            ctx.moveTo(x - ux * length * 0.15 + nx * 12, y - uy * length * 0.15 + ny * 12);
+            ctx.lineTo(x + ux * length * 0.65 + nx * 12, y + uy * length * 0.65 + ny * 12);
+            ctx.stroke();
+            ctx.globalAlpha = 0.1 + strength * 0.38;
+          }
+        }
+      }
+      ctx.restore();
+      ctx.globalAlpha = 0.55 + strength * 0.35;
+      worldLabel(plainText(b.label), bb.x0 + bb.w * 0.5, (y0 + y1) / 2, labelPx(), speed ? MINT : PAPER);
+      ctx.globalAlpha = 1;
+    }
   }
 
   /** 飛行場のプロペラ気流。滑走路の帯は凪の間もうっすら残す＝「ここで吹く」と先に分かる */
@@ -573,6 +625,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
    */
   function drawEnvFront(t) {
     if (!gim || !player.alive) return;
+    if (gim.kind === 'current') return;
     const wind = gim.windAt(player.x, player.y, world.envT);
     const hr = radiusOf(player.mass);
 
@@ -807,6 +860,22 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       mctx.fillRect(0, -r.w, r.len, r.w * 2);
       mctx.restore();
     }
+    if (gim?.bands?.length) {
+      let y0 = arena.bb.y0;
+      const maxSpeed = Math.max(...gim.bands.map((b) => b.speed));
+      mctx.save();
+      mctx.clip(outline);
+      for (const b of gim.bands) {
+        const speed = gim.currentSpeedAt((y0 + b.y) / 2);
+        mctx.save();
+        mctx.globalAlpha = 0.12 + (speed / maxSpeed) * 0.35;
+        mctx.fillStyle = speed ? MINT : PAPER;
+        mctx.fillRect(arena.bb.x0, y0, arena.bb.w, b.y - y0);
+        mctx.restore();
+        y0 = b.y;
+      }
+      mctx.restore();
+    }
     for (const z of gim?.springs ?? []) {
       mctx.beginPath(); mctx.arc(z.x, z.y, z.r, 0, TAU);
       mctx.fillStyle = 'rgba(163,240,240,.3)'; mctx.fill();
@@ -833,24 +902,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     mctx.setLineDash([]);
     mctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // 一定の流れ（多摩川）は地図の隅にコンパスで出す。盤面へ矢羽根を撒くと
-    // 外接矩形の 34% しか水が無い形では、半分が陸の上に乗ってしまう
-    if (gim?.flow) {
-      const R = 15;
-      mctx.save();
-      mctx.translate(s - R - 7, s - R - 7);
-      mctx.fillStyle = 'rgba(45,45,45,.72)';
-      mctx.beginPath(); mctx.arc(0, 0, R, 0, TAU); mctx.fill();
-      mctx.rotate(gim.def.dir);
-      mctx.strokeStyle = MINT;
-      mctx.lineWidth = 2.5;
-      mctx.lineCap = mctx.lineJoin = 'round';
-      mctx.beginPath();
-      mctx.moveTo(-R * 0.6, 0); mctx.lineTo(R * 0.55, 0);
-      mctx.moveTo(R * 0.15, -R * 0.42); mctx.lineTo(R * 0.55, 0); mctx.lineTo(R * 0.15, R * 0.42);
-      mctx.stroke();
-      mctx.restore();
-    }
   }
 
   // ---------- loop ----------

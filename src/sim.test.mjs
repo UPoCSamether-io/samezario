@@ -462,28 +462,32 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   }
 }
 
-// 16. 多摩川の急流カレント：下流へ向かうほうが、上流へ向かうより遠くへ進む
+// 16. 多摩川の3帯カレント：上は凪、中は流れ、下はより強い急流
 {
   const map = MAPS.find((m) => m.id === 'tamagawa');
   const w = createWorld({ map });
+  const g = w.gimmick;
   const dir = map.gimmick.dir;
 
-  // 流れの向きに前後 1000px 開けた場所を探す。壁際で測ると押し戻しが混ざって、
-  // 「流れが効いていない」のか「壁に当たった」のか区別できない
-  let p = null;
-  for (let i = 0; i < 20000 && !p; i++) {
-    const q = w.arena.spot();
-    let open = true;
-    for (let d = -1000; d <= 1000 && open; d += 60) {
-      open = w.arena.inside(q.x + Math.cos(dir) * d, q.y + Math.sin(dir) * d);
+  // 帯ごとに、流れ方向へ前後1000px開けた場所を探す。壁際で測ると押し戻しが混ざる。
+  const pointInBand = (i) => {
+    const y0 = i ? g.bands[i - 1].y : w.arena.bb.y0;
+    const y1 = g.bands[i].y;
+    for (let n = 0; n < 20000; n++) {
+      const q = w.arena.spot();
+      if (q.y <= y0 + map.gimmick.blend * w.arena.bb.h || q.y >= y1 - map.gimmick.blend * w.arena.bb.h) continue;
+      let open = true;
+      for (let d = -1000; d <= 1000 && open; d += 60) {
+        open = w.arena.inside(q.x + Math.cos(dir) * d, q.y + Math.sin(dir) * d);
+      }
+      if (open) return q;
     }
-    if (open) p = q;
-  }
-  assert.ok(p, '多摩川に流れ方向へ開けた直線が見つからない');
+    return null;
+  };
 
   // 進んだ距離を「向いている向き」へ射影して測る。餌は毎ティック空にする ——
   // 拾って質量が増えると速度（1 - r/420 の項）が動いて、比較にならない
-  const run = (a) => {
+  const run = (p, a) => {
     const s = w.addPlayer({ nid: 'run', sharkId: 'cinema', name: 'R' });
     s.x = p.x; s.y = p.y; s.angle = s.aim = a; s.path = [{ x: s.x, y: s.y }];
     const x0 = s.x, y0 = s.y;
@@ -492,10 +496,39 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
     w.removeShark('run');
     return d;
   };
-  const down = run(dir), up = run(dir + Math.PI);
-  assert.ok(down > up + 100, `下流が速くない: 下流 ${down.toFixed(0)}px / 上流 ${up.toFixed(0)}px`);
-  // 素の2秒ぶん（172px/s × 2 ≒ 344px）を挟むこと＝加速と減速の両方が起きている
-  assert.ok(down > 380 && up < 300, `加速と減速の片方しか効いていない: ${down.toFixed(0)} / ${up.toFixed(0)}`);
+  const distances = g.bands.map((_, i) => {
+    const p = pointInBand(i);
+    assert.ok(p, `多摩川の第${i + 1}帯に流れ方向へ開けた直線が見つからない`);
+    return { down: run(p, dir), up: run(p, dir + Math.PI) };
+  });
+  const [upper, middle, lower] = distances;
+  assert.ok(Math.abs(upper.down - upper.up) < 8,
+    `河川敷で流されている: ${upper.down.toFixed(0)} / ${upper.up.toFixed(0)}`);
+  assert.ok(middle.down > middle.up + 100,
+    `中帯の下流が速くない: ${middle.down.toFixed(0)} / ${middle.up.toFixed(0)}`);
+  assert.ok(lower.down - lower.up > middle.down - middle.up,
+    `急流が中帯より強くない: 中 ${middle.down - middle.up} / 下 ${lower.down - lower.up}`);
+
+  // 盤面が使うベクトルを直接見る。向きは全帯共通で、強さだけが変わる。
+  const vectors = g.bands.map((_, i) => {
+    const y0 = i ? g.bands[i - 1].y : w.arena.bb.y0;
+    return g.windAt(w.arena.bb.x0, (y0 + g.bands[i].y) / 2, 0);
+  });
+  assert.deepEqual(vectors[0], { x: 0, y: 0 }, '河川敷に流れがある');
+  const mags = vectors.map((v) => Math.hypot(v.x, v.y));
+  assert.ok(mags[2] > mags[1] && mags[1] > 0, `帯の強さが正しくない: ${mags.join(', ')}`);
+  for (const v of vectors.slice(1)) {
+    assert.ok(Math.abs(Math.atan2(v.y, v.x) - dir) < 1e-9, '帯で流れの向きがずれている');
+  }
+
+  // vを細かく走査しても、クロスフェードの隣接値が段差にならない。
+  let prev = 0;
+  for (let i = 0; i <= 1000; i++) {
+    const y = w.arena.bb.y0 + (i / 1000) * w.arena.bb.h;
+    const m = Math.hypot(...Object.values(g.windAt(w.arena.bb.x0, y, 0)));
+    if (i) assert.ok(Math.abs(m - prev) < 4, `流速が段差になっている: ${prev} -> ${m}`);
+    prev = m;
+  }
   w.destroy();
 }
 
@@ -616,7 +649,6 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
 }
 
 console.log('sim ok');
-
 
 
 
