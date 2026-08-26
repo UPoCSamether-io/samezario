@@ -525,7 +525,8 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   let prev = 0;
   for (let i = 0; i <= 1000; i++) {
     const y = w.arena.bb.y0 + (i / 1000) * w.arena.bb.h;
-    const m = Math.hypot(...Object.values(g.windAt(w.arena.bb.x0, y, 0)));
+    const v = g.windAt(w.arena.bb.x0, y, 0);
+    const m = Math.hypot(v.x, v.y);
     if (i) assert.ok(Math.abs(m - prev) < 4, `流速が段差になっている: ${prev} -> ${m}`);
     prev = m;
   }
@@ -649,6 +650,7 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
 }
 
 console.log('sim ok');
+
 
 
 

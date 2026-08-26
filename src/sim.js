@@ -238,7 +238,10 @@ export function makeGimmick(map, arena) {
   };
 
   // 描画も盤面と同じ流速を参照する。速度だけが要る帯模様でベクトルを組み立て直さない。
-  g.currentSpeedAt = (y) => Math.hypot(g.windAt(0, y, 0).x, g.windAt(0, y, 0).y);
+  g.currentSpeedAt = (y) => {
+    const w = g.windAt(0, y, 0);
+    return Math.hypot(w.x, w.y);
+  };
 
   /**
    * 気流に巻かれた餌の行き先。滑走路へ寄せる成分と、それを 90° 回した成分を

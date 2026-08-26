@@ -239,3 +239,4 @@ dHash の経験則は、同じ被写体の別撮影が距離 6〜12、無関係�
   - `src/ruby.js` の `rubify()` が HTML `<ruby>親文字<rt>よみ</rt></ruby>` に展開。
   - SVG `<text>`（地図ラベル）や `alt` 属性、共有文などには `plainText()` で親文字のみを展開。
   - 通常モード時は CSS（`html:not(.kids-mode) rt { display: none; }`）でルビを非表示にし、こどもモード有効時のみ見やすくルビを表示。
+
