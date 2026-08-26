@@ -955,13 +955,15 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   function drawMini() {
     const s = mini.width;
     const bb = arena.bb;
+    const scale = s / 150;
     mctx.setTransform(1, 0, 0, 1, 0, 0);
     mctx.clearRect(0, 0, s, s);
     // エリアの外接矩形を枠内に収め、以降はワールド座標のまま描く
-    const k = (s - 8) / Math.max(bb.w, bb.h);
+    const pad = 6 * scale;
+    const k = (s - pad * 2) / Math.max(bb.w, bb.h);
     mctx.setTransform(k, 0, 0, k,
-      4 - bb.x0 * k + (s - 8 - bb.w * k) / 2,
-      4 - bb.y0 * k + (s - 8 - bb.h * k) / 2);
+      pad - bb.x0 * k + (s - pad * 2 - bb.w * k) / 2,
+      pad - bb.y0 * k + (s - pad * 2 - bb.h * k) / 2);
 
     mctx.fillStyle = 'rgba(33,48,82,.85)';
     mctx.fill(outline);
@@ -996,25 +998,15 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       mctx.fillStyle = 'rgba(163,240,240,.3)'; mctx.fill();
     }
 
-    mctx.fillStyle = 'rgba(243,181,83,.35)';
-    const fd = 1.5 / k;
-    for (let i = 0; i < food.length; i += 9) mctx.fillRect(food[i].x, food[i].y, fd, fd);
-    mctx.lineWidth = 1 / k;
+    mctx.lineWidth = (1.5 * scale) / k;
     for (const o of sharks) {
       if (!o.alive) continue;
       mctx.beginPath();
-      mctx.arc(o.x, o.y, (o === player ? 4 : 2.6) / k, 0, TAU);
+      mctx.arc(o.x, o.y, (o === player ? 5 * scale : 3.2 * scale) / k, 0, TAU);
       mctx.fillStyle = o === player ? YELLOW : '#e07a6a';
       mctx.fill();
       mctx.strokeStyle = INK; mctx.stroke();
     }
-    // 視界枠
-    mctx.strokeStyle = 'rgba(244,239,234,.6)';
-    mctx.setLineDash([3 / k, 3 / k]);
-    const vw = size.cw / cam.zoom;
-    const vh = size.ch / cam.zoom;
-    mctx.strokeRect(cam.x - vw / 2, cam.y - vh / 2, vw, vh);
-    mctx.setLineDash([]);
     mctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
@@ -1065,6 +1057,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         board: board.map((s) => ({
           name: s.name, mass: Math.round(s.mass), me: s === player, human: s.nid[0] !== 'b',
         })),
+        edge: player.alive ? clamp((180 - arena.edgeDist(player.x, player.y)) / 140, 0, 1) : 0,
       });
     }
     requestAnimationFrame(frame);

@@ -1197,7 +1197,8 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDex(); });
 const stage = $('#stage');
 const mini = $('#mini');
 const pausePanel = $('#pause');
-const hudMass = $('#hud-mass'), hudRank = $('#hud-rank'), hudBar = $('#hud-bar');
+const vignette = $('#vignette');
+const hudMass = $('#hud-mass'), hudScene = $('#hud-scene'), hudTime = $('#hud-time');
 const hudBoard = $('#hud-board'), hudCd = $('#hud-cd'), hudReel = $('#hud-reel');
 const hudStam = $('#hud-stam');
 
@@ -1218,7 +1219,8 @@ async function play() {
     $('#start-btn').disabled = false;
     show('game');
     pausePanel.style.display = 'none';
-    $('#hud-online').classList.toggle('hidden', !net);
+    vignette.style.setProperty('--warn', '0');
+    hudScene.textContent = plainText(selMap.name);
     $('#hud-skill-icon').textContent = ICON[selShark.id] || 'help';
     $('#hud-skill-name').innerHTML = rubify(selShark.skill.name);
     myName = net ? save.name : 'YOU';
@@ -1239,15 +1241,20 @@ function paintHud(h) {
     if (Object.keys(h).length === 1) return;
   }
   hudMass.textContent = h.mass.toLocaleString();
-  hudRank.textContent = `#${h.rank} / ${h.alive}`;
-  const top = Math.max(h.board[0]?.mass || 1, 2);
-  hudBar.style.width = clamp(Math.log(Math.max(h.mass, 1)) / Math.log(top), 0.04, 1) * 100 + '%';
-  if (h.humans) $('#hud-online').textContent = `ONLINE · ${h.humans} PLAYER${h.humans > 1 ? 'S' : ''}`;
-  const row = (b, rank, extra = '') => `
-    <li class="flex justify-between items-center gap-2 px-1.5 py-0.5 ${extra} ${b.me ? 'bg-yellow ink-2 -rotate-1 hard-sm relative z-10' : ''}">
-      <span class="font-bold truncate">${rank}. ${b.human && !b.me ? '◆ ' : ''}${esc(b.name)}</span>
+  if (h.time !== undefined) hudTime.textContent = fmtTime(h.time);
+  if (h.edge !== undefined) vignette.style.setProperty('--warn', h.edge.toFixed(2));
+  const isPlayerLead = h.rank === 1 || (h.board && h.board[0] && h.board[0].me);
+  hudBoardCard.classList.toggle('is-lead', !!isPlayerLead);
+  const row = (b, rank, extra = '') => {
+    const isLead = rank === 1;
+    const isSecond = rank === 2;
+    const isMe = !!b.me;
+    return `
+    <li class="board-row ${isLead ? 'board-lead' : ''} ${isSecond ? 'board-second' : ''} ${isMe ? 'board-me' : ''} flex justify-between items-center gap-2 px-1.5 py-0.5 ${extra} ${isMe ? 'bg-yellow text-ink font-bold ink-2 -rotate-1 hard-sm relative z-10' : ''}">
+      <span class="font-bold truncate">${rank}. ${b.human && !isMe ? '◆ ' : ''}${esc(b.name)}</span>
       <span class="font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
     </li>`;
+  };
   hudBoard.innerHTML = h.board.map((b, i) => row(b, i + 1)).join('')
     + (h.board.some((b) => b.me) ? ''
       : row({ name: myName, mass: h.mass, me: true, human: true }, h.rank, 'mt-1.5 border-t-2 border-ink/25 pt-1'));
@@ -1262,6 +1269,17 @@ function paintHud(h) {
 $('#resume').onclick = () => ctl?.resume();
 $('#quit').onclick = () => { dropNet(); show('title'); };
 $('#retry').onclick = () => play();
+
+const hudBoardCard = $('#hud-board-card');
+hudBoardCard.addEventListener('click', (e) => {
+  e.stopPropagation();
+  hudBoardCard.classList.toggle('expanded');
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#hud-board-card')) {
+    hudBoardCard.classList.remove('expanded');
+  }
+});
 
 const hudKey = (el, key, sound) => el.addEventListener('pointerdown', (e) => {
   e.preventDefault();
@@ -1289,6 +1307,7 @@ const rubifyCause = (c) => rubify(c.replace(/泳いだ跡|外壁|胴体/g, (w) =
 
 function showResult(r) {
   dropNet();
+  vignette.style.setProperty('--warn', '0');
   const best = Math.max(save.best, r.mass);
   const isBest = r.mass > save.best;
   save.best = best; persist();

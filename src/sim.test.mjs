@@ -35,7 +35,7 @@ for (const map of MAPS) {
 
 // 2. 内外判定：外接矩形の外は必ず外、home は必ず内、spot() は必ず内
 {
-  const { inside, bb, home, spot } = makeArena(chofu);
+  const { inside, bb, home, spot, edgeDist, poly } = makeArena(chofu);
   assert.ok(inside(home.x, home.y), 'home は内側');
   assert.ok(!inside(bb.x0 - 10, bb.y0 - 10), '外接矩形の外は外側');
   assert.ok(!inside(bb.x1 + 10, bb.y1 + 10), '外接矩形の外は外側');
@@ -43,6 +43,18 @@ for (const map of MAPS) {
     const p = spot();
     assert.ok(inside(p.x, p.y), `spot() が外を返した: ${p.x},${p.y}`);
   }
+
+  // 2.5 辺への最短距離 (edgeDist)
+  // 頂点上は距離 0
+  for (let i = 0; i < poly.n; i++) {
+    assert.ok(edgeDist(poly.xs[i], poly.ys[i]) < 1e-6, `頂点 ${i} 上の距離は 0`);
+    const j = (i + 1) % poly.n;
+    const mx = (poly.xs[i] + poly.xs[j]) / 2;
+    const my = (poly.ys[i] + poly.ys[j]) / 2;
+    assert.ok(edgeDist(mx, my) < 1e-6, `辺 ${i}-${j} の中点上の距離は 0`);
+  }
+  assert.ok(edgeDist(home.x, home.y) > 0, 'home の距離は正');
+  assert.ok(edgeDist(bb.x0 - 50, bb.y0) >= 50, '矩形外の点は少なくとも 50px 離れている');
 }
 
 // ---------------------------------------------------------------------------
