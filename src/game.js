@@ -7,6 +7,7 @@ import { BOT_NAMES } from './data.js';
 import { plainText } from './ruby.js';
 import { paintShark, paintSpriteShark } from './shark-art.js';
 import { makeSteer } from './steer.js';
+import { sfx } from './audio.js';
 import { createWorld, radiusOf, clamp, rand, pick, TAU } from './sim.js';
 
 const INK = '#2d2d2d';
@@ -215,6 +216,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // 独りなら誰も待たせないので本当に止める。オンラインでも同じで、
     // サーバがその部屋の tick ごと止める（server/index.mjs の 'pause'）
     paused = v && world.humans() <= 1;
+    // 止まった世界でフィルムだけ回らせない。押しっぱなしなら再開の1フレーム目で鳴り直す
+    if (paused && !attract) { sfx.dash(false); wasBoosting = false; }
     if (net) net.send({ t: 'pause', v: paused ? 1 : 0 });
     onHud?.({ paused: v });
   }
@@ -274,6 +277,20 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   }
 
   /**
+   * 画面のどこで起きた音か。距離は画面座標（＝ズーム込み）で測るので、育って引きの絵に
+   * なるほど遠くの出来事は小さくなる。画面8枚ぶん離れたら無音。
+   *
+   * 減衰は二乗だと画面の外へ出た時点でほぼ聞こえなくなり、盤面が静かになりすぎた。
+   * 0.6乗まで寝かせて、遠くの出来事も「遠くで起きている」と分かる音量で残す
+   */
+  function spatial(x, y) {
+    const dx = (x - cam.x) * cam.zoom, dy = (y - cam.y) * cam.zoom;
+    const half = Math.max(size.cw, size.ch) * 0.5 || 1;
+    const far = Math.hypot(dx, dy) / (half * 8);
+    return { vol: clamp(1 - far, 0, 1) ** 0.6, pan: clamp(dx / half, -1, 1) };
+  }
+
+  /**
    * sim が「何が起きたか」だけを積んでくるので、ここで絵と音と画面遷移にする。
    * 自分で回した結果でも、サーバの宣告を applySnapshot が翻訳した結果でも同じ道を通る
    * —— オンラインとオフラインで演出が食い違わないのはこのため。
@@ -281,24 +298,40 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   function onEvent(e) {
     const s = e.shark;
     switch (e.k) {
-      case 'eat':
+      case 'eat': {
         // 自分の口元か、目の届く範囲（300px）で消えた粒だけ弾けさせる
-        if (s === player) burst(e.x, e.y, e.hue, e.kind ? 8 : 3, 60);
-        else if (!s && (e.x - player.x) ** 2 + (e.y - player.y) ** 2 < 90000) {
-          burst(e.x, e.y, e.hue, e.kind ? 8 : 3, 60);
-        }
+        if (s && s !== player) break;
+        const d2 = (e.x - player.x) ** 2 + (e.y - player.y) ** 2;
+        if (!s && d2 >= 90000) break;
+        burst(e.x, e.y, e.hue, e.kind ? 8 : 3, 60);
+        // 音は自分が食べたぶんだけ。オンラインでは「誰が食べたか」をサーバが送って
+        // こない（applySnapshot は shark:null で積む）ので、口の届く距離で肩代わりする
+        // 口の半径ちょうどでは半分取りこぼす。粒が消えた点はサーバが決めていて、
+        // こちらの座標は予測なので、実測で 2倍の半径 + 30px ぶんズレていた
+        // （自分の口元は 18〜27px、他人が食べた粒は 250px 先。間は広いので余裕をとる）
+        const mouth = radiusOf(player.mass) * 2 + 30;
+        if (!attract && (s === player || d2 < mouth * mouth)) sfx.eat();
         break;
+      }
       case 'wall': burst(e.x, e.y, '#ba1a1a', 22, 220); break;
-      case 'skill': burst(s.x, s.y, s.def.accent, 18); break;
+      case 'skill':
+        burst(s.x, s.y, s.def.accent, 18);
+        if (s === player && !attract) sfx.skill();
+        break;
       case 'guard':
         burst(s.x, s.y, YELLOW, 24, 180);
         if (s === player) cam.shake = 14;
         break;
-      case 'die':
+      case 'die': {
         cam.shake = s === player ? 26 : 8;
         burst(s.x, s.y, s.def.color, 26, 200);
-        if (s === player && !attract) endRun(e.cause);
+        if (attract) break;
+        if (s === player) { sfx.die(); endRun(e.cause); break; }
+        // 他人の最期も聞こえる。遠いほど小さく、画面の左右どちらで起きたかで振る
+        const { vol, pan } = spatial(s.x, s.y);
+        if (vol > 0.03) sfx.die(vol * 0.7, pan);
         break;
+      }
       case 'respawn':
         // attract: 主役が死んだら別の個体へカメラを切り替える。
         // 補間で盤面を横断させず、映画のカットのように飛ばす
@@ -312,6 +345,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
   }
 
+  let wasBoosting = false;
   function step(dt) {
     // 操舵。マウス操作時は毎フレーム今のカメラでワールド座標へ焼き直す
     // （ワールド座標で覚えるとカメラが進んだぶん狙点が置き去りになる）。
@@ -327,6 +361,12 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
 
     world.step(dt);
     for (const e of world.drainEvents()) onEvent(e);
+
+    // ダッシュは sim がイベントを出さない（boost はフラグ）ので、立ち上がりをここで拾う。
+    // hud（0.08秒ごと）で拾うと押した音が遅れて聞こえるため毎フレーム見る
+    const boosting = player.alive && player.boost && !player.winded && player.stam > 0;
+    if (boosting !== wasBoosting && !attract) sfx.dash(boosting);
+    wasBoosting = boosting;
 
     // エフェクト
     for (let i = fx.length - 1; i >= 0; i--) {
@@ -1070,6 +1110,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   return {
     stop() {
       running = false; dead = true;
+      if (!attract) sfx.dash(false);   // 押したまま抜けてもフィルムは止める
       world.destroy();
       ro.disconnect();
       clearTimeout(soloTimer);

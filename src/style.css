@@ -377,6 +377,82 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 }
 @keyframes drift { to { transform: translate3d(4%, -3%, 0) scale(1.08) } }
 
+/* 音量のつまみ（サウンド画面）。ネイティブの range を使うのは、タッチのドラッグと
+   キーボード操作をブラウザに任せられるから。ただし既定のつまみは 12px 角ほどしかなく
+   指では掴めないので、見た目だけフィルムの一片に作り直す。
+
+   帯はパーフォレーション（.sprockets と同じ点）を通したフィルム、teal の塗りが今の値、
+   つまみはカチンコの板。塗りは --fill（main.js が % で書く）で描く。-moz-range-progress を
+   使わないのは、ボーダー付きトラックだと塗りの原点が 3px ずれて右端が埋まりきらないため。
+
+   ベンダー接頭辞の擬似要素はセレクタリストにまとめられない（1つでも解釈できないと
+   ルールごと捨てられる）ので、webkit と moz を必ず別々に書くこと。 */
+.vol-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 40px;                       /* つまみ 38px + 影 2px。行の高さはこれで決まる */
+  background: transparent;
+  cursor: pointer;
+}
+.vol-range:focus { outline: none; }
+
+.vol-range::-webkit-slider-runnable-track {
+  box-sizing: border-box;
+  height: 26px;
+  border: 3px solid var(--color-ink);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle, rgb(45 45 45 / .22) 34%, transparent 36%) 0 0 / 22px 100%,
+    linear-gradient(var(--color-teal) 0 0) 0 0 / var(--fill, 100%) 100% no-repeat,
+    var(--color-paper);
+}
+.vol-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 26px;
+  height: 38px;
+  margin-top: -6px;                   /* (26 - 38) / 2。webkit は自分で中央へ寄せない */
+  border: 3px solid var(--color-ink);
+  border-radius: 4px;
+  background: repeating-linear-gradient(45deg,
+    var(--color-ink) 0 6px, var(--color-yellow) 6px 12px);
+  box-shadow: 2px 2px 0 0 var(--color-ink);
+}
+.vol-range:active::-webkit-slider-thumb { box-shadow: 0 0 0 0 var(--color-ink); transform: translate(2px, 2px); }
+.vol-range:focus-visible::-webkit-slider-thumb { border-color: var(--color-danger); }
+
+.vol-range::-moz-range-track {
+  box-sizing: border-box;
+  height: 26px;
+  border: 3px solid var(--color-ink);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle, rgb(45 45 45 / .22) 34%, transparent 36%) 0 0 / 22px 100%,
+    linear-gradient(var(--color-teal) 0 0) 0 0 / var(--fill, 100%) 100% no-repeat,
+    var(--color-paper);
+}
+.vol-range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 26px;
+  height: 38px;
+  border: 3px solid var(--color-ink);
+  border-radius: 4px;
+  background: repeating-linear-gradient(45deg,
+    var(--color-ink) 0 6px, var(--color-yellow) 6px 12px);
+  box-shadow: 2px 2px 0 0 var(--color-ink);
+}
+.vol-range:focus-visible::-moz-range-thumb { border-color: var(--color-danger); }
+
+/* 横持ちスマホは縦が 375px しかなく、素の1列組みだと中身に 371px 要る（実測）。
+   使えるのは 311px なので SFX のつまみがスクロールの下へ隠れてしまう。
+   幅は 667px あって余っているので、2列へ組み替える（実測 258px に収まる）。
+   #title-stage が 2カラムへ割れるのと同じ閾値で切ること */
+@media (max-height: 500px) {
+  #s-sound .sound-rows { grid-template-columns: 1fr 1fr; }
+}
+
 /* Scrollbars inside panels */
 .thin-scroll::-webkit-scrollbar { width: 10px; }
 .thin-scroll::-webkit-scrollbar-track { background: rgb(0 0 0 / .12); }
