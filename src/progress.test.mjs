@@ -441,3 +441,42 @@ test('unclaimedFinishedChapter: 最終段階に到達した未獲得の章だけ
   m.replace({ xp: 16500, claimedSharks: ['cinema', 'dogu'] });   // 16,500XP = 第2幕が完成
   assert.equal(m.unclaimedFinishedChapter()?.id, 'tamagawa');
 });
+
+test('markPlayed/isUnlocked: tier が1つ下のエリアで対戦を終えると次の tier が開く', async () => {
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?tier-unlock');
+  const chofu = MAPS.find((a) => a.id === 'chofu');       // tier 1（最初から解放）
+  const tamagawa = MAPS.find((a) => a.id === 'tamagawa');  // tier 2
+  const jindaiji = MAPS.find((a) => a.id === 'jindaiji');  // tier 3
+
+  assert.ok(m.isUnlocked(chofu), '調布は最初から解放');
+  assert.ok(!m.isUnlocked(tamagawa), 'tier2 はまだ');
+  assert.ok(!m.isUnlocked(jindaiji), 'tier3 はまだ');
+
+  m.markPlayed('chofu');
+  assert.ok(m.isUnlocked(tamagawa), 'tier1 を1試合遊べば tier2 が開く');
+  assert.ok(!m.isUnlocked(jindaiji), 'tier2 を遊んでいないので tier3 はまだ');
+
+  m.markPlayed('tamagawa');
+  assert.ok(m.isUnlocked(jindaiji), 'tier2 を1試合遊べば tier3 が開く');
+
+  // tier の解放は unlocked/points に触れない（clearSpot/markShared の書き込み口を増やさない）
+  assert.deepEqual(m.save.unlocked, ['chofu'], 'tier 解放は save.unlocked を書き換えない');
+  assert.equal(m.save.points, 0, 'tier 解放は加点しない');
+});
+
+test('markPlayed: 同じエリアを二度渡しても played は重複しない', async () => {
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => store[k] ?? null,
+    setItem: (k, v) => { store[k] = String(v); },
+  };
+  const m = await import('./progress.js?played-dedupe');
+  m.markPlayed('chofu');
+  m.markPlayed('chofu');
+  assert.deepEqual(m.save.played, ['chofu']);
+});

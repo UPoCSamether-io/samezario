@@ -4,7 +4,7 @@ import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
 import { paintShark, paintSpriteShark, bodyLength, swimBody, preloadSharks } from './shark-art.js';
 import { mountHowtoDemo } from './howto-demo.js';
-import { save, persist, isUnlocked, isCleared, clearSpot, markShared, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, stageTicks, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
+import { save, persist, isUnlocked, isCleared, clearSpot, markShared, markPlayed, isUnlockedShark, hasNewSalvage, stageOf, markSalvageSeen, addXp, salvageProgress, stageTicks, replace, LEVEL_XP, claimShark, chapters, chapterLocked, defaultChapter, unclaimedFinishedChapter } from './progress.js';
 import { runUnlock, explain, isDemo } from './verify.js';
 import { rubify, plainText, kanaText, esc } from './ruby.js';
 import { shareUnlock, explainShare } from './share.js';
@@ -1298,6 +1298,13 @@ function showResult(r) {
   addXp(r.mass * xpMult);
   syncSalvageDot();
 
+  // tier の「遊べば解放」。呼ぶのはここだけ（progress.js の markPlayed 参照）。
+  // 先に開いていたエリアを控えておき、呼んだ後との差分だけを「新しく開いた」として拾う
+  const openBefore = new Set(MAPS.filter(isUnlocked).map((m) => m.id));
+  markPlayed(selMap.id);
+  const newlyOpened = MAPS.filter((m) => !openBefore.has(m.id) && isUnlocked(m));
+  renderMaps(selMap);   // ロケ地選択の鍵を裏で外しておく（現地写真の解放と同じやり方）
+
   show('result');
   $('#res-sub').innerHTML = `${rubify(selMap.name)} ／ ${rubify(selShark.name)}`
     + (r.cause ? `<br><span class="text-danger">${rubifyCause(r.cause)}${rubify('に｜接触《せっしょく》')}</span>` : '');
@@ -1317,9 +1324,15 @@ function showResult(r) {
   // 「使えるようになった」とは書かない。解放が起きるのは史料画面で自分でボタンを
   // 押したときだけで、ここで所有を告げると、サメ選択へ行ってロックを見ることになる
   const done = unclaimedFinishedChapter();
-  $('#res-level').innerHTML = done
-    ? `<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">${rubify('｜完成《かんせい》')}</span>
-       ${rubify(`｜第《だい》${done.era}｜幕《まく》`)}${rubify('の｜史料《しりょう》がすべて｜読《よ》めるようになった！')}`
-    : '';
+  const lines = [];
+  if (newlyOpened.length) {
+    lines.push(`<span class="bg-mint ink-2 rounded px-2 py-0.5 font-bold">${rubify('｜解放《かいほう》')}</span>
+       ${newlyOpened.map((m) => rubify(m.name)).join('・')}${rubify('が｜遊《あそ》べるようになった！')}`);
+  }
+  if (done) {
+    lines.push(`<span class="bg-yellow ink-2 rounded px-2 py-0.5 font-bold">${rubify('｜完成《かんせい》')}</span>
+       ${rubify(`｜第《だい》${done.era}｜幕《まく》`)}${rubify('の｜史料《しりょう》がすべて｜読《よ》めるようになった！')}`);
+  }
+  $('#res-level').innerHTML = lines.join('<br>');
   $('#res-tip').innerHTML = rubify(TIPS[(Math.random() * TIPS.length) | 0]);
 }
