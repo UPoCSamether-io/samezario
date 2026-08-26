@@ -1091,6 +1091,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         time: world.elapsed,
         cd: player.cd, cdMax: player.def.skill.cd,
         stam: player.stam, winded: player.winded,
+        guard: player.guard > 0,
         boost: !player.winded && player.stam > 0,
         boosting: player.boost && !player.winded && player.stam > 0,
         humans: net ? world.humans() : 0,
