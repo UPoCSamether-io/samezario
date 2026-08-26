@@ -4,7 +4,6 @@
 // 餌の増減や生死は決めない —— オンラインなら world.authority=false で
 // サーバの宣告を待ち、繋がらなければ world.goSolo() で自分が正になる。
 import { BOT_NAMES } from './data.js';
-import { plainText } from './ruby.js';
 import { paintShark, paintSpriteShark } from './shark-art.js';
 import { makeSteer } from './steer.js';
 import { sfx } from './audio.js';
@@ -104,8 +103,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // 環境ギミック（#83）。効き目そのものは sim.js が決めていて、ここは見せ方だけ。
   // ギミックの無いエリアでは null なので、以下はまるごと素通りする
   const gim = world.gimmick;
-  // 盤面に名前を出すのは湧水ゾーンだけ（急流と気流は流れそのものが見えていれば足りる）
-  const gimLabel = plainText(gim?.def.label);
   const stripes = ctx.createPattern(stripeTile(), 'repeat');
   const dots = ctx.createPattern(dotTile(), 'repeat');
   const gravel = ctx.createPattern(gravelTile(), 'repeat');
@@ -457,24 +454,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // 目的は2つだけ。「流れがどちらを向いているか」と「いまゾーンの中に居るか」。
   // 効き目の値は sim.js から引くので、絵と盤面が食い違うことはない。
 
-  // 見出しの大きさ。ワールド px 固定にすると引きの絵（zoom 0.34）で読めなくなり、
-  // 画面 px 固定にすると寄った絵で画面を覆う。下限だけ画面側で押さえる
-  const labelPx = () => Math.max(30, 26 / cam.zoom);
-
-  /** ワールド座標に置く見出し。サメの名前と同じ「白抜き＋墨の縁」 */
-  function worldLabel(text, x, y, px, fill) {
-    ctx.save();
-    ctx.font = `700 ${px}px "Space Grotesk", "M PLUS Rounded 1c", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 5 / cam.zoom;
-    ctx.strokeStyle = INK;
-    ctx.strokeText(text, x, y);
-    ctx.fillStyle = fill;
-    ctx.fillText(text, x, y);
-    ctx.restore();
-  }
-
   /**
    * ワールドの矩形 box を、流れ（ang）の座標系へ移したときの外接範囲。
    * この (u, v) の上に格子を置くと、行は流れに直交して並び、
@@ -703,9 +682,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         ctx.arc(z.x + Math.cos(a) * rr, z.y + Math.sin(a) * rr - ph * z.r * 0.3, 3 + (1 - ph) * 7, 0, TAU);
         ctx.fill();
       }
-      ctx.globalAlpha = here ? 1 : 0.6;
-      worldLabel(gimLabel, z.x, z.y + z.r - 30, labelPx(), MINT);
-      ctx.globalAlpha = 1;
     }
   }
 
@@ -759,7 +735,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       ctx.globalAlpha = 0.5 + 0.35 * Math.sin(t * 5);
       ctx.beginPath(); ctx.arc(player.x, player.y, hr * 3.9, 0, TAU); ctx.stroke();
       ctx.globalAlpha = 1;
-      worldLabel(gimLabel, player.x, player.y + hr * 3.9 + labelPx(), labelPx(), MINT);
       ctx.restore();
     }
   }
