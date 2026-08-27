@@ -72,7 +72,11 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 - `BOT_COUNT` / `BOT_GROWTH` — ボットの数と成長率（難易度）
 - `DASH_DRAIN` / `DASH_REFILL` / `DASH_MIN` — ダッシュのスタミナ消費・回復・息切れ解除ライン
 - `WAKE_LIFE` / `WAKE_R` — 航跡の寿命と太さ。囲い込みの成否はこれと `DASH_DRAIN`（＝航跡の長さ）で決まる
-- `SEGS` — rope の骨の数。体長は `shark-art.js` の `bodyLength()`（太さ × `def.aspect`）
+- `SEG_PX` / `SEGS_MIN` / `SEGS_MAX` — rope の骨の間隔(px)と節数の範囲。体長（`shark-art.js` の
+  `bodyLength()` ＝ 太さ × `def.aspect`）を `SEG_PX` で割って節数にする。`SEGS_MIN` は見た目ではなく
+  **判定**が決めている —— 胴体は半径 `r*taper(i/n)` の円の連なりなので、節間隔が隣り合う円の
+  半径の和を超えると尾で判定が途切れる。下げるなら `sim.test.mjs` §24b が止める
+- `HEAD_SAFE` — 頭から体長の何割までが「当たっても死なない」か。節数が体長で動くので割合で持つ
 
 エリア固有の環境ギミック（多摩川の急流カレント・飛行場のプロペラ気流・深大寺の湧水ゾーン）は
 `src/data.js` の `MAPS[].gimmick` が数値を全部持ち、`src/sim.js` の `makeGimmick()` は式だけを持つ。

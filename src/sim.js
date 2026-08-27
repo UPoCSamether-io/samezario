@@ -16,7 +16,6 @@ import { bodyLength, taper } from './shark-art.js';
 
 export const TAU = Math.PI * 2;
 
-const PATH_STEP = 5;      // 軌跡サンプリング間隔(px)
 const BASE_SPEED = 172;   // px/s
 // rad/s の上限。3.3 だと質量 86 まで（＝序盤ずっと）この上限が効いてしまい、
 // 体の細さぶんの小回りが殺されて「曲がりが鈍い」状態だった。
@@ -39,7 +38,21 @@ const WAKE_R = 0.42;      // 太さ ≒ 胴の半径 × これ
 const BOT_COUNT = 13;
 const BOT_GROWTH = 0.55;
 const START_MASS = 30;
-const SEGS = 18;          // rope の骨の数。体長は伸びないので固定
+// rope の骨の間隔(px)。体長を割って節数にする。
+// 固定 18 本だったころは、体長が短い序盤ほど刻みが細かくなりすぎていた ——
+// 開始サイズ(体長 47px)で節間隔 2.6px、当時の軌跡サンプリング(5px)より細かく、
+// 隣り合う2節が同じ線分に乗って角度の同じ短冊を2枚貼っていた。
+const SEG_PX = 8;
+// 節数の下限は「判定の穴」が決める。胴体は半径 r*taper(i/n) の円の連なりなので、
+// 節間隔が隣り合う円の半径の和を超えると尾のあたりで判定が途切れる。
+// 半径 r は両辺で約分されて消え、taper と体の縦横比だけで決まる —— 全機種で
+// 塞がる最小が 12（yokai が最も細く、ここが効く）。上限は巨体の見た目側の都合
+const SEGS_MIN = 12, SEGS_MAX = 24;
+const segsFor = (len) => clamp(Math.round(len / SEG_PX), SEGS_MIN, SEGS_MAX);
+// 頭から何割かは当たっても死なない（正面衝突では相打ちにしない）。
+// 節数が体長で動くので、割合で持って節数に掛ける。4/18 は固定 18 本だったころの実効値
+const HEAD_SAFE = 4 / 18;
+const hitFromOf = (n) => Math.max(1, Math.round(n * HEAD_SAFE));
 const FOOD_PER_AREA = 14000;   // 餌1個あたりの面積(px²)
 
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -433,17 +446,16 @@ export function createWorld({ map, authority = true, diffs = false }) {
 
     const angle = rand(0, TAU);
     rosterDirty = true;
-    return {
+    const s = {
       def: d, name, isBot,
       // nid = 通信での身元。ボットは 'b0..'、人は接続ID。復活しても同じ nid を引き継ぐ
       nid: nid ?? 'b' + nidSeq++,
       ex: 0, ey: 0, ea: 0,       // スナップショットとのズレ（位置と向き）。数フレームかけて溶かす
       x, y, angle, aim: angle,   // 初回入力が来るまでは湧いた向きへ直進
       mass: START_MASS,
-      path: [{ x, y }],
-      body: [], wake: [],
+      body: [], wake: [],        // body は下の layBody() が湧いた向きへ並べる
       wbb: null,                 // 航跡の外接矩形。ここで宣言しておかないと形が途中で変わる
-      reach: 60,
+      reach: 60, hitFrom: 1,     // hitFrom = ここから後ろが当たる節（頭の数節は当たらない）
       // 湧き直後は無敵（同サイズ同士の即死を防ぐ）
       // guard = 深大寺サメのスキルが張る「秒数」の盾。guardStock = 湧水でもらう「個数」の盾。
       // 別々に持つのは意味が違うから —— スキルは 5秒で切れる＝使いどころを読む技で、
@@ -459,6 +471,8 @@ export function createWorld({ map, authority = true, diffs = false }) {
       // bot only
       goal: null, mood: 0, moodT: 0,
     };
+    layBody(s);   // 体を持たないまま resolve に渡さない（湧いた向きへ真っ直ぐ並べる）
+    return s;
   }
 
   /**
@@ -499,6 +513,19 @@ export function createWorld({ map, authority = true, diffs = false }) {
   world.seedFood = () => { if (!food.length) spawnFood(foodTarget()); };
 
   /**
+   * サメを置き直す。体は向きの逆へ真っ直ぐ並ぶ。
+   * 位置だけ動かすと、体は前のティックの居場所から連鎖で引きずられて盤面を横断する。
+   * ワープ（入室・復活・致命的なズレ）が中でやっているのと同じことを外へ出したもの。
+   */
+  world.place = (s, x, y, angle = s.angle) => {
+    s.x = x; s.y = y; s.angle = angle; s.aim = angle;
+    s.ex = s.ey = s.ea = 0;
+    s.wake.length = 0;
+    layBody(s);
+    return s;
+  };
+
+  /**
    * ボス（深大寺のヌシ）を1体だけ湧かせる。数値は data.js の MAPS[].boss が全部持つ。
    * nid を 'boss' にしてあるのは humans() が頭文字 'b' をボットとして数えるため ——
    * ボスが居るせいで「独りの海」ではなくなり、ポーズが効かなくなるのを避ける。
@@ -524,11 +551,12 @@ export function createWorld({ map, authority = true, diffs = false }) {
     for (let i = 0; i < 40 && sharks[0]; i++) {
       if (Math.hypot(s.x - sharks[0].x, s.y - sharks[0].y) > 1600) break;
       const p = arena.spot();
-      s.x = p.x; s.y = p.y; s.path = [{ x: p.x, y: p.y }];
+      s.x = p.x; s.y = p.y;
     }
     s.isBoss = true;
     s.mass = def.bossMass;
     s.hp = def.hp;
+    layBody(s);   // 体格も居場所も makeShark の後で変わる。巨体ぶんを並べ直す
     sharks.push(s);
     world.boss = s;
     return s;
@@ -565,32 +593,71 @@ export function createWorld({ map, authority = true, diffs = false }) {
   };
 
   // ---------- 体 ----------
-  // 軌跡を実測の弧長で等間隔に歩き直す。
-  // path の刻みは「PATH_STEP 以上」でしかない（速いほど粗くなる）ので、
-  // 添字を距離とみなすとダッシュ中に体が伸びる。
-  function bodyOf(s) {
+  // 節を「前の節から必ず sp の距離」へ引き寄せるだけの追従連鎖。
+  //
+  // 以前は頭の軌跡（s.path）を 5px 刻みで貯めて、それを弧長で歩き直していた。
+  // 歩き直しが要ったのは、刻みが速度依存で粗くなり、添字を距離とみなすと
+  // ダッシュ中に体が伸びたから —— つまり軌跡を貯めていること自体が原因だった。
+  // 連鎖なら節間隔は構成上つねに厳密に sp なので、軌跡も歩き直しも要らない。
+  // 体長は太さに比例する（成長しても伸びず、拡大するだけ）。
+
+  /** 体格から節数・節間隔・半径を出す。サーバと予測側で必ず同じ答えになる */
+  function specOf(s) {
     const r = radiusOf(s.mass);
-    const n = SEGS;
-    const sp = bodyLength(r, s.def) / n;  // 体長は太さに比例。成長しても伸びず、拡大するだけ
-    const out = [{ x: s.x, y: s.y, r: r * taper(0) }];
-    const path = s.path;
-    let cx = s.x, cy = s.y, i = 0;
-    for (let k = 1; k <= n; k++) {
-      let d = sp;
-      while (d > 0 && i < path.length) {
-        const seg = Math.hypot(path[i].x - cx, path[i].y - cy);
-        if (seg > d) {
-          cx += ((path[i].x - cx) / seg) * d;
-          cy += ((path[i].y - cy) / seg) * d;
-          d = 0;
-        } else {
-          cx = path[i].x; cy = path[i].y; d -= seg; i++;
-        }
-      }
-      out.push({ x: cx, y: cy, r: r * taper(k / n) });
+    const len = bodyLength(r, s.def);
+    const n = segsFor(len);
+    return { r, len, n, sp: len / n };
+  }
+
+  /**
+   * 体を angle の逆向きへ真っ直ぐ並べる。湧いた直後とワープの直後に呼ぶ。
+   * 軌跡方式では復帰のたびに path を1点へ潰していたので、体が頭の一点に
+   * 畳まれ、軌跡が溜まるまでの約1秒をかけて生えてくる形になっていた。
+   */
+  function layBody(s) {
+    const { r, len, n, sp } = specOf(s);
+    const b = s.body;
+    b.length = 0;
+    for (let i = 0; i <= n; i++) {
+      b.push({
+        x: s.x - Math.cos(s.angle) * sp * i,
+        y: s.y - Math.sin(s.angle) * sp * i,
+        r: r * taper(i / n),
+      });
     }
-    s.reach = sp * n + r;
-    return out;
+    s.reach = len + r;
+    s.hitFrom = hitFromOf(n);
+  }
+
+  /**
+   * 体を1ティック進める。配列は使い回す —— 14匹ぶんを毎ティック作り直すと
+   * 節の点オブジェクトだけで 30Hz × 数百個が GC に乗る。
+   */
+  function advanceBody(s) {
+    const { r, len, n, sp } = specOf(s);
+    const b = s.body;
+    // 育って節数が動いたぶんは尾で伸縮させる。足した節は下の射影が正しい位置へ乗せる
+    if (b.length > n + 1) b.length = n + 1;
+    while (b.length < n + 1) {
+      const t = b[b.length - 1];
+      b.push({ x: t.x, y: t.y, r: 0 });
+    }
+    b[0].x = s.x; b[0].y = s.y; b[0].r = r * taper(0);
+    // 前の節と重なっていて向きが決まらないときの逃げ場。頭では体の後ろ向き、
+    // それ以降は直前の節の向きを引き継ぐ（尾に足したばかりの節がここを通る）
+    let fx = -Math.cos(s.angle), fy = -Math.sin(s.angle);
+    for (let i = 1; i <= n; i++) {
+      const p = b[i], q = b[i - 1];
+      let dx = p.x - q.x, dy = p.y - q.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 1e-6) { dx = fx; dy = fy; } else { dx /= d; dy /= d; }
+      p.x = q.x + dx * sp;
+      p.y = q.y + dy * sp;
+      p.r = r * taper(i / n);
+      fx = dx; fy = dy;
+    }
+    s.reach = len + r;
+    s.hitFrom = hitFromOf(n);
   }
 
   /** how: 'body' | 'wake'（killer が居るとき）。killer が無ければ外壁 */
@@ -756,7 +823,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
 
     // 胴体と航跡を回避。サイズに関係なく当たれば死ぬので相手は選ばない。
     // ただし狩り中は標的の質量に応じて間合いを詰める
-    // 頭から4節は見ない：そこは当たっても死なない（resolve の衝突判定と同じ i=4）
+    // 頭寄りの数節は見ない：そこは当たっても死なない（resolve の衝突判定と同じ o.hitFrom）
     let near = 180, nearW = 160;
     if (hunt && prey) {
       if (prey.mass >= 800) {
@@ -768,7 +835,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
     for (const o of sharks) {
       if (o === s || !o.alive) continue;
       if (Math.hypot(o.x - s.x, o.y - s.y) <= o.reach + near + 70) {
-        for (let i = 4; i < o.body.length; i += 2) {
+        for (let i = o.hitFrom; i < o.body.length; i += 2) {
           const p = o.body[i];
           if (Math.hypot(p.x - s.x, p.y - s.y) < near) { want = Math.atan2(s.y - p.y, s.x - p.x); break; }
         }
@@ -870,9 +937,9 @@ export function createWorld({ map, authority = true, diffs = false }) {
       for (const o of sharks) {
         if (o === s || !o.alive) continue;
         let hit = null;   // 何に当たったか。死因の表示に使う
-        // 胴体（頭から4節は当たらない＝正面衝突では死なない）
+        // 胴体（頭寄りの hitFrom 節までは当たらない＝正面衝突では死なない）
         if (Math.hypot(o.x - s.x, o.y - s.y) <= o.reach + hr) {
-          for (let i = 4; i < o.body.length; i++) {
+          for (let i = o.hitFrom; i < o.body.length; i++) {
             const p = o.body[i];
             if ((p.x - s.x) ** 2 + (p.y - s.y) ** 2 < (p.r + hr) ** 2) { hit = 'body'; break; }
           }
@@ -1057,15 +1124,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
         s.wbb = { x0: x0 - wr, y0: y0 - wr, x1: x1 + wr, y1: y1 + wr };
       } else s.wbb = null;
 
-      // 軌跡サンプリング
-      const h = s.path[0];
-      if ((s.x - h.x) ** 2 + (s.y - h.y) ** 2 >= PATH_STEP * PATH_STEP) {
-        s.path.unshift({ x: s.x, y: s.y });
-      }
-      const need = Math.ceil(bodyLength(r, s.def) / PATH_STEP) + 3;
-      if (s.path.length > need) s.path.length = need;
-
-      s.body = bodyOf(s);
+      advanceBody(s);
     }
 
     // 気流に巻かれた餌。餌の「増減」は authority だけの仕事だが、これは動かすだけなので
@@ -1139,7 +1198,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
           // 死んだ状態で入れて、同じスナップショットの !wasAlive でワープさせる
           sharks.push(Object.assign(makeShark(d, false, nm, nid), { alive: false }));
         } else if (s.def !== d) {
-          s.def = d; s.path = [{ x: s.x, y: s.y }]; s.wake.length = 0;   // 復活して別のサメになった
+          s.def = d; layBody(s); s.wake.length = 0;   // 復活して別のサメになった
         }
       }
       for (let i = sharks.length - 1; i >= 0; i--) {
@@ -1193,7 +1252,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
         // 自機：クライアント主導の位置計算。3段階（デッドゾーン、累積微小補正、致命的ズレ）で補正
         if (full || !wasAlive) {
           s.x = x; s.y = y; s.angle = ang; s.ex = s.ey = s.ea = 0;
-          s.path = [{ x, y }]; s.wake.length = 0;
+          layBody(s); s.wake.length = 0;
           events.push({ k: 'warp', shark: s });
         } else {
           const d = Math.hypot(x - s.x, y - s.y);
@@ -1206,14 +1265,14 @@ export function createWorld({ map, authority = true, diffs = false }) {
           } else {
             // ③ 致命的なずれ：即時スナップ
             s.x = x; s.y = y; s.ex = 0; s.ey = 0;
-            s.path = [{ x, y }];
+            layBody(s);
             events.push({ k: 'warp', shark: s });
           }
         }
       } else {
         if (full || !wasAlive) {                    // 入室直後と復活はワープさせる（補間で盤面を横断させない）
           s.x = x; s.y = y; s.angle = ang; s.ex = s.ey = s.ea = 0;
-          s.path = [{ x, y }]; s.wake.length = 0;
+          layBody(s); s.wake.length = 0;
           events.push({ k: 'warp', shark: s });
         } else {
           s.ex = x - s.x; s.ey = y - s.y;           // ズレは step で少しずつ詰める
