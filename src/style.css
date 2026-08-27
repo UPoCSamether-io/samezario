@@ -523,9 +523,12 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 /* 被弾の瞬間だけ枠ごと光らせる。当たったかどうかを盤面から目を離さずに読ませる */
 #hud-boss.is-hit .boss-pip:not(.spent) { background: var(--color-yellow); }
 #hud-boss.is-hit { animation: boss-hit 180ms steps(2) infinite; }
+/* 揺らすのは縦だけ。横の中央寄せ（-translate-x-1/2）は Tailwind v4 では
+   transform ではなく CSS の translate プロパティで効いているので、ここで
+   transform に -50% を書き足すと二重に掛かって板が左へ 285px ずれる */
 @keyframes boss-hit {
-  0%, 100% { transform: translate(-50%, 0); }
-  50% { transform: translate(-50%, 3px); }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
 }
 
 /* サメ選択を1列に畳んだときの並び。

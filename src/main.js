@@ -1277,6 +1277,8 @@ const hudGuard = $('#hud-guard');   // そばガード（湧水/スキル）を�
 const hudSpring = $('#hud-spring'), hudSpringT = $('#hud-spring-t');
 const hudBoss = $('#hud-boss'), hudBossName = $('#hud-boss-name');
 const hudBossHp = $('#hud-boss-hp'), hudBossPips = $('#hud-boss-pips');
+// 裏ボスの復活待ち。ボスが居ない20秒だけ、セルの列と入れ替わりで出る
+const hudBossWait = $('#hud-boss-wait'), hudBossWaitBar = $('#hud-boss-wait-bar');
 
 let net = null;
 let myName = 'YOU';   // リーダーボードに自分の行を足すときに使う
@@ -1349,15 +1351,35 @@ function paintHud(h) {
   const refilling = h.springT > 0;
   hudSpring.classList.toggle('hidden', !refilling);
   if (refilling) hudSpringT.textContent = Math.ceil(h.springT);
-  paintBossBar(h.boss);
+  paintBossBar(h.boss, h.bossRevive);
 }
 
 // ボスの残り耐久。セルの本数は data.js の hp がそのまま出るので、
-// HP を変えてもここは触らない
+// HP を変えてもここは触らない。
+// wait は裏ボスが湧くまでの残り秒数（sim.js の world.reviveT）。ボスの居ない
+// 20秒はこちらが板を占める —— 板ごと畳むと、なぜ戦いが続いているのかが読めない
 let bossPips = -1;
-function paintBossBar(b) {
-  hudBoss.classList.toggle('hidden', !b);
-  if (!b) { bossPips = -1; return; }
+function paintBossBar(b, wait = 0) {
+  hudBoss.classList.toggle('hidden', !b && !(wait > 0));
+  hudBossWait.classList.toggle('hidden', !!b || !(wait > 0));
+  hudBossPips.classList.toggle('hidden', !b);
+  if (!b) {
+    // 次に湧いたとき、名前とセルの本数を必ず引き直させる（本数が変わる）
+    bossPips = -1;
+    if (wait > 0) {
+      // 何が来るかは名乗らせない。名前を出すと、20秒がただの待ち時間になる。
+      // ただし「何かが来る」ことは言う —— 何も言わないと、ボスを倒したのに
+      // 結果画面へ行かない不具合にしか見えない
+      hudBossName.innerHTML = rubify('??? ／ ｜復活《ふっかつ》まで');
+      hudBossHp.textContent = `${Math.ceil(wait)}`;
+      // 帯の長さは data.js の秒数で割る。ここに秒数を直書きすると、data.js を
+      // 触ったときに帯だけが合わなくなる
+      const full = selMap?.boss?.revive?.delay || wait;
+      hudBossWaitBar.style.width = `${Math.min(100, (wait / full) * 100)}%`;
+      hudBoss.classList.remove('is-hit');
+    }
+    return;
+  }
   if (bossPips !== b.max) {
     bossPips = b.max;
     hudBossName.innerHTML = rubify(b.name);
@@ -1433,8 +1455,18 @@ function showResult(r) {
   show('result');
   // ボス撃破だけは見出しを差し替える。CUT!（撮り終わり）のままだと勝った実感が出ない
   $('#res-title').textContent = r.win ? 'BOSS DOWN!' : 'CUT!';
+  // 倒した相手の立ち絵。撃破のときだけ出す（届かなければ黙って引っ込める ——
+  // 絵が無いことを結果画面の壊れた枠で知らせても、プレイヤーには何もできない）
+  const resBossArt = $('#res-boss-art');
+  const beaten = r.win && (r.bossId ? { id: r.bossId, name: r.bossName } : selMap.boss);
+  resBossArt.classList.toggle('hidden', !beaten);
+  if (beaten) {
+    resBossArt.onerror = () => resBossArt.classList.add('hidden');
+    resBossArt.alt = plainText(beaten.name);
+    resBossArt.src = portrait(beaten);
+  }
   $('#res-sub').innerHTML = `${rubify(selMap.name)} ／ ${rubify(selShark.name)}`
-    + (r.win ? `<br><span class="text-danger">${rubify(`${selMap.boss.name}を｜撃破《げきは》した！`)}</span>` : '')
+    + (r.win ? `<br><span class="text-danger">${rubify(`${r.bossName || selMap.boss.name}を｜撃破《げきは》した！`)}</span>` : '')
     + (r.cause ? `<br><span class="text-danger">${rubifyCause(r.cause)}${rubify('に｜接触《せっしょく》')}</span>` : '');
   $('#res-stats').innerHTML = [
     [rubify('｜大《おお》きさ'), r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],

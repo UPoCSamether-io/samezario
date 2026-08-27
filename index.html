@@ -526,6 +526,11 @@
           </div>
           <!-- 残り回数ぶんのセルを並べる。連続したバーより「あと何回当てるか」が読める -->
           <div id="hud-boss-pips" class="flex gap-1"></div>
+          <!-- 裏ボスの復活待ち。セルの列と同じ場所に、減っていく帯1本だけを出す。
+               何が来るかは名乗らせない（板の見出しも ??? に差し替わる） -->
+          <div id="hud-boss-wait" class="hidden h-3 ink-2 rounded-sm overflow-hidden bg-ink/15">
+            <div id="hud-boss-wait-bar" class="h-full bg-danger" style="width:100%"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -646,6 +651,11 @@
         <div id="res-main" class="p-6 pb-1 max-sm:p-4 max-sm:pb-1 min-h-0 overflow-auto thin-scroll">
           <div id="res-head" class="text-center mb-4 max-sm:mb-3">
             <h2 id="res-title" class="font-display font-black text-4xl sm:text-5xl -rotate-2 inline-block bg-ink text-yellow px-6 sm:px-8 py-1.5 sm:py-2 rounded-lg hard neon">CUT!</h2>
+            <!-- 倒した相手の立ち絵。ボス撃破のときだけ出す（main.js の showResult が
+                 src を差し替えて hidden を外す）。高さで抑えるのは横持ちのため —— 
+                 #res-panel が2カラムへ組み替わる側は縦が足りない -->
+            <img id="res-boss-art" class="hidden mx-auto mt-2 h-[96px] max-sm:h-[64px] w-auto object-contain drop-shadow-[0_3px_0_rgba(45,45,45,.35)]"
+                 alt="" decoding="async">
             <p id="res-sub" class="mt-2 font-bold text-xs sm:text-sm text-ink/70"></p>
           </div>
           <div class="grid grid-cols-3 gap-2.5 sm:gap-3" id="res-stats"></div>
