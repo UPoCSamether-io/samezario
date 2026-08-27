@@ -942,7 +942,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.globalAlpha = 1;
 
     // サメ（小さい順に描いて大物を前面へ）。画面外は捨てる —
-    // rope は1匹あたり SEGS 回 drawImage するので、映らない分を描かないのが一番効く
+    // rope は1匹あたり節の数だけ drawImage するので、映らない分を描かないのが一番効く
     const alive = sharks.filter((s) => s.alive).sort((a, b) => a.mass - b.mass);
     for (const s of alive) {
       if (s.x + s.reach < vx0 || s.x - s.reach > vx1) continue;
