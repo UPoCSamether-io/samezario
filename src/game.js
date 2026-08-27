@@ -456,12 +456,16 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       ctx.arc(s.x, s.y, 430, s.angle - 0.62, s.angle + 0.62); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
-    if (s.guard > 0) {
+    // 盾を持っている印。スキルの秒数（guard）でも湧水の在庫（guardStock）でも同じ輪を出す ——
+    // 出どころが違うだけで「あと1回は耐えられる」は同じで、見分けても打つ手は変わらない。
+    // 明滅するミントの実線1本だけにしてある。ゾーンの内外を別の輪で言い分けていたころは、
+    // 湧水を出た瞬間にそちらが消えて、盾を持っているのかどうかが読めなかった
+    if (s.guard > 0 || s.guardStock > 0) {
       ctx.save();
-      ctx.strokeStyle = YELLOW; ctx.lineWidth = 4 / cam.zoom;
-      ctx.setLineDash([14 / cam.zoom, 9 / cam.zoom]);
-      ctx.lineDashOffset = -t * 40;
-      ctx.beginPath(); ctx.arc(s.x, s.y, radiusOf(s.mass) * 2.4, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = MINT;
+      ctx.lineWidth = Math.max(3.5 / cam.zoom, 4.5);
+      ctx.globalAlpha = 0.5 + 0.35 * Math.sin(t * 5);
+      ctx.beginPath(); ctx.arc(s.x, s.y, radiusOf(s.mass) * 3.9, 0, TAU); ctx.stroke();
       ctx.restore();
     }
     if (s.def.id === 'airport' && s.skill > 0) {
@@ -790,21 +794,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       ctx.stroke();
       ctx.restore();
     }
-    // 湧水ゾーンは直径 900px 超で、中に居ると縁も見出しも画面の外に出てしまう。
-    // 「入っている」は自機のまわりだけで完結させる。そばガードの輪（破線・黄・半径 2.4r）と
-    // 見分けが付くよう、こちらは実線・ミントで外側（3.9r）に置く
-    if (gim.springAt(player.x, player.y)) {
-      // 再装填中は灰色の細い実線。輪そのものは消さず「入ってはいるが今はもらえない」を
-      // 色で言い分ける —— 消すと、ゾーンを外したのか再装填中なのか区別が付かない
-      const ready = player.springT <= 0;
-      ctx.save();
-      ctx.strokeStyle = ready ? MINT : 'rgb(150,150,150)';
-      ctx.lineWidth = Math.max(3.5 / cam.zoom, ready ? 4.5 : 2.5);
-      ctx.globalAlpha = ready ? 0.5 + 0.35 * Math.sin(t * 5) : 0.35;
-      ctx.beginPath(); ctx.arc(player.x, player.y, hr * 3.9, 0, TAU); ctx.stroke();
-      ctx.globalAlpha = 1;
-      ctx.restore();
-    }
+    // 「いま湧水ゾーンの中に居る」を自機のまわりに出すのはやめた。自機に付く輪は
+    // 盾の輪（drawShark、ミント・3.9r・明滅）1本だけにする —— 同じ色の輪が2本あると、
+    // どちらが「あと1回耐えられる」なのか読めない。
+    // ゾーンの内外と再装填の状態は drawSprings の縁と泡（ミント／灰）が持つ
   }
 
   function draw(t) {

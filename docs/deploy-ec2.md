@@ -3,8 +3,8 @@
 Render からの移行先。**この箱の仕事は `/ws` だけ**。フロントは Cloudflare Pages が配る。
 
 ```
-ブラウザ ──https──> Cloudflare Pages         （index.html / assets / img）
-        └──wss───> Caddy(:443) ──> node server/index.mjs(:5174) ──> /ws
+ブラウザ ──https──> Cloudflare Pages（samether.io）      （index.html / assets / img）
+        └──wss───> ws.samether.io: Caddy(:443) ──> node server/index.mjs(:5174) ──> /ws
 ```
 
 `server/index.mjs` は `src/sim.js` と `src/data.js` を ESM のまま import するので、
@@ -14,25 +14,41 @@ Render からの移行先。**この箱の仕事は `/ws` だけ**。フロン�
 
 `dist` が無いので `/` は 404 を返す。生きているかは `/health` で見る。
 
-## Cloudflare Pages 側（必須）
-
-フロントは `samezario.pages.dev`。Settings → Variables and Secrets にビルド環境変数を1つ:
-
-```
-VITE_WS_URL = https://54-168-149-87.nip.io
-```
+## フロントの繋ぎ先（`ws.samether.io`）
 
 `src/net.js` は `import.meta.env.VITE_WS_URL || location.origin` なので、未設定だと
-`wss://<project>.pages.dev/ws` を掘りに行って必ず失敗する。`^http` → `ws` に置換されるので
-`https` のまま入れてよい。
+`wss://samether.io/ws` を掘りに行って必ず失敗する（Pages に `/ws` は無い）。失敗しても
+ゲームは止まらず3秒後に `goSolo()` へ落ちるので、**症状は「エラー」ではなく「ずっとひとりの海」**。
+対戦にならないのに誰も気づかない、いちばん静かな壊れ方なのでここを外さないこと。
 
-**Vite はビルド時に値を埋め込むので、変数を変えただけでは既存のデプロイは変わらない。**
-必ず再デプロイすること。効いたかは配信中のバンドルを直接見るのが早い:
+値は `.env.production`（リポジトリ内）に置いてある:
+
+```
+VITE_WS_URL=https://ws.samether.io
+```
+
+Pages のダッシュボード変数ではなくファイルにしているのは、プレビュー配信にも効くのと、
+入れ忘れの再発がリポジトリの外に残らないようにするため。ダッシュボード側に同名の変数を
+入れるとそちらが勝つ（Vite は shell の env をファイルより優先する）。
+`^http` → `ws` に置換されるので `https` のまま入れてよい。
+
+**Vite はビルド時に値を埋め込むので、変えたら再デプロイが要る。** 効いたかは配信中の
+バンドルを直接見るのが早い:
 
 ```bash
-ASSET=$(curl -sS https://samezario.pages.dev/ | grep -o '/assets/[A-Za-z0-9._-]*\.js' | head -1)
-curl -sS "https://samezario.pages.dev$ASSET" | grep -o 'https://[a-z0-9.-]*\.nip\.io'
+ASSET=$(curl -sS https://samether.io/ | grep -o '/assets/[A-Za-z0-9._-]*\.js' | head -1)
+curl -sS "https://samether.io$ASSET" | grep -o 'https://ws\.samether\.io'
 ```
+
+### DNS（Cloudflare）
+
+| レコード | 値 | proxy |
+| --- | --- | --- |
+| `samether.io` | Cloudflare Pages | ON（オレンジ雲） |
+| `ws.samether.io` | A → 54.168.149.87（EIP） | **OFF（DNS only / グレー雲）** |
+
+`ws` を**オレンジ雲にしてはいけない**。443 が Cloudflare 止まりになって、Caddy が
+Let's Encrypt の HTTP-01 を通せなくなる（＝証明書が取れず wss:// が全滅する）。
 
 ## 1. 箱を立てる（一度きり / ローカルの AWS CLI から）
 
@@ -72,7 +88,7 @@ aws ec2 describe-addresses --allocation-ids $ALLOC --query 'Addresses[0].PublicI
 
 | | |
 | --- | --- |
-| URL | https://54-168-149-87.nip.io |
+| URL | https://ws.samether.io （旧 https://54-168-149-87.nip.io / Caddy は両方を持つ） |
 | インスタンス | `i-0dc5a486f0fa63c31`（t3.micro / standard / ap-northeast-1） |
 | EIP | `eipalloc-069300c898d75cb13` → 54.168.149.87 |
 | SG | `sg-0dfbbb65d64f128fa`（80,443 は全開 / 22 は自宅IPのみ） |
@@ -109,8 +125,10 @@ ssh ... 'systemctl status samezario caddy; journalctl -u samezario -n 50'
 Let's Encrypt の証明書が取れるので `wss://` が通る（`src/net.js` は `location.origin` から
 スキームを引くので、コード側の変更は要らない）。
 
-独自ドメインに変えるときは A レコードを EIP に向けて `/etc/caddy/Caddyfile` の
-ホスト名を差し替え、`systemctl reload caddy` の1回だけ。
+2026-08-27 に `ws.samether.io`（A レコード → EIP / DNS only）へ移した。Caddyfile は
+`scripts/ec2-deploy.sh` が毎回生成するので、**ホスト名は箱の上で直さずスクリプト側を直す**
+（手で書いた `/etc/caddy/Caddyfile` は次のデプロイで上書きされる）。nip.io も site 名に
+残してあるが、これは無保証の第三者DNSなので本番当日の導線は `ws.samether.io` を使う。
 
 ## CPU（Render との比較）
 

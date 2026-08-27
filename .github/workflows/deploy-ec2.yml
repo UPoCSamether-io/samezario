@@ -62,4 +62,4 @@ jobs:
           set -euo pipefail
           # 落ちていても systemd が上げ直すので、restart ループに入っていないかを見る
           sleep 5
-          test "$(curl -sS --fail --max-time 10 https://54-168-149-87.nip.io/health)" = OK
+          test "$(curl -sS --fail --max-time 10 https://ws.samether.io/health)" = OK
