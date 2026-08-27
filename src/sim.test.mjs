@@ -957,6 +957,101 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   w.destroy();
 }
 
+// 24. 裏ボス。ヌシを削り切っても境内は終わらず、boss.revive.delay 秒あとに
+//     同じ盤面で湧き直す（ステージは分けない）。二度目は蘇らない ——
+//     裏ボスも蘇ると、境内から出られなくなる
+{
+  const map = MAPS.find((m) => m.id === 'jindaiji');
+  const rev = map.boss.revive;
+  assert.ok(rev, '深大寺に裏ボスが居ない');
+  assert.ok(rev.delay > 0, '復活までの秒数が 0 以下');
+  assert.ok(rev.hp > 0, '裏ボスの HP が 0 以下');
+  // 絵はヌシと別物なので id も分ける（絵の実在は data.test.mjs が見る）
+  assert.ok(rev.id && rev.id !== map.boss.id, '裏ボスがヌシと同じ id を使っている');
+
+  const w = createWorld({ map });
+  const p = w.addPlayer({ nid: 'p1', sharkId: 'cinema', name: 'P' });
+  const boss = w.spawnBoss();
+  w.step(1 / 30); w.drainEvents();
+
+  const hitOnce = () => {
+    boss.iframe = 0;
+    const mid = p.body[Math.floor(p.body.length / 2)];
+    boss.x = mid.x; boss.y = mid.y;
+    w.step(1 / 30);
+    return w.drainEvents();
+  };
+
+  let down = null;
+  for (let i = 0; i < map.boss.hp + 2 && !down; i++) {
+    down = hitOnce().find((e) => e.k === 'bossdown') ?? null;
+  }
+  assert.ok(down, 'ヌシを削り切っても bossdown が出ない');
+  assert.equal(down.revive, true, '1体目の bossdown に revive が立っていない');
+  assert.equal(w.boss, null);
+  assert.ok(Math.abs(w.reviveT - rev.delay) < 0.1, `復活までの残り秒数が違う: ${w.reviveT}`);
+
+  // 待っている間はボスの居ない海。ここでプレイヤーは報酬の餌を拾って太る。
+  // 舵を握る者が居ないので、放っておくと 20秒のあいだに壁へ着いて死ぬ ——
+  // 無敵を張り直して押し戻しに回す（sim.js の壁の分岐）
+  for (let i = 0; i < Math.round((rev.delay - 1) * 30); i++) {
+    p.iframe = 5;
+    w.step(1 / 30);
+    assert.equal(w.boss, null, `${rev.delay} 秒経つ前に裏ボスが湧いた`);
+  }
+  assert.ok(p.alive, 'プレイヤーが復活待ちの間に死んだ（テストの前提が壊れた）');
+  w.drainEvents();
+
+  // 残り1秒ぶんを回すと湧く
+  let born = null;
+  for (let i = 0; i < 60 && !born; i++) {
+    p.iframe = 5;
+    w.step(1 / 30);
+    born = w.drainEvents().find((e) => e.k === 'bossrevive') ?? null;
+  }
+  assert.ok(born, '裏ボスが湧かない');
+  assert.equal(w.reviveT, 0, '湧いたあとも目覚ましが残っている');
+  const two = w.boss;
+  assert.ok(two && two !== boss, 'world.boss が裏ボスに差し替わっていない');
+  assert.equal(two.hp, rev.hp, '裏ボスの HP が data.js と違う');
+  assert.equal(two.mass, rev.bossMass, '裏ボスの質量が data.js と違う');
+  assert.equal(two.def.id, rev.id, '裏ボスが自分の id を持っていない（別の絵で描かれる）');
+  assert.equal(two.def.name, rev.name, '裏ボスの名札が差し替わっていない');
+  assert.equal(w.sharks.filter((s) => s.isBoss && s.alive).length, 1, 'ボスが2体生きている');
+  // 最初から怒っている（rageHp が hp と同じ）。1戦目のゆっくり巡る段階は挟まない
+  assert.ok(two.def.rageHp >= two.def.hp, '裏ボスが最初から怒っていない');
+
+  // 裏ボスを削り切ったら今度こそ終わり。三度目は無い
+  let down2 = null;
+  for (let i = 0; i < rev.hp + 2 && !down2; i++) {
+    two.iframe = 0;
+    p.iframe = 5;
+    const mid = p.body[Math.floor(p.body.length / 2)];
+    two.x = mid.x; two.y = mid.y;
+    w.step(1 / 30);
+    down2 = w.drainEvents().find((e) => e.k === 'bossdown') ?? null;
+  }
+  assert.ok(down2, '裏ボスを削り切っても bossdown が出ない');
+  assert.equal(down2.revive, false, '裏ボスの bossdown に revive が立っている（永久に終わらない）');
+  assert.equal(w.reviveT, 0, '裏ボスを倒したのに目覚ましが立った');
+  for (let i = 0; i < Math.round((rev.delay + 2) * 30); i++) { p.iframe = 5; w.step(1 / 30); }
+  assert.equal(w.boss, null, '裏ボスがもう一度蘇った');
+  w.destroy();
+}
+
+// 24b. 裏ボスを持たないロケ地では、目覚ましそのものが動かない
+{
+  for (const m of MAPS) {
+    if (m.id === 'jindaiji') continue;
+    const w = createWorld({ map: m });
+    w.addPlayer({ nid: 'p1', sharkId: 'cinema', name: 'P' });
+    for (let i = 0; i < 30; i++) w.step(1 / 30);
+    assert.equal(w.reviveT, 0, `${m.id} で復活の目覚ましが動いている`);
+    assert.equal(w.boss, null, `${m.id} にボスが湧いた`);
+    w.destroy();
+  }
+}
+
 console.log('sim ok');
 
 

@@ -51,6 +51,7 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 | `src/share.js` | 解放結果のシェア。共有文の組み立てと Web Share API → コピー → X の順の一本道。**DOM を触らないので Node から試せる** |
 | `src/sim.js` | 盤面そのもの。移動・成長・衝突・ボットAI・餌・スナップショット。**DOM を触らないのでサーバとブラウザが同じものを回す** |
 | `src/net.js` | 対戦サーバとの線。JSON を投げて受けるだけ |
+| `src/haptics.js` | 手元の触覚（Web Haptics / `navigator.vibrate`）。震えるのは Android の Chrome / Firefox だけで、持っていない端末では何も起きない。**パターンを均す部分は DOM を触らないので Node から試せる** |
 | `server/index.mjs` | 対戦の権威サーバ。部屋ごとに `sim.js` の world を 30Hz で回し、15Hz で配る |
 | `src/style.css` | デザイントークン（Retro Pop Cinema）と共通クラス |
 | `public/img/` | アセット画像（サメスプライト等）。エリアマップは `data.js` の SVG パスに置き換え済みで、`chofu_map.png`（5エリアを色で塗り分けた図）は取り直し用の原本 |
@@ -79,6 +80,24 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 位置は外接矩形の 0..1 で書くので `size` を動かしても輪郭に対する位置は変わらない。
 周期ものはサーバとブラウザで位相が揃っている必要があるので、環境の時計（`world.envT`）を
 スナップショットに載せて同期している。実測値と判断の経緯は `docs/stage_design_plan.md` §4.5。
+
+深大寺だけはボスステージ（`MAPS[].solo` で対戦サーバへの接続ごと飛ばす）。
+数値は `src/data.js` の `MAPS[].boss` が全部持ち、`src/sim.js` にあるのは式だけ。
+
+- `hp` — 被弾許容回数。頭をこちらの胴体に擦りつけるたび 1 減る（HUD のセルの本数もこれ）
+- `rageHp` — ここまで削ると突進を始める。それまでは他のロケ地のボットと同じ泳ぎ方
+- `hitIframe` / `counterIframe` — 削れる間隔と、当てた側に配る逃げる猶予
+- `boss.revive` — **裏ボス**（蘇りしヌシ）。ヌシを削り切っても終わらず、`delay` 秒あとに
+  同じ盤面で湧き直す（ステージは分けない）。書いてある値だけをヌシに上書きする差分。
+  `revive` を持たない個体は蘇らないので、二度目は起きない。
+  絵はヌシと別物なので `id`（`nushi_ura`）も分けてある —— 盤面のスプライトは
+  `/img/sharks/<id>.webp`、結果画面の立ち絵は `<id>_side.webp` を id で引く。
+  原画は `art/sharks/` に置いて `python3 scripts/build-sprites.py`、
+  `aspect` は `python3 scripts/sprite-aspect.py` の実測値を写す（手で書かない）
+
+復活の瞬間は画面を揺らし（`game.js` の `QUAKE_DUR` / `QUAKE_SHAKE`）、
+同じ長さだけ端末も震わせる（`haptics.js` の `HAPTIC.bossRevive`）。
+揺れの長さと震えの長さは合わせてある —— 手だけ先に静まると地響きに聞こえない。
 
 サメ・マップ個別のパラメータは `src/data.js`。デバッグ中は `window.__sz` から
 `cam` / `sharks` / `player` / `food` を直接触れる。

@@ -7,7 +7,14 @@ import { BOT_NAMES } from './data.js';
 import { paintShark, paintSpriteShark } from './shark-art.js';
 import { makeSteer } from './steer.js';
 import { sfx } from './audio.js';
+import { HAPTIC, buzz, hush } from './haptics.js';
 import { createWorld, radiusOf, clamp, rand, pick, TAU } from './sim.js';
+
+// 地響き。1発ぶんの揺れ（cam.shake の 0.88 減衰）は 0.5秒で消えてしまい、
+// 20秒待った末に何かが起き上がる出来事としては軽すぎた。こちらは秒数を持たせて
+// 「鳴り続ける」揺れにする。振動（haptics.js の HAPTIC.bossRevive）と同じ長さ
+const QUAKE_DUR = 1.2;
+const QUAKE_SHAKE = 34;   // 地響きが保つ揺れ幅(px)。時間とともに 0 まで落ちる
 
 const INK = '#2d2d2d';
 const PAPER = '#f4efea';
@@ -111,7 +118,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   const gravel = ctx.createPattern(gravelTile(), 'repeat');
 
   const fx = [];
-  const cam = { x: arena.home.x, y: arena.home.y, zoom: 1, shake: 0 };
+  const cam = { x: arena.home.x, y: arena.home.y, zoom: 1, shake: 0, quake: 0 };
   const mouse = { sx: 0, sy: 0 };   // 画面中心からのオフセット(px)
   // menu = ポーズ画面が出ているか、paused = 世界が止まっているか。
   // 他人が居る部屋では世界を止められないので、この2つは一致しない
@@ -270,11 +277,15 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
   }
 
-  function endRun(cause, win = false) {
+  // boss: 撃破した相手の def。裏ボスまで倒すと相手が別物（名前も立ち絵も違う）なので、
+  // 結果画面が data.js の boss を引き直すと1戦目のほうが出てしまう
+  function endRun(cause, win = false, boss = null) {
     if (dead) return;   // sim が death を2回積んでも XP を二重加算しない
     dead = true;
+    hush();             // 震えを持ち越さない。結果画面まで唸っていると事故に見える
     setTimeout(() => onEnd({
       mass: Math.round(player.mass), kills: player.kills, time: world.elapsed, cause, win,
+      bossName: boss?.name ?? '', bossId: boss?.id ?? '',
       rank: 1 + sharks.filter((o) => o.alive && o !== player && o.mass > player.mass).length,
     // 撃破は餌が散る絵を見せてから抜ける
     }), win ? 1900 : 900);
@@ -351,7 +362,23 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         cam.shake = 34;
         burst(s.x, s.y, s.def.accent, 60, 320);
         burst(s.x, s.y, YELLOW, 40, 260);
-        if (!attract) { sfx.die(); endRun('', true); }
+        if (attract) break;
+        sfx.die();
+        // 裏ボスが控えているなら、ここで撮り終わりにしない（sim.js の boss.revive）。
+        // 報酬の餌を拾って太る静けさが 20秒あって、同じ境内で湧き直す
+        if (!e.revive) endRun('', true, s.def);
+        break;
+      case 'bossrevive':
+        // 20秒の静けさを、揺れと手元の震えで断ち切る。ここだけは単発の揺れではなく
+        // 秒数を持った地響きにしてある（QUAKE_DUR）
+        cam.quake = QUAKE_DUR;
+        cam.shake = QUAKE_SHAKE;
+        burst(s.x, s.y, s.def.accent, 70, 420);
+        burst(s.x, s.y, '#ba1a1a', 46, 300);
+        if (attract) break;
+        sfx.roar();
+        // Web Haptics。震えるのは Android だけで、持っていない端末では何も起きない
+        buzz(HAPTIC.bossRevive);
         break;
       case 'respawn':
         // attract: 主役が死んだら別の個体へカメラを切り替える。
@@ -413,6 +440,12 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     if (player.alive) {
       cam.x += (player.x - cam.x) * Math.min(1, dt * 9);
       cam.y += (player.y - cam.y) * Math.min(1, dt * 9);
+    }
+    // 地響きの間は揺れ幅を下から支える。支えを外すと 0.88 の減衰が勝って
+    // 一瞬で静まるので、残り時間に比例させた床を毎フレーム当て直す
+    if (cam.quake > 0) {
+      cam.quake = Math.max(0, cam.quake - dt);
+      cam.shake = Math.max(cam.shake, QUAKE_SHAKE * (cam.quake / QUAKE_DUR));
     }
     cam.shake *= 0.88;
   }
@@ -1089,8 +1122,13 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         edge: player.alive ? clamp((180 - arena.edgeDist(player.x, player.y)) / 140, 0, 1) : 0,
         // ボスの残り耐久。ボスの居ないエリアでは null で、HUD 側がバーごと畳む
         boss: world.boss
-          ? { name: map.boss.name, hp: world.boss.hp, max: map.boss.hp, hit: world.boss.iframe > 0 }
+          ? {
+            name: world.boss.def.name, hp: world.boss.hp, max: world.boss.def.hp,
+            hit: world.boss.iframe > 0,
+          }
           : null,
+        // 裏ボスが湧くまでの残り秒数。0 なら HUD 側は何も出さない
+        bossRevive: world.reviveT,
       });
     }
     requestAnimationFrame(frame);
@@ -1104,6 +1142,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     stop() {
       running = false; dead = true;
       if (!attract) sfx.dash(false);   // 押したまま抜けてもフィルムは止める
+      hush();                          // 震えたまま盤面を畳まない
       world.destroy();
       ro.disconnect();
       clearTimeout(soloTimer);

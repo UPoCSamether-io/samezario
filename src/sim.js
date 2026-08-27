@@ -314,6 +314,10 @@ export function createWorld({ map, authority = true, diffs = false }) {
   // スナップショットで上書きすると死んだはずの帯が生き返る（または一斉に消える）から。
   // こちらは誰も参照していないので、サーバの値をそのまま入れて構わない
   let envT = 0;
+  // 裏ボス（data.js の boss.revive）。ヌシを削り切ってから湧き直すまでの残り秒数を持つ。
+  // elapsed からの経過ではなく残り秒数にしてあるのは、elapsed がスナップショットで
+  // 上書きされる値だから —— 差で測ると、上書きの拍子に待ち時間が飛ぶか永久に来ない
+  let reviveT = 0;
   // 餌の最大半径。湧いた粒は 10px 程度だが、大きいサメが死んでばら撒く粒は 20px を超える。
   // 格子の探索はこれを足した半径で引く（減らさないのは、縮めると取りこぼすため）
   let maxFoodR = 0;
@@ -323,6 +327,8 @@ export function createWorld({ map, authority = true, diffs = false }) {
     map, W, arena, gimmick, sharks, food, authority, diffs,
     boss: null,                 // ボスステージ（深大寺）でだけ入る。それ以外は null のまま
     get elapsed() { return elapsed; },
+    // 裏ボスが湧くまでの残り秒数。0 = 待っていない（ヌシがまだ居るか、境内が終わったか）
+    get reviveT() { return reviveT; },
     get envT() { return envT; },
     /** 人が操っているサメの数。nid の頭文字でボットと見分ける */
     humans: () => sharks.filter((s) => s.nid[0] !== 'b').length,
@@ -498,8 +504,21 @@ export function createWorld({ map, authority = true, diffs = false }) {
    * ボスが居るせいで「独りの海」ではなくなり、ポーズが効かなくなるのを避ける。
    */
   world.spawnBoss = () => {
-    const def = map.boss;
-    if (!def || world.boss) return null;
+    if (!map.boss || world.boss) return null;
+    return raiseBoss(map.boss);
+  };
+
+  /**
+   * 裏ボスの def。data.js の boss.revive は差分なので、ヌシに重ねて1本にする。
+   * revive を null で潰すのは、そのまま引き継ぐと裏ボスもまた蘇り、
+   * 境内が永久に終わらなくなるから（bossDown は s.def.revive を見て決める）。
+   */
+  const trueBossDef = map.boss?.revive
+    ? { ...map.boss, ...map.boss.revive, revive: null }
+    : null;
+
+  /** ボスを1体、盤面に置く。ヌシも裏ボスも同じ道を通る */
+  function raiseBoss(def) {
     const s = makeShark(def, false, def.battleName, 'boss');
     // プレイヤーの真横に湧かせない。開幕から頭を突っ込んだ形になると事故で終わる
     for (let i = 0; i < 40 && sharks[0]; i++) {
@@ -513,7 +532,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
     sharks.push(s);
     world.boss = s;
     return s;
-  };
+  }
 
   world.useSkill = (s) => {
     if (!s.alive || s.cd > 0) return;
@@ -659,7 +678,12 @@ export function createWorld({ map, authority = true, diffs = false }) {
     s.alive = false;
     s.wake.length = 0;
     world.boss = null;
-    events.push({ k: 'bossdown', shark: s, by, x: s.x, y: s.y });
+    // 裏ボスが控えているか。控えているのはヌシ（def.revive を持つ個体）を倒したときだけで、
+    // 裏ボス自身の def は revive を潰してあるので、ここで二度目は起きない。
+    // revive を載せるのは、受け側が「勝ち名乗り」と「まだ続く」を分けるため
+    const rev = trueBossDef && s.def.revive;
+    if (rev) reviveT = rev.delay;
+    events.push({ k: 'bossdown', shark: s, by, x: s.x, y: s.y, revive: !!rev });
     const spread = radiusOf(s.mass) * 7;
     for (let i = 0; i < 120; i++) {
       const a = rand(0, TAU), d = Math.sqrt(Math.random()) * spread;
@@ -903,6 +927,18 @@ export function createWorld({ map, authority = true, diffs = false }) {
   world.step = (dt) => {
     elapsed += dt;
     envT += dt;
+
+    // 裏ボスの目覚まし。reviveT が立つのは bossDown の中だけで、bossDown は
+    // authority 側の resolve からしか呼ばれない —— 予測側が勝手に湧かせることはない。
+    // 湧かせるのは走査に入る前。ここなら湧いた当人も他と同じ1ティックを踏むので、
+    // 「出てきた最初の1回だけ動かない／二重に動く」が起きない
+    if (reviveT > 0) {
+      reviveT = Math.max(0, reviveT - dt);
+      if (reviveT === 0 && !world.boss) {
+        const s = raiseBoss(trueBossDef);
+        events.push({ k: 'bossrevive', shark: s, x: s.x, y: s.y });
+      }
+    }
 
     for (const s of sharks) {
       if (!s.alive) continue;

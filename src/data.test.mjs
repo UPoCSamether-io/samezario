@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { SHARKS } from './data.js';
+import { existsSync } from 'node:fs';
+import { SHARKS, MAPS } from './data.js';
 import { salvageView, STAGE_RATIO } from './salvage.js';
 
 test('全サメが era を持ち、1..6 が重複なく揃っている', () => {
@@ -100,4 +101,34 @@ test('第1幕の本文は凍結されている（変更するとマスク位置�
   // 本文全体のハッシュに切り替えて穴を塞ぐ
   const sha = createHash('sha256').update(dogu.salvageText, 'utf8').digest('hex');
   assert.equal(sha, '8f82e7945b66ff8c88bd27e3682cdc0ea32d2dfad2344221c992c5e03a612723', '第1幕の本文が変更されている');
+});
+
+// 盤面に出るサメは全員、絵を2枚持っている必要がある。
+//   <id>.webp      = 盤面のスプライト（shark-art.js の spriteOf が id で引く）
+//   <id>_side.webp = 立ち絵（main.js の portrait が id で引く）
+// 無いと盤面のほうは黙ってベクター版に落ち、立ち絵は onerror で消えるだけなので、
+// 遊んでいて気付けない。def を足したときに転ぶよう、ここで実在を見る
+test('全サメとボスに、スプライトと立ち絵の両方がある', () => {
+  const bosses = MAPS.flatMap((m) => [m.boss, m.boss?.revive].filter(Boolean));
+  for (const d of [...SHARKS, ...bosses]) {
+    for (const suffix of ['', '_side']) {
+      const rel = `public/img/sharks/${d.id}${suffix}.webp`;
+      // 実行時の cwd に依らせない（node --test をどこから流しても同じ答えになる）
+      const path = new URL(`../${rel}`, import.meta.url);
+      assert.ok(existsSync(path),
+        `${rel} が無い（原画を art/sharks へ置いて python3 scripts/build-sprites.py を流す）`);
+    }
+  }
+});
+
+// aspect は当たり判定の寸法（体長）なので、原画を差し替えたら
+// scripts/sprite-aspect.py で測り直して data.js へ写す（README の調整ポイント）。
+// ここでは「持っていること」と「桁が正気なこと」だけを見る —— 実測値そのものは
+// 画像側にあり、テストで焼き直すと原画の差し替えのたびに二重管理になる
+test('ボスの aspect は実測値の範囲に収まっている', () => {
+  const bosses = MAPS.flatMap((m) => [m.boss, m.boss?.revive].filter(Boolean));
+  for (const d of bosses) {
+    assert.equal(typeof d.aspect, 'number', `${d.id} に aspect がない`);
+    assert.ok(d.aspect > 1 && d.aspect < 3, `${d.id} の aspect が範囲外: ${d.aspect}`);
+  }
 });
