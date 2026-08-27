@@ -1,7 +1,7 @@
 // 盤面の最小チェック: node src/sim.test.mjs
 // サーバとブラウザが同じこのファイルを回すので、ここが壊れると両方が同時に壊れる。
 import assert from 'node:assert/strict';
-import { MAPS } from './data.js';
+import { MAPS, SHARKS } from './data.js';
 import { createWorld, makeArena, makeGimmick } from './sim.js';
 
 const chofu = MAPS.find((m) => m.id === 'chofu');
@@ -137,15 +137,15 @@ for (const map of MAPS) {
     }
     throw new Error('壁から 250px 離れた場所が見つからない');
   })();
-  const dx = clear.x - a.x, dy = clear.y - a.y;
-  a.x += dx; a.y += dy;
-  for (const p of a.path) { p.x += dx; p.y += dy; }
-  w.step(1 / 30);                                 // 移した先で胴体を引き直す
+  w.place(a, clear.x, clear.y);                   // 体ごと移す（頭だけ動かすと体が盤面を横断する）
+  w.step(1 / 30);
   w.drainEvents();
 
   b.iframe = 0;                                   // 突っ込む側の無敵だけ解く
   b.mass = a.mass * 4;                            // 大きい側が突っ込んでも死ぬ
-  const hit = a.body[8];                          // 頭から4節より後ろ＝当たる範囲
+  // 胴体の中ほど＝当たる範囲（節数は体長で決まるので割合で取る）
+  const hit = a.body[Math.round((a.body.length - 1) * 0.44)];
+  assert.ok(a.body.indexOf(hit) >= a.hitFrom, '狙った節が「当たらない頭」に入っていない');
   b.x = hit.x; b.y = hit.y;
   w.step(1 / 30);
 
@@ -296,11 +296,10 @@ for (const map of MAPS) {
 
   // 人は右へ等速で逃げ、ボットは 500px 後ろ。人は大型プレイヤー（mass=900）。
   // 素の速度は同じなので、ダッシュして追わない限り差は縮まらない
-  me.x = x0; me.y = y0;
-  bot.x = x0 - 500; bot.y = y0;
-  [me, bot].forEach((s) => { s.iframe = 0; s.path = [{ x: s.x, y: s.y }]; });
-  me.angle = me.aim = 0; me.mass = 900;
-  bot.angle = bot.aim = 0;
+  w.place(me, x0, y0, 0);
+  w.place(bot, x0 - 500, y0, 0);
+  [me, bot].forEach((s) => { s.iframe = 0; });
+  me.mass = 900;
   bot.mood = 1; bot.moodT = 99;             // 狩る個体に固定（mood は毎回引き直される）
 
   const d0 = Math.hypot(me.x - bot.x, me.y - bot.y);
@@ -514,7 +513,7 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   // 拾って質量が増えると速度（1 - r/420 の項）が動いて、比較にならない
   const run = (p, a) => {
     const s = w.addPlayer({ nid: 'run', sharkId: 'cinema', name: 'R' });
-    s.x = p.x; s.y = p.y; s.angle = s.aim = a; s.path = [{ x: s.x, y: s.y }];
+    w.place(s, p.x, p.y, a);
     const x0 = s.x, y0 = s.y;
     for (let i = 0; i < 60; i++) { s.aim = a; w.food.length = 0; w.step(1 / 30); w.drainEvents(); }
     const d = (s.x - x0) * Math.cos(a) + (s.y - y0) * Math.sin(a);
@@ -954,6 +953,87 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
     dashed = boss.boost;
   }
   assert.ok(dashed, `HP ${map.boss.rageHp} まで削ってもヌシが突進しない`);
+  w.destroy();
+}
+
+// ---------------------------------------------------------------------------
+// 24. 胴体（追従連鎖）。
+//
+// 節を「前の節から必ず sp の距離」へ引き寄せるだけなので、節間隔は構成上つねに
+// 厳密。頭の軌跡を貯めて弧長で歩き直していたころ、歩き直しが要ったのは
+// 「刻みが速度依存で粗くなり、添字を距離とみなすとダッシュ中に体が伸びる」からで、
+// ここはその不具合がもう構造的に起きないことを押さえる。
+{
+  const w = createWorld({ map: chofu, authority: true });
+  const s = w.addPlayer({ nid: 'p', sharkId: 'cinema', name: 'P' });
+  s.mass = 400;
+
+  let worst = 0;
+  for (let i = 0; i < 400; i++) {
+    s.aim = s.angle + Math.sin(i / 9) * 1.2;   // 曲げ続ける
+    s.boost = i % 3 !== 0;                     // ダッシュを混ぜる（速度が変わる）
+    w.step(1 / 30);
+    w.drainEvents();
+    if (!s.alive) break;
+    const sp = Math.hypot(s.body[1].x - s.body[0].x, s.body[1].y - s.body[0].y);
+    for (let k = 2; k < s.body.length; k++) {
+      const d = Math.hypot(s.body[k].x - s.body[k - 1].x, s.body[k].y - s.body[k - 1].y);
+      worst = Math.max(worst, Math.abs(d - sp) / sp);
+    }
+  }
+  assert.ok(worst < 1e-9, `節間隔がそろっていない（最大 ${(worst * 100).toFixed(4)}% ずれ）`);
+  w.destroy();
+}
+
+// 24b. 節数は体長で決まり、どの体格でも判定に穴が開かない。
+//
+// 胴体は半径 r*taper(i/n) の円の連なりなので、節間隔が隣り合う円の半径の和を
+// 超えると尾のあたりで判定が途切れ、そこだけ通り抜けられるサメになる。
+// 節数を体長比例にした以上、下限（SEGS_MIN）がこの条件を満たしているかは
+// 定数を動かすたびに確かめないといけない。
+{
+  const w = createWorld({ map: chofu, authority: true });
+  const s = w.addPlayer({ nid: 'p', sharkId: 'cinema', name: 'P' });
+  for (const def of [...SHARKS, chofu.boss].filter(Boolean)) {
+    for (const mass of [30, 80, 200, 600, 1500, 3000]) {
+      s.def = def; s.mass = mass;
+      w.place(s, s.x, s.y, 0);
+      const b = s.body;
+      for (let i = 1; i < b.length; i++) {
+        const d = Math.hypot(b[i].x - b[i - 1].x, b[i].y - b[i - 1].y);
+        assert.ok(d <= b[i].r + b[i - 1].r,
+          `${def.id}/${mass}: 節 ${i} で判定に穴（間隔 ${d.toFixed(2)} > 半径和 ${(b[i].r + b[i - 1].r).toFixed(2)}）`);
+      }
+    }
+  }
+  w.destroy();
+}
+
+// 24c. 湧いた直後・ワープ直後から体が正しい長さで並んでいる。
+//
+// 軌跡方式では復帰のたびに軌跡を1点へ潰していたので、体が頭の一点へ畳まれ、
+// 軌跡が溜まるまでの約1秒をかけて生えてきていた（入室・復活・大きなズレの補正）。
+{
+  const w = createWorld({ map: chofu, authority: true });
+  const s = w.addPlayer({ nid: 'p', sharkId: 'cinema', name: 'P' });
+  const span = (o) => {
+    let d = 0;
+    for (let i = 1; i < o.body.length; i++) {
+      d += Math.hypot(o.body[i].x - o.body[i - 1].x, o.body[i].y - o.body[i - 1].y);
+    }
+    return d;
+  };
+  const want = span(s);
+  assert.ok(want > 40, `湧いた直後に体が畳まれている（全長 ${want.toFixed(1)}px）`);
+
+  // ワープ：体ごと移り、前の居場所に取り残された節が無いこと
+  const from = { x: s.x, y: s.y };
+  const to = w.arena.spot();
+  w.place(s, to.x, to.y, 0);
+  assert.ok(Math.abs(span(s) - want) < 1e-6, 'ワープで全長が変わった');
+  const far = Math.max(...s.body.map((q) => Math.hypot(q.x - s.x, q.y - s.y)));
+  assert.ok(far <= want + 1, `ワープ後に体が伸びて残っている（頭から最遠 ${far.toFixed(1)}px）`);
+  assert.ok(Math.hypot(s.body[0].x - from.x, s.body[0].y - from.y) > 1, '移動していない');
   w.destroy();
 }
 
