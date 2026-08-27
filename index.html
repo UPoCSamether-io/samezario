@@ -514,6 +514,22 @@
          毎回評価することになり、それだけで 1フレーム 4.8ms 掛かっていた -->
     <div id="vignette" class="absolute inset-0 pointer-events-none"></div>
 
+    <!-- ボス専用の耐久ゲージ。深大寺のボス戦の間だけ出る（main.js の paintHud が畳む） -->
+    <div id="hud-boss" class="hidden absolute top-2 left-1/2 -translate-x-1/2 z-20 w-[min(560px,86vw)] pointer-events-none">
+      <div class="bg-paper ink-4 hard-lg overflow-hidden">
+        <div class="clapper-stripes h-3 border-b-4 border-ink"></div>
+        <div class="px-3 py-2">
+          <div class="flex items-baseline gap-2 mb-1">
+            <span class="font-mono font-bold text-[10px] tracking-[0.3em] text-danger">BOSS</span>
+            <span id="hud-boss-name" class="font-display font-extrabold text-sm leading-none truncate"></span>
+            <span id="hud-boss-hp" class="ml-auto font-mono font-bold text-[11px] shrink-0"></span>
+          </div>
+          <!-- 残り回数ぶんのセルを並べる。連続したバーより「あと何回当てるか」が読める -->
+          <div id="hud-boss-pips" class="flex gap-1"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- HUD -->
     <div id="hud" class="absolute inset-0 pointer-events-none flex flex-col justify-between">
       <div class="flex justify-between items-start gap-4">
@@ -536,6 +552,12 @@
               <span id="hud-guard" class="hidden bg-yellow ink-2 px-1.5 py-0.5 sm:px-2 rounded flex items-center gap-1 sm:gap-1.5">
                 <span class="material-symbols-rounded !text-sm leading-none text-ink">shield</span>
                 <span class="text-ink">GUARD</span>
+              </span>
+              <!-- 湧水の再装填。入っても何も起きない時間が最大30秒あるので、
+                   残りを出しておかないと故障に見える -->
+              <span id="hud-spring" class="hidden bg-ink/75 px-1.5 py-0.5 sm:px-2 rounded flex items-center gap-1 sm:gap-1.5">
+                <span class="material-symbols-rounded !text-sm leading-none text-mint">water_drop</span>
+                <span id="hud-spring-t" class="text-paper">30</span>
               </span>
             </div>
             <!-- メインのSIZE表示 -->
@@ -623,7 +645,7 @@
              1px だけ増え、収まっているのに縦スクロールバーが出る -->
         <div id="res-main" class="p-6 pb-1 max-sm:p-4 max-sm:pb-1 min-h-0 overflow-auto thin-scroll">
           <div id="res-head" class="text-center mb-4 max-sm:mb-3">
-            <h2 class="font-display font-black text-4xl sm:text-5xl -rotate-2 inline-block bg-ink text-yellow px-6 sm:px-8 py-1.5 sm:py-2 rounded-lg hard neon">CUT!</h2>
+            <h2 id="res-title" class="font-display font-black text-4xl sm:text-5xl -rotate-2 inline-block bg-ink text-yellow px-6 sm:px-8 py-1.5 sm:py-2 rounded-lg hard neon">CUT!</h2>
             <p id="res-sub" class="mt-2 font-bold text-xs sm:text-sm text-ink/70"></p>
           </div>
           <div class="grid grid-cols-3 gap-2.5 sm:gap-3" id="res-stats"></div>
