@@ -611,7 +611,7 @@ function selectMap(m) {
       <div class="flex gap-3 items-start">
         <img id="map-boss-art" src="${portrait(m.boss)}" alt="${plainText(m.boss.name)}" decoding="async"
              class="w-24 shrink-0 object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.35)]">
-        <p class="text-[13px] leading-relaxed text-paper/80">${rubify(m.boss.hint)}</p>
+        <p class="text-[13px] leading-relaxed text-paper/80">${rubify(m.boss.hint.replace('{hp}', m.boss.hp))}</p>
       </div>
     </div>` : ''}
     ${m.gimmick ? `
