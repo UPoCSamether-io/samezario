@@ -886,12 +886,29 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   const boss = w.spawnBoss();
   const home = w.arena.home;
 
+  // 壁の先読み（bossThink の 260 + r*6 ≒ 722px）に掛かると、突進は間合いに関係なく
+  // 切られる。境内の輪郭は凹んでいるので、home から真東に並べると向きによっては
+  // そこが外側になる —— 実際 CI だけ落ちた。内側が続く向きを実測で1つ選んでから並べる
+  const dir = (() => {
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * Math.PI * 2;
+      const ok = [500, 725, 900, 1200].every(
+        (d) => w.arena.inside(home.x + Math.cos(a) * d, home.y + Math.sin(a) * d));
+      if (ok) return a;
+    }
+    return null;
+  })();
+  assert.ok(dir !== null, '境内に 1200px の直線が取れない（テストの前提が壊れた）');
+
   // 突進の判定（bossThink の pd < 950）に必ず入る間合いへ毎ティック置き直す。
-  // 500px 離すのは、胴体が触れて HP が勝手に減るのを避けるため
+  // 500px 離すのは、胴体が触れて HP が勝手に減るのを避けるため。
+  // 向きまで固定するのは、迎撃点が獲物の向き（湧いたときの乱数）で振れるため
   const face = (hp) => {
     boss.hp = hp;
     boss.x = home.x; boss.y = home.y;
-    p.x = home.x + 500; p.y = home.y;
+    boss.angle = dir; boss.aim = dir;
+    p.x = home.x + Math.cos(dir) * 500; p.y = home.y + Math.sin(dir) * 500;
+    p.angle = dir;                   // 迎撃点（獲物の 225px 先）も同じ直線の上に乗る
     boss.mood = 1; boss.moodT = 9;   // mood の抽選で「今は溜める」に落ちないよう固定
     boss.winded = false; boss.stam = 1;
     p.mass = 900;                    // ボットが最優先で狙う質量帯（botThink の 800 以上）
