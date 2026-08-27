@@ -609,8 +609,20 @@ export function createWorld({ map, authority = true, diffs = false }) {
    * ヌシは獲物へ真っ直ぐ突っ込むだけ。搦め手を持たせないのは、この戦いの攻略が
    * 「巨体は曲がれない」という一点だからで、狙いを外させる工夫を足すと、
    * プレイヤーが横をすり抜けて頭を擦る（＝ダメージを与える）機会そのものが消える。
+   *
+   * ただし突進を始めるのは HP を rageHp まで削ってから（data.js）。それまでは
+   * 他のロケ地のボットとそっくり同じ泳ぎ方 —— 餌を追い、胴体と航跡を避け、
+   * 質量が乗ったプレイヤーだけを狙う —— で境内を巡る。
    */
   function bossThink(s, dt) {
+    // 第1段階。舵はボットに任せて、ダッシュだけをこちらで落とす。
+    // 巨体の旋回はどのみち鈍いので、ボットの回避が働いても擦る隙は残る
+    if (s.hp > s.def.rageHp) {
+      botThink(s, dt);
+      s.boost = false;
+      return;
+    }
+
     s.moodT -= dt;
     if (s.moodT <= 0) { s.moodT = rand(2.4, 4.2); s.mood = Math.random(); }
 
@@ -768,8 +780,10 @@ export function createWorld({ map, authority = true, diffs = false }) {
     s.aim = want;
     // 獲物の質量に応じた間合いでダッシュ急襲
     s.boost = !s.winded && (hunt ? (dashDist > 0 && hunt < dashDist) : s.mood > 0.9);
-    // 追い詰めている間はスキルも切る（シネマの減速・多摩川の急流がそのまま決め手になる）
-    if (s.cd <= 0 && Math.random() < (dashDist > 0 && hunt < dashDist ? skillProb : 0.004)) world.useSkill(s);
+    // 追い詰めている間はスキルも切る（シネマの減速・多摩川の急流がそのまま決め手になる）。
+    // ヌシは技を持たない（skill.dur が 0）ので、ここを通しても空撃ちの合図が出るだけ
+    if (!s.isBoss && s.cd <= 0
+        && Math.random() < (dashDist > 0 && hunt < dashDist ? skillProb : 0.004)) world.useSkill(s);
   }
 
   // ---------- 判定 ----------
