@@ -2,7 +2,7 @@
 // サーバとブラウザが同じこのファイルを回すので、ここが壊れると両方が同時に壊れる。
 import assert from 'node:assert/strict';
 import { MAPS, SHARKS } from './data.js';
-import { createWorld, makeArena, makeGimmick } from './sim.js';
+import { createWorld, makeArena, makeGimmick, dashBonusOf, dashSecondsOf } from './sim.js';
 
 const chofu = MAPS.find((m) => m.id === 'chofu');
 
@@ -1129,6 +1129,94 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   const far = Math.max(...s.body.map((q) => Math.hypot(q.x - s.x, q.y - s.y)));
   assert.ok(far <= want + 1, `ワープ後に体が伸びて残っている（頭から最遠 ${far.toFixed(1)}px）`);
   assert.ok(Math.hypot(s.body[0].x - from.x, s.body[0].y - from.y) > 1, '移動していない');
+  w.destroy();
+}
+
+// ---------------------------------------------------------------------------
+// 26. スコアでダッシュが伸びる。200ポイントごとに +1秒、上限 +5秒。
+//
+// 伸びるのは「1本の長さ」だけで「撃てる割合」ではない、というのがこの実装の要。
+// ゲージ(0..1)は正規化したまま消費と回復を同じ倍率で薄めてあるので、
+// 短く刻む撃ち方の手触り（1秒撃って何秒待つか）は伸びる前と変わらない。
+{
+  const w = createWorld({ map: chofu, authority: true });
+  const s = w.addPlayer({ nid: 'p', sharkId: 'cinema', name: 'P' });
+  const dt = 1 / 30;
+
+  // 壁で死なせず、餌で太らせずに回す。iframe を張ると壁は押し戻しになる（sim.js の壁の分岐）、
+  // 質量は毎ティック戻す —— 餌を拾って太ると測っている最中に伸びぶんが動く
+  const spin = (mass, on, stop) => {
+    let t = 0;
+    for (let i = 0; i < 3000; i++) {
+      s.mass = mass; s.iframe = 5; s.boost = on;
+      w.step(dt); w.drainEvents();
+      t += dt;
+      if (stop()) return t;
+    }
+    return assert.fail('100秒回しても終わらない（測り方かスタミナの式が壊れた）');
+  };
+  // 満タンから撃ち切るまでの秒数
+  const dashFor = (mass) => {
+    s.stam = 1; s.winded = false;
+    return spin(mass, true, () => s.winded);
+  };
+  // secs 秒だけ撃って、満タンへ戻るまでの秒数
+  const refillFor = (mass, secs) => {
+    s.stam = 1; s.winded = false;
+    let t = 0;
+    spin(mass, true, () => (t += dt) >= secs);
+    return spin(mass, false, () => s.stam >= 1);
+  };
+
+  // 伸びぶんそのもの。200 で 1秒、1000 で 5秒、そこから上は頭打ち
+  assert.equal(dashBonusOf({ mass: 0 }), 0);
+  assert.equal(dashBonusOf({ mass: 200 }), 1);
+  assert.equal(dashBonusOf({ mass: 900 }), 4.5);
+  assert.equal(dashBonusOf({ mass: 1000 }), 5);
+  assert.equal(dashBonusOf({ mass: 3000 }), 5, '上限 5秒を超えて伸びている');
+
+  // 実測が dashSecondsOf の言うとおりになっている（1ティック 1/30秒ぶんは丸めで乗る）
+  for (const mass of [30, 200, 600, 1000]) {
+    s.mass = mass;
+    const want = dashSecondsOf(s);
+    const got = dashFor(mass);
+    assert.ok(Math.abs(got - want) < 0.1,
+      `mass ${mass}: ダッシュ ${got.toFixed(2)}秒、dashSecondsOf は ${want.toFixed(2)}秒`);
+  }
+
+  // 200 ポイント刻みでちょうど 1秒ずつ伸びる
+  for (const mass of [30, 400, 700]) {
+    const d = dashFor(mass + 200) - dashFor(mass);
+    assert.ok(Math.abs(d - 1) < 0.1, `mass ${mass}→${mass + 200} で ${d.toFixed(2)}秒しか伸びていない`);
+  }
+
+  // 上限。1000 を超えたぶんは効かない
+  assert.ok(Math.abs(dashFor(3000) - dashFor(1000)) < 0.1, '上限を超えてもまだ伸びている');
+
+  // 撃った秒数に対する回復時間は変わらない。ここが変わると
+  // 大物のダッシュが切れなくなり、2.5秒残る航跡を常時ぶら下げた相手になる
+  const small = refillFor(30, 1);
+  const big = refillFor(1000, 1);
+  assert.ok(Math.abs(big - small) < 0.15,
+    `1秒撃ったあとの回復が体格で変わった（mass 30: ${small.toFixed(2)}秒 / mass 1000: ${big.toFixed(2)}秒）`);
+  w.destroy();
+}
+
+// 26b. ボスは対象外。
+//
+// ヌシは質量 8000〜13000 なので入れれば即座に上限まで乗るが、突進は
+// 「短く撃って溜め直す」形で成立している（data.js の boostCost 1.3 のメモ）。
+// 8秒撃てるようにすると 2.5秒残る航跡で境内が埋まり、近づく隙のほうが消える
+{
+  const map = MAPS.find((m) => m.id === 'jindaiji');
+  const w = createWorld({ map });
+  w.addPlayer({ nid: 'p1', sharkId: 'cinema', name: 'P' });
+  const boss = w.spawnBoss();
+
+  assert.ok(boss.mass >= 1000, 'ヌシが上限に届かない質量になった（テストの前提が壊れた）');
+  assert.equal(dashBonusOf(boss), 0, 'ヌシのダッシュがスコアで伸びている');
+  // 同じ質量でもプレイヤーなら上限まで乗る＝除外しているのは質量ではなくボスであること
+  assert.equal(dashBonusOf({ mass: boss.mass }), 5);
   w.destroy();
 }
 
