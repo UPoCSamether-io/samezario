@@ -570,6 +570,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.restore();
   }
 
+  let tint = null;   // 流れの帯の色。静的なので初回に1回だけ作る（drawCurrent 参照）
+
   /**
    * 多摩川の上下3帯。上＝河川敷（凪）、中＝流れ、下＝急流。
    * 帯の色も筋の密度・長さ・速さも sim.js の流速そのものから出すので、
@@ -582,11 +584,19 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
 
     // 帯の色。境目で切らず、流速を細かく引いた1本のグラデーションで溶かす ——
     // 帯ごとに矩形を敷くと、どの帯も自分の両端で透明に落ちて、境目に無着色の
-    // 継ぎ目が出る。透明側は同じ色のアルファ0（hexA）にして、黒を混ぜない
-    const tint = ctx.createLinearGradient(0, bb.y0, 0, bb.y1);
-    for (let i = 0; i <= 24; i++) {
-      const sp = gim.currentSpeedAt(bb.y0 + (i / 24) * bb.h);
-      tint.addColorStop(i / 24, hexA(sp ? MINT : PAPER, 0.04 + (sp / maxSpeed) * 0.13));
+    // 継ぎ目が出る。透明側は同じ色のアルファ0（hexA）にして、黒を混ぜない。
+    //
+    // 中身は時間に依存しない —— currentSpeedAt(y) は windAt(0, y, 0) と時刻を 0 に
+    // 固定して呼ぶので、答えは帯の設定だけで決まる。毎フレーム作り直していたころは、
+    // 同じ25色を出すために currentSpeedAt 25回と文字列25本を捨てていた。
+    // 初回に作る（＝カメラ変換の下で作る）のは前と同じ。グラデーションは塗る時点の
+    // 変換で描かれるので、いつ作っても絵は変わらない
+    if (!tint) {
+      tint = ctx.createLinearGradient(0, bb.y0, 0, bb.y1);
+      for (let i = 0; i <= 24; i++) {
+        const sp = gim.currentSpeedAt(bb.y0 + (i / 24) * bb.h);
+        tint.addColorStop(i / 24, hexA(sp ? MINT : PAPER, 0.04 + (sp / maxSpeed) * 0.13));
+      }
     }
     ctx.fillStyle = tint;
     ctx.fillRect(bb.x0, bb.y0, bb.w, bb.h);
@@ -616,15 +626,23 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
             PAPER, lw * 0.85, 0.1 + strength * 0.2);
         }
       } else {
-        // 河川敷は砂利を敷いて「水ではない」と分かるようにする。水中のドットと同じ
-        // タイル敷きなので、広さに関係なく数回で済む。下端は溶かして切り口を出さない
+        // 河川敷は砂利を敷いて「水ではない」と分かるようにする。下端は溶かして
+        // 切り口を出さない。敷くのは見えている範囲だけ —— ここだけ view を見ずに
+        // bb 幅（多摩川で 10536px）へ毎フレーム7回パターンを塗っていた。すぐ上の筋が
+        // view を見ているのと同じ理由で、こちらも切る。速度0の帯を持つのは多摩川
+        // だけなので、この漏れも多摩川でしか出ない。
+        // パターンはワールド原点にタイル敷きされるので、矩形を縮めても柄はずれない
         const fade = gim.def.blend * bb.h * 2;
+        const gx = box.x0, gw = box.x1 - box.x0;
         ctx.save();
         ctx.fillStyle = gravel;
-        ctx.fillRect(bb.x0, y0, bb.w, y1 - y0 - fade);
+        const my0 = Math.max(box.y0, y0), my1 = Math.min(box.y1, y1 - fade);
+        if (my1 > my0) ctx.fillRect(gx, my0, gw, my1 - my0);
         for (let k = 0; k < 6; k++) {
+          const fy = y1 - fade + (fade / 6) * k, fh = fade / 6 + 1;
+          if (fy + fh < box.y0 || fy > box.y1) continue;   // 画面の外の段は敷かない
           ctx.globalAlpha = 1 - (k + 0.5) / 6;
-          ctx.fillRect(bb.x0, y1 - fade + (fade / 6) * k, bb.w, fade / 6 + 1);
+          ctx.fillRect(gx, fy, gw, fh);
         }
         ctx.restore();
       }
