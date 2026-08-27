@@ -737,6 +737,12 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
     if (m.id !== 'jindaiji') assert.equal(m.boss, undefined, `${m.id} にボスが居る`);
   }
 
+  // ロケ地選択に出す説明文は、被弾回数を {hp} で持って表示側が差し込む。
+  // 数字を文にも直書きしていたころは、hp を 5 → 10 にしたときに文だけ 5 のまま残った
+  assert.ok(map.boss.hint.includes('{hp}'), 'ボスの説明文が hp を直書きしている');
+  assert.ok(!/\d+｜回《かい》｜当《あ》てれば/.test(map.boss.hint),
+    'ボスの説明文に被弾回数が直書きされている');
+
   const w = createWorld({ map });
   const p = w.addPlayer({ nid: 'p1', sharkId: 'cinema', name: 'P' });
   const boss = w.spawnBoss();
