@@ -481,13 +481,26 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   const g = w.gimmick;
   const dir = map.gimmick.dir;
 
+  // 2秒（下の run が回すぶん）で縦断する y 幅の見積もり。素の 429px に急流の
+  // 押し（110px/s × 2秒）を足した 650px の y 成分 ≒ 204px に、余裕を足したもの
+  const SWEEP = 260;
+
   // 帯ごとに、流れ方向へ前後1000px開けた場所を探す。壁際で測ると押し戻しが混ざる。
+  //
+  // 流速は y だけで決まるのに dir には y 成分がある（sin 0.32 ≒ 0.31）ので、
+  // 走っている間にサメは帯を縦断する。帯の縁から blend ぶん空けるだけでは足りず、
+  // 下流へ走ったときだけ混合帯へ踏み込んで流れをもらうことがあった
+  // （凪の帯で 345 対 333 になり、CI が1割ほど落ちていた）。
+  // 縁との距離ではなく「前後 SWEEP のあいだ流速が変わらないか」を直接見る
   const pointInBand = (i) => {
-    const y0 = i ? g.bands[i - 1].y : w.arena.bb.y0;
     const y1 = g.bands[i].y;
     for (let n = 0; n < 20000; n++) {
       const q = w.arena.spot();
-      if (q.y <= y0 + map.gimmick.blend * w.arena.bb.h || q.y >= y1 - map.gimmick.blend * w.arena.bb.h) continue;
+      if (q.y >= y1) continue;
+      if (i && q.y <= g.bands[i - 1].y) continue;
+      const v = g.currentSpeedAt(q.y);
+      // blend は縁をまたいで単調に変わるので、両端が中央と同じなら間もずっと同じ
+      if (g.currentSpeedAt(q.y - SWEEP) !== v || g.currentSpeedAt(q.y + SWEEP) !== v) continue;
       let open = true;
       for (let d = -1000; d <= 1000 && open; d += 60) {
         open = w.arena.inside(q.x + Math.cos(dir) * d, q.y + Math.sin(dir) * d);
@@ -596,13 +609,26 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   const w = createWorld({ map });
   const z = w.gimmick.springs[0];
 
-  // ゾーンからじゅうぶん離れた比較点。近いと泳いで入ってしまう
-  let out = null;
-  for (let i = 0; i < 20000 && !out; i++) {
-    const q = w.arena.spot();
-    if (w.gimmick.springs.every((s) => Math.hypot(q.x - s.x, q.y - s.y) > s.r + 900)) out = q;
-  }
+  // ゾーンからじゅうぶん離れた点を2つ。近いと泳いで入ってしまう。
+  // 2つ要るのは、ゾーンの外に居座る b と、出入りする a を別の場所に置くため ——
+  // 同じ座標に重ねていたころは、a が b の胴体に当たって死に、そのまま湧水を
+  // もらえずに落ちることがあった（実測 300回中2回）。1200px 離せば体は届かない。
+  // 壁からも離す：置き直しは毎ティックでも、その間に 7px ほど進むので、
+  // 輪郭ぎわに置くと外壁で死ぬ（同 600回中1回）
+  const far = (avoid) => {
+    for (let i = 0; i < 20000; i++) {
+      const q = w.arena.spot();
+      if (!w.gimmick.springs.every((s) => Math.hypot(q.x - s.x, q.y - s.y) > s.r + 900)) continue;
+      if (w.arena.edgeDist(q.x, q.y) < 200) continue;
+      if (avoid && Math.hypot(q.x - avoid.x, q.y - avoid.y) < 1200) continue;
+      return q;
+    }
+    return null;
+  };
+  const out = far(null);
   assert.ok(out, '湧水ゾーンから離れた場所が見つからない');
+  const away = far(out);
+  assert.ok(away, '湧水ゾーンからも比較点からも離れた場所が見つからない');
 
   const a = w.addPlayer({ nid: 'in', sharkId: 'cinema', name: 'IN' });
   const b = w.addPlayer({ nid: 'out', sharkId: 'cinema', name: 'OUT' });
@@ -623,20 +649,20 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   assert.ok(a.springT > 0, '再装填が始まっていない');
 
   // 出て入り直しても、再装填が終わるまでは増えない
-  for (let i = 0; i < 45; i++) { a.x = out.x; a.y = out.y; w.step(1 / 30); }
+  for (let i = 0; i < 45; i++) { a.x = away.x; a.y = away.y; w.step(1 / 30); }
   for (let i = 0; i < 45; i++) { a.x = z.x; a.y = z.y; w.step(1 / 30); }
   assert.equal(a.guardStock, 1, `再装填中に入り直してガードが増えた: ${a.guardStock}`);
 
   // 再装填が明けても、上限（stockMax=1）を超えて貯まらない
   assert.equal(map.gimmick.stockMax, 1, '前提: 在庫の上限が1になっていない');
   a.springT = 0;
-  for (let i = 0; i < 30; i++) { a.x = out.x; a.y = out.y; w.step(1 / 30); }
+  for (let i = 0; i < 30; i++) { a.x = away.x; a.y = away.y; w.step(1 / 30); }
   for (let i = 0; i < 30; i++) { a.x = z.x; a.y = z.y; w.step(1 / 30); }
   assert.equal(a.guardStock, 1, `在庫が上限を超えた: ${a.guardStock}`);
 
   // 使い切ったあとは、再装填が明ければまた1個もらえる
   a.guardStock = 0; a.springT = 0;
-  for (let i = 0; i < 30; i++) { a.x = out.x; a.y = out.y; w.step(1 / 30); }
+  for (let i = 0; i < 30; i++) { a.x = away.x; a.y = away.y; w.step(1 / 30); }
   for (let i = 0; i < 30; i++) { a.x = z.x; a.y = z.y; w.step(1 / 30); }
   assert.equal(a.guardStock, 1, '使い切った後にもらい直せない');
 
