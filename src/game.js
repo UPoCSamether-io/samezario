@@ -14,6 +14,9 @@ const PAPER = '#f4efea';
 const YELLOW = '#f3b553';
 const MINT = '#a3f0f0';
 
+/** 小数部だけ取り出す。泡の散らばりを添字から作るのに使う（乱数を持つと端末ごとに絵が割れる） */
+const frac = (n) => n - Math.floor(n);
+
 /**
  * #rrggbb にアルファを足す。グラデーションの端を透明へ落とすときに使う ——
  * 'transparent' は「透明な黒」なので、混ぜると縁が黒ずむ。
@@ -716,15 +719,34 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       ctx.restore();
 
       if (!ready) continue;      // 再装填中は泡を止める。「今は湧いていない」と読ませる
-      ctx.fillStyle = 'rgba(163,240,240,.45)';
-      for (let k = 0; k < 9; k++) {
-        const ph = (t * 0.33 + k * 0.111 + i * 0.37) % 1;
-        const a = k * 2.4 + i * 1.7;
-        const rr = z.r * (0.1 + 0.6 * ph);
+
+      // もらえる間は、ゾーン全体から泡を上げ続ける。これが「いま入れば1個もらえる」の
+      // 唯一の合図で、サメが通り抜けた一瞬しか動きがないと、30秒経ったのかどうかが
+      // 入ってみるまで分からない。
+      // 数と大きさは直径 920px のゾーンから逆算している —— 9粒・半径3〜10pxだったころは
+      // 引きの絵では点にもならず、湧いているのに止まって見えていた。
+      // 位相も散らばりも添字から作る（乱数を持たない）ので、絵は t だけで決まる
+      ctx.fillStyle = MINT;
+      for (let k = 0; k < 34; k++) {
+        const seed = frac(Math.sin(k * 12.9898 + i * 78.233) * 43758.5453);
+        const ph = frac(t * 0.3 + seed);                 // 0=湧き出した所、1=抜けきる所
+        const a = k * 2.399 + i * 1.7;                   // 黄金角で回す。並ぶと噴水に見える
+        const rr = z.r * (0.12 + 0.8 * frac(seed * 7.13));
+        const x = Math.cos(a) * rr + Math.sin(t * 1.7 + k) * 9;
+        const y = Math.sin(a) * rr;
+        // 浮き先はその x でのゾーンの上端。まっすぐ上へ流すと縁を越えて散り、
+        // 破線で引いた「ここから中」がぼやける
+        const top = -Math.sqrt(Math.max(0, z.r * z.r - x * x));
+        // 上がるにつれ細り、出はじめと抜けぎわで透ける（両端が切れると点滅に見える）
+        ctx.globalAlpha = Math.min(1, ph * 5) * Math.min(1, (1 - ph) * 3.5) * 0.55;
+        // 引きの絵（zoom は最小 0.21 まで下がる）で消えないよう、画面上 4.5px を下限にする。
+        // 上限 14px は、太らせたぶんが縁からはみ出さないための頭打ち
+        const rad = (4 + 8 * frac(seed * 3.71)) * (1 - ph * 0.4);
         ctx.beginPath();
-        ctx.arc(z.x + Math.cos(a) * rr, z.y + Math.sin(a) * rr - ph * z.r * 0.3, 3 + (1 - ph) * 7, 0, TAU);
+        ctx.arc(z.x + x, z.y + y + (top - y) * ph * 0.8, Math.max(rad, Math.min(14, 4.5 / cam.zoom)), 0, TAU);
         ctx.fill();
       }
+      ctx.globalAlpha = 1;
     }
   }
 
