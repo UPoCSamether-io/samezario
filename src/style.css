@@ -509,6 +509,25 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   transition: opacity 120ms ease-out;
 }
 
+/* ボスの耐久ゲージ（深大寺）。残り回数ぶんのセルが並び、削れた分だけ沈む。
+   セルの本数は data.js の boss.hp が決めるので、ここは1個ぶんの見え方だけを持つ */
+.boss-pip {
+  background: var(--color-danger);
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / .28);
+  transition: background 160ms ease-out, opacity 160ms ease-out;
+}
+.boss-pip.spent {
+  background: var(--color-ink);
+  opacity: .3;
+}
+/* 被弾の瞬間だけ枠ごと光らせる。当たったかどうかを盤面から目を離さずに読ませる */
+#hud-boss.is-hit .boss-pip:not(.spent) { background: var(--color-yellow); }
+#hud-boss.is-hit { animation: boss-hit 180ms steps(2) infinite; }
+@keyframes boss-hit {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, 3px); }
+}
+
 /* サメ選択を1列に畳んだときの並び。
    DOM 順のまま畳むと一覧が最下段に来て、「一覧をタップ → 上へスクロールして
    プレビューを確認 → また下へ」の往復が毎回発生する。

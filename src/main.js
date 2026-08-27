@@ -593,13 +593,27 @@ function selectMap(m) {
       </div>
     </div>
     <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${rubify(m.name)}</h3>
-    <div id="map-badge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 mb-4 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
-      ${open ? rubify('｜解放済《かいほうず》み') : rubify('｜未解放《みかいほう》')}
+    <div class="mb-4 flex items-center gap-1.5 flex-wrap">
+      <span id="map-badge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
+        ${open ? rubify('｜解放済《かいほうず》み') : rubify('｜未解放《みかいほう》')}
+      </span>
+      ${m.solo ? `<span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 bg-danger text-paper">
+        ${rubify('シングルプレイ')}
+      </span>` : ''}
     </div>
     <div>
       <div class="font-mono text-[10px] tracking-[0.25em] text-yellow mb-1">HISTORY</div>
       <p class="text-[13px] leading-relaxed text-paper/80">${rubify(m.lore)}</p>
     </div>
+    ${m.boss ? `
+    <div class="mt-3">
+      <div class="font-mono text-[10px] tracking-[0.25em] text-danger mb-1">BOSS ／ ${rubify(m.boss.name)}</div>
+      <div class="flex gap-3 items-start">
+        <img id="map-boss-art" src="${portrait(m.boss)}" alt="${plainText(m.boss.name)}" decoding="async"
+             class="w-24 shrink-0 object-contain drop-shadow-[5px_6px_0_rgba(45,45,45,.35)]">
+        <p class="text-[13px] leading-relaxed text-paper/80">${rubify(m.boss.hint)}</p>
+      </div>
+    </div>` : ''}
     ${m.gimmick ? `
     <div class="mt-3">
       <div class="font-mono text-[10px] tracking-[0.25em] text-mint mb-1">GIMMICK ／ ${rubify(m.gimmick.label)}</div>
@@ -608,6 +622,10 @@ function selectMap(m) {
     ${spotCard(m)}
     <p id="map-blurb" class="text-sm leading-relaxed text-paper/90 mt-4 pt-3 border-t-2 border-paper/25">${rubify(m.blurb)}</p>
     <div class="mt-4 font-mono text-[11px] text-paper/50">AREA ${(m.size * m.size / 1e6).toFixed(1)} km² · ${rubify('｜実際《じっさい》の｜地形《ちけい》')}</div>`;
+  // ボスの立ち絵はまだ原画が入っていないことがある。壊れた画像アイコンを出すより、
+  // 枠ごと畳んで説明文だけにする
+  const bossArt = $('#map-boss-art');
+  if (bossArt) bossArt.onerror = () => bossArt.remove();
 }
 
 /**
@@ -1255,7 +1273,10 @@ const vignette = $('#vignette');
 const hudMass = $('#hud-mass'), hudScene = $('#hud-scene'), hudTime = $('#hud-time');
 const hudBoard = $('#hud-board'), hudCd = $('#hud-cd'), hudReel = $('#hud-reel');
 const hudStam = $('#hud-stam');
-const hudGuard = $('#hud-guard');   // そばガード（湧水/スキル）が張られている間だけ出す
+const hudGuard = $('#hud-guard');   // そばガード（湧水/スキル）を持っている間だけ出す
+const hudSpring = $('#hud-spring'), hudSpringT = $('#hud-spring-t');
+const hudBoss = $('#hud-boss'), hudBossName = $('#hud-boss-name');
+const hudBossHp = $('#hud-boss-hp'), hudBossPips = $('#hud-boss-pips');
 
 let net = null;
 let myName = 'YOU';   // リーダーボードに自分の行を足すときに使う
@@ -1269,8 +1290,12 @@ async function play() {
     save.shark = selShark.id; save.name = playerName(); persist();
     dropNet();
     $('#start-btn').disabled = true;
-    try { net = await connect({ map: selMap.id, shark: selShark.id, name: save.name }); }
-    catch { net = null; }
+    // ボスステージ（深大寺）はシングルプレイ。部屋に入ると他人とボットが混ざって
+    // 一騎打ちが成立しないので、対戦サーバへの接続ごと飛ばす（data.js の solo）
+    if (!selMap.solo) {
+      try { net = await connect({ map: selMap.id, shark: selShark.id, name: save.name }); }
+      catch { net = null; }
+    }
     $('#start-btn').disabled = false;
     show('game');
     pausePanel.style.display = 'none';
@@ -1320,6 +1345,30 @@ function paintHud(h) {
   const spent = h.winded ? 'rgba(186,26,26,.66)' : 'rgba(11,32,34,.74)';
   hudStam.style.background = `conic-gradient(transparent ${h.stam}turn, ${spent} 0)`;
   hudGuard.classList.toggle('hidden', !h.guard);
+  // 再装填中だけ残り秒数を出す（0 になったら消える＝次のゾーンでもらえる合図）
+  const refilling = h.springT > 0;
+  hudSpring.classList.toggle('hidden', !refilling);
+  if (refilling) hudSpringT.textContent = Math.ceil(h.springT);
+  paintBossBar(h.boss);
+}
+
+// ボスの残り耐久。セルの本数は data.js の hp がそのまま出るので、
+// HP を変えてもここは触らない
+let bossPips = -1;
+function paintBossBar(b) {
+  hudBoss.classList.toggle('hidden', !b);
+  if (!b) { bossPips = -1; return; }
+  if (bossPips !== b.max) {
+    bossPips = b.max;
+    hudBossName.innerHTML = rubify(b.name);
+    hudBossPips.innerHTML = Array.from({ length: b.max }, () =>
+      '<div class="boss-pip flex-1 h-3 ink-2 rounded-sm"></div>').join('');
+  }
+  hudBossHp.textContent = `${b.hp} / ${b.max}`;
+  const pips = hudBossPips.children;
+  for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('spent', i >= b.hp);
+  // 被弾直後の白フラッシュ。当たった手応えを盤面の外にも出す
+  hudBoss.classList.toggle('is-hit', !!b.hit);
 }
 
 $('#resume').onclick = () => ctl?.resume();
@@ -1364,6 +1413,7 @@ const rubifyCause = (c) => rubify(c.replace(/泳いだ跡|外壁|胴体/g, (w) =
 function showResult(r) {
   dropNet();
   vignette.style.setProperty('--warn', '0');
+  paintBossBar(null);
   const best = Math.max(save.best, r.mass);
   const isBest = r.mass > save.best;
   save.best = best; persist();
@@ -1381,7 +1431,10 @@ function showResult(r) {
   renderMaps(selMap);   // ロケ地選択の鍵を裏で外しておく（現地写真の解放と同じやり方）
 
   show('result');
+  // ボス撃破だけは見出しを差し替える。CUT!（撮り終わり）のままだと勝った実感が出ない
+  $('#res-title').textContent = r.win ? 'BOSS DOWN!' : 'CUT!';
   $('#res-sub').innerHTML = `${rubify(selMap.name)} ／ ${rubify(selShark.name)}`
+    + (r.win ? `<br><span class="text-danger">${rubify(`${selMap.boss.name}を｜撃破《げきは》した！`)}</span>` : '')
     + (r.cause ? `<br><span class="text-danger">${rubifyCause(r.cause)}${rubify('に｜接触《せっしょく》')}</span>` : '');
   $('#res-stats').innerHTML = [
     [rubify('｜大《おお》きさ'), r.mass.toLocaleString(), isBest ? 'NEW BEST!' : `BEST ${best.toLocaleString()}`],

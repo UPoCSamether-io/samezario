@@ -321,6 +321,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
 
   const world = {
     map, W, arena, gimmick, sharks, food, authority, diffs,
+    boss: null,                 // ボスステージ（深大寺）でだけ入る。それ以外は null のまま
     get elapsed() { return elapsed; },
     get envT() { return envT; },
     /** 人が操っているサメの数。nid の頭文字でボットと見分ける */
@@ -438,9 +439,16 @@ export function createWorld({ map, authority = true, diffs = false }) {
       wbb: null,                 // 航跡の外接矩形。ここで宣言しておかないと形が途中で変わる
       reach: 60,
       // 湧き直後は無敵（同サイズ同士の即死を防ぐ）
-      boost: false, cd: 0, skill: 0, guard: 0, slow: 0, rapid: 0, iframe: 3,
+      // guard = 深大寺サメのスキルが張る「秒数」の盾。guardStock = 湧水でもらう「個数」の盾。
+      // 別々に持つのは意味が違うから —— スキルは 5秒で切れる＝使いどころを読む技で、
+      // 在庫にすると期限が消えて「押しておけば得」になり、判断が1つ消える。
+      // springT は湧水の再装填の残り秒数、wasSpring は前ティックにゾーンの中に居たか（入った瞬間の検出）
+      boost: false, cd: 0, skill: 0, guard: 0, guardStock: 0, springT: 0, wasSpring: false,
+      slow: 0, rapid: 0, iframe: 3,
       stam: 1, winded: false,
       kills: 0, alive: true,
+      // ボス（深大寺のヌシ）だけが使う。後から生やすと形が変わるのでここで宣言する
+      isBoss: false, hp: 0,
       wobble: rand(0, TAU),
       // bot only
       goal: null, mood: 0, moodT: 0,
@@ -483,6 +491,29 @@ export function createWorld({ map, authority = true, diffs = false }) {
 
   /** 餌を初期量まで湧かせる。盤面を持つ側（authority）だけが呼ぶ */
   world.seedFood = () => { if (!food.length) spawnFood(foodTarget()); };
+
+  /**
+   * ボス（深大寺のヌシ）を1体だけ湧かせる。数値は data.js の MAPS[].boss が全部持つ。
+   * nid を 'boss' にしてあるのは humans() が頭文字 'b' をボットとして数えるため ——
+   * ボスが居るせいで「独りの海」ではなくなり、ポーズが効かなくなるのを避ける。
+   */
+  world.spawnBoss = () => {
+    const def = map.boss;
+    if (!def || world.boss) return null;
+    const s = makeShark(def, false, def.battleName, 'boss');
+    // プレイヤーの真横に湧かせない。開幕から頭を突っ込んだ形になると事故で終わる
+    for (let i = 0; i < 40 && sharks[0]; i++) {
+      if (Math.hypot(s.x - sharks[0].x, s.y - sharks[0].y) > 1600) break;
+      const p = arena.spot();
+      s.x = p.x; s.y = p.y; s.path = [{ x: p.x, y: p.y }];
+    }
+    s.isBoss = true;
+    s.mass = def.bossMass;
+    s.hp = def.hp;
+    sharks.push(s);
+    world.boss = s;
+    return s;
+  };
 
   world.useSkill = (s) => {
     if (!s.alive || s.cd > 0) return;
@@ -571,6 +602,58 @@ export function createWorld({ map, authority = true, diffs = false }) {
       events.push({ k: 'respawn', nid: s.nid, shark: sharks[i] });
     }, 2200);
     timers.add(t);
+  }
+
+  // ---------- ボスAI ----------
+  /**
+   * ヌシは獲物へ真っ直ぐ突っ込むだけ。搦め手を持たせないのは、この戦いの攻略が
+   * 「巨体は曲がれない」という一点だからで、狙いを外させる工夫を足すと、
+   * プレイヤーが横をすり抜けて頭を擦る（＝ダメージを与える）機会そのものが消える。
+   */
+  function bossThink(s, dt) {
+    s.moodT -= dt;
+    if (s.moodT <= 0) { s.moodT = rand(2.4, 4.2); s.mood = Math.random(); }
+
+    let prey = null, pd = Infinity;
+    for (const o of sharks) {
+      if (o === s || !o.alive || o.isBoss) continue;
+      const d = Math.hypot(o.x - s.x, o.y - s.y);
+      if (d < pd) { pd = d; prey = o; }
+    }
+
+    let want = s.angle;
+    if (prey) {
+      // 迎撃点。旋回が重いぶん深めに読む
+      const lead = clamp(pd * 0.45, 80, 560);
+      want = Math.atan2(prey.y + Math.sin(prey.angle) * lead - s.y,
+                        prey.x + Math.cos(prey.angle) * lead - s.x);
+      // 間合いが詰まったら突進。息切れ中は溜める
+      s.boost = !s.winded && pd < 950 && s.mood > 0.45;
+    } else {
+      s.boost = false;
+    }
+
+    // 壁回避（最優先）。体が大きいぶん先読みも長い
+    const look = 260 + radiusOf(s.mass) * 6;
+    if (!arena.inside(s.x + Math.cos(s.angle) * look, s.y + Math.sin(s.angle) * look)) {
+      want = arena.escape(s.x, s.y, s.angle, look) ?? want;
+      s.boost = false;
+    }
+    s.aim = want;
+  }
+
+  /** ヌシを倒した。ばら撒く餌は「報酬」なので、通常の死亡と違って全部が高得点の粒 */
+  function bossDown(s, by) {
+    s.alive = false;
+    s.wake.length = 0;
+    world.boss = null;
+    events.push({ k: 'bossdown', shark: s, by, x: s.x, y: s.y });
+    const spread = radiusOf(s.mass) * 7;
+    for (let i = 0; i < 120; i++) {
+      const a = rand(0, TAU), d = Math.sqrt(Math.random()) * spread;
+      const x = s.x + Math.cos(a) * d, y = s.y + Math.sin(a) * d;
+      if (arena.inside(x, y)) addFood(makeFood(x, y, rand(14, 30), 1));
+    }
   }
 
   // ---------- ボットAI ----------
@@ -719,7 +802,9 @@ export function createWorld({ map, authority = true, diffs = false }) {
     // 印を付けておいて最後に1回で詰める
     let ate = false;
     for (const s of sharks) {
-      if (!s.alive) continue;
+      // ボスは成長しない（growth 0）。食わせると盤面から餌だけが消えていくので、
+      // 判定そのものを通さない
+      if (!s.alive || s.isBoss) continue;
       const r = radiusOf(s.mass) + 6;
       eachNearFood(s.x, s.y, r + maxFoodR, (f) => {
         if (f.gone) return;
@@ -764,9 +849,34 @@ export function createWorld({ map, authority = true, diffs = false }) {
           }
         }
         if (!hit) continue;
-        if (s.guard > 0) {
-          s.guard = 0; s.iframe = 1.2;
-          events.push({ k: 'guard', shark: s });
+        // ボスだけは同じ当たりを「死」ではなく「被弾」で受ける。
+        // 頭を擦りつけさせるのがこの戦いの攻め手なので、突っ込んだ側が死ぬ通常の
+        // 規則をここで折り返す（docs/concept-roadmap.md §4.1）
+        if (s.isBoss) {
+          // 削れるのは**胴体**に当たったときだけ。航跡はすり抜けさせる。
+          // 航跡も数えていたころは、ヌシが自分から突進してダッシュの跡を踏み抜き、
+          // プレイヤーが何もしていないのに HP が減っていった —— 実測で被弾 50回のうち
+          // 32回(64%)が航跡で、逃げているだけで勝ててしまう。docs §4.1 も
+          // 「ボスの頭がプレイヤーの胴体に触れるたび」としか書いていない
+          if (hit !== 'body') continue;
+          s.hp--;
+          s.iframe = s.def.hitIframe;
+          // 当てた側にも短い無敵を配る。ヌシは当たった後もそのまま突き抜けるので、
+          // これが無いと擦った直後に巨体が横をなぎ払い、1発当てるたびに死ぬ
+          // （実測: 8戦のうち7戦が初撃の直後、平均 9.6秒で終わっていた）
+          o.iframe = Math.max(o.iframe, s.def.counterIframe);
+          // how は 'body' か 'wake'。何に当たって減ったのかは見分けが付かないと
+          // 「ボスが勝手に減っている」ようにしか見えないので、イベントに載せておく
+          events.push({ k: 'bosshit', shark: s, by: o, how: hit, hp: s.hp, x: s.x, y: s.y });
+          if (s.hp <= 0) bossDown(s, o);
+          break;
+        }
+        if (s.guard > 0 || s.guardStock > 0) {
+          // 先に切れるほう（スキルの秒数）から使う。放っておけば消えるものを残して
+          // 在庫を減らすと、待っただけ損になる
+          if (s.guard > 0) s.guard = 0; else s.guardStock--;
+          s.iframe = 1.2;
+          events.push({ k: 'guard', shark: s, stock: s.guardStock });
         } else {
           die(s, o, hit);
         }
@@ -785,6 +895,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
       s.cd = Math.max(0, s.cd - dt);
       s.skill = Math.max(0, s.skill - dt);
       s.guard = Math.max(0, s.guard - dt);
+      s.springT = Math.max(0, s.springT - dt);
       s.rapid = Math.max(0, s.rapid - dt);
       s.iframe = Math.max(0, s.iframe - dt);
       s.slow = Math.max(0, s.slow - dt);
@@ -793,9 +904,12 @@ export function createWorld({ map, authority = true, diffs = false }) {
       const r = radiusOf(s.mass);
       // 湧水ゾーン（深大寺）。位置は動かす前のもので見る —— サメの速度が
       // 変わるだけで判定が揺れないよう、1ティックの中で1回だけ引く
-      const inSpring = !!gimmick && gimmick.springAt(s.x, s.y);
+      // 効くのはガードだけで、スタミナには一切触らない。
+      // ボスは対象外：湧水はプレイヤーの逃げ場なので、ヌシまで潤すと逃げ場でなくなる
+      const inSpring = !!gimmick && !s.isBoss && gimmick.springAt(s.x, s.y);
 
-      if (s.isBot) botThink(s, dt);
+      if (s.isBoss) bossThink(s, dt);
+      else if (s.isBot) botThink(s, dt);
       // 人のサメ（自分・他人とも）は aim/boost が外から入る。ここでは何もしない
 
       // ダッシュ（スタミナ消費。サイズは減らない）
@@ -804,13 +918,21 @@ export function createWorld({ map, authority = true, diffs = false }) {
         s.stam = Math.max(0, s.stam - DASH_DRAIN * s.def.boostCost * dt);
         if (s.stam === 0) s.winded = true;
       } else {
-        s.stam = Math.min(1, s.stam + DASH_REFILL * (inSpring ? gimmick.def.refill : 1) * dt);
+        s.stam = Math.min(1, s.stam + DASH_REFILL * dt);
         if (s.winded && s.stam >= DASH_MIN) s.winded = false;
       }
-      // 「そばガード効果を一時付与」（docs §3 ⑤）。docs はこれ以上のことを書いていないので、
-      // 深大寺サメのスキルと同じ一撃ぶんの盾（resolve が食う）を、浸かっている間だけ
-      // 張り直し続ける形にした。出ると def.guard 秒で切れる＝「一時」
-      if (inSpring && gimmick.def.guard) s.guard = Math.max(s.guard, gimmick.def.guard);
+      // 湧水がくれるのはこれだけ（スタミナ2倍は外した。§3 ⑤ から変更）。
+      // **入った瞬間に1個**もらう在庫制で、次にもらえるのは rearm 秒後。
+      // 浸かっている間ずっと張り直す形にしていたころは、居座るだけで無敵だった
+      // （実測: 一切避けない操作で 3/3 生存・ガード 8〜15回発動）。
+      // レベル判定（中に居るか）ではなくエッジ判定（入った瞬間か）にするのが要点で、
+      // そのために前ティックの居場所を wasSpring に持つ
+      if (inSpring && !s.wasSpring && s.springT <= 0 && gimmick.def.stock) {
+        s.guardStock = Math.min(gimmick.def.stockMax, s.guardStock + gimmick.def.stock);
+        s.springT = gimmick.def.rearm;
+        events.push({ k: 'spring', shark: s, stock: s.guardStock });
+      }
+      s.wasSpring = inSpring;
 
       let sp = BASE_SPEED * s.def.speed * (1 - Math.min(0.26, r / 420));
       if (canBoost) sp *= BOOST_MULT * s.def.boostPower;
@@ -832,9 +954,14 @@ export function createWorld({ map, authority = true, diffs = false }) {
       const phasing = s.def.id === 'yokai' && s.skill > 0;
       // 湧き直後の無敵は壁にも効かせる。外周向きに湧くと操作前に死ぬことがあった
       if (!arena.inside(s.x, s.y)) {
-        if (phasing || s.isBot || s.iframe > 0) {
+        // ボスは壁でも死なない（HP を削れるのはプレイヤーの胴体だけ）ので押し戻す
+        if (phasing || s.isBot || s.isBoss || s.iframe > 0) {
           s.x = px; s.y = py;                       // 直前の位置へ戻して向きだけ変える
-          s.angle = arena.escape(px, py, s.angle, r * 3 + 60) ?? s.angle + Math.PI;
+          // 逃げ道が見つからなかったときの最後の砦。180度反転はボスの巨体だと
+          // その場で折り返って見えるうえ、次のティックでまた同じ壁を向きうる。
+          // 必ず内側にある一点（home）へ向ければ、どんな凹みでも必ず抜けられる
+          s.angle = arena.escape(px, py, s.angle, r * 3 + 60)
+            ?? (s.isBoss ? Math.atan2(arena.home.y - py, arena.home.x - px) : s.angle + Math.PI);
         } else if (world.authority) {
           events.push({ k: 'wall', shark: s, x: s.x, y: s.y });
           die(s, null);
@@ -853,8 +980,10 @@ export function createWorld({ map, authority = true, diffs = false }) {
         s.angle += s.ea * k; s.ea -= s.ea * k;
       }
 
-      // 航跡：ダッシュ中だけ点を置き、寿命が切れた先頭から消える（尻尾から引っ込む）
-      if (canBoost) {
+      // 航跡：ダッシュ中だけ点を置き、寿命が切れた先頭から消える（尻尾から引っ込む）。
+      // ボスだけは引かない —— 巨体の航跡は半径 32px・寿命 2.5秒の帯になり、突進の
+      // たびに境内が触れられない線で埋まる。ヌシの脅威は体そのものに絞る
+      if (canBoost && !s.isBoss) {
         const w = s.wake[s.wake.length - 1];
         if (!w || (s.x - w.x) ** 2 + (s.y - w.y) ** 2 >= WAKE_STEP * WAKE_STEP) {
           s.wake.push({ x: s.x, y: s.y, r: r * WAKE_R, born: elapsed });
@@ -912,7 +1041,9 @@ export function createWorld({ map, authority = true, diffs = false }) {
     o.nid, Math.round(o.x), Math.round(o.y), +o.angle.toFixed(2), Math.round(o.mass),
     // slow / rapid は見た目ではなく速度と旋回上限そのものを変える。載せ忘れると
     // 予測側だけが等速で走り、スロー中は追い越し・急流中は置いていかれる（実測 64px）
-    (o.alive ? 1 : 0) | (o.boost ? 2 : 0) | (o.skill > 0 ? 4 : 0) | (o.guard > 0 ? 8 : 0) | (o.iframe > 0 ? 16 : 0)
+    // ビット8は「盾を持っているか」。スキルの秒数と湧水の在庫のどちらでも立てる
+    // （受け側は輪を描くだけなので、どちらの出どころかは要らない）
+    (o.alive ? 1 : 0) | (o.boost ? 2 : 0) | (o.skill > 0 ? 4 : 0) | (o.guard > 0 || o.guardStock > 0 ? 8 : 0) | (o.iframe > 0 ? 16 : 0)
     | (o.slow > 0 ? 32 : 0) | (o.rapid > 0 ? 64 : 0),
   ];
   const packFood = (f) => [f.id, Math.round(f.x), Math.round(f.y), +f.v.toFixed(1), f.kind];

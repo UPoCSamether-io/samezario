@@ -138,6 +138,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       net?.close();
       goSolo();
     }, SOLO_WAIT);
+  } else if (map.boss) {
+    // ボスステージ（深大寺）は一騎打ち。雑魚ボットは湧かさず、餌だけ通常どおり撒く
+    world.spawnBoss();
+    world.seedFood();
   } else {
     world.fillBots();
     world.seedFood();
@@ -263,13 +267,14 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
   }
 
-  function endRun(cause) {
+  function endRun(cause, win = false) {
     if (dead) return;   // sim が death を2回積んでも XP を二重加算しない
     dead = true;
     setTimeout(() => onEnd({
-      mass: Math.round(player.mass), kills: player.kills, time: world.elapsed, cause,
+      mass: Math.round(player.mass), kills: player.kills, time: world.elapsed, cause, win,
       rank: 1 + sharks.filter((o) => o.alive && o !== player && o.mass > player.mass).length,
-    }), 900);
+    // 撃破は餌が散る絵を見せてから抜ける
+    }), win ? 1900 : 900);
   }
 
   /**
@@ -318,6 +323,12 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         burst(s.x, s.y, YELLOW, 24, 180);
         if (s === player) cam.shake = 14;
         break;
+      case 'spring':
+        // 湧水でガードを1個もらった瞬間。ここで音と粒を出さないと、
+        // 「入ったのに何も起きない」再装填中との区別が付かない
+        burst(s.x, s.y, MINT, 22, 150);
+        if (s === player && !attract) sfx.skill();
+        break;
       case 'die': {
         cam.shake = s === player ? 26 : 8;
         burst(s.x, s.y, s.def.color, 26, 200);
@@ -328,6 +339,17 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         if (vol > 0.03) sfx.die(vol * 0.7, pan);
         break;
       }
+      case 'bosshit':
+        cam.shake = 20;
+        burst(s.x, s.y, s.def.accent, 34, 260);
+        if (!attract) sfx.skill();
+        break;
+      case 'bossdown':
+        cam.shake = 34;
+        burst(s.x, s.y, s.def.accent, 60, 320);
+        burst(s.x, s.y, YELLOW, 40, 260);
+        if (!attract) { sfx.die(); endRun('', true); }
+        break;
       case 'respawn':
         // attract: 主役が死んだら別の個体へカメラを切り替える。
         // 補間で盤面を横断させず、映画のカットのように飛ばす
@@ -398,6 +420,18 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     if (b.length < 3) return;
     const lw = 3.2 / cam.zoom;
     const phasing = s.def.id === 'yokai' && s.skill > 0;
+
+    // ボスの金色のオーラ。体の下に敷く（上に重ねると巨体が霞んで見える）。
+    // 引きの絵でも「そこに居る」ことが先に分かるよう、体より一回り大きく取る
+    if (s.isBoss) {
+      const rr = radiusOf(s.mass);
+      const g = ctx.createRadialGradient(s.x, s.y, rr, s.x, s.y, rr * 3.4);
+      g.addColorStop(0, hexA(s.def.accent, 0.34 + 0.12 * Math.sin(t * 2.2)));
+      g.addColorStop(1, hexA(s.def.accent, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(s.x, s.y, rr * 3.4, 0, TAU); ctx.fill();
+    }
+
     ctx.save();
     if (phasing) ctx.globalAlpha = 0.45;
     if (s.iframe > 0 && Math.floor(s.iframe * 14) % 2) ctx.globalAlpha = 0.4;
@@ -437,7 +471,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
 
     // 名前
-    if (cam.zoom > 0.4 || s === player) {
+    if (cam.zoom > 0.4 || s === player || s.isBoss) {
       ctx.save();
       ctx.font = `700 ${Math.max(12, hr * 0.75)}px "Space Grotesk", sans-serif`;
       ctx.textAlign = 'center';
@@ -651,28 +685,37 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
   }
 
-  /** 深大寺の湧水。縁の破線が「ここから中」の線で、泡は t だけで決まる（端末で絵が割れない） */
+  /**
+   * 深大寺の湧水。縁の破線が「ここから中」の線で、泡は t だけで決まる（端末で絵が割れない）。
+   *
+   * 湧水がくれるのはガード1個だけで、ゾーンには「今もらえる／再装填中」の2つの状態がある。
+   * 入っても何も起きない時間が最大 30秒あるので、色で言い分けないと故障に見える ——
+   * もらえるならミント、再装填中は灰にして泡も止める。
+   */
   function drawSprings(t) {
+    const ready = player.springT <= 0;
+    const tint = ready ? '163,240,240' : '150,150,150';
     for (let i = 0; i < gim.springs.length; i++) {
       const z = gim.springs[i];
       const here = (player.x - z.x) ** 2 + (player.y - z.y) ** 2 < z.r * z.r;
-      const pulse = 0.5 + 0.5 * Math.sin(t * 1.6 + i * 2.1);
+      const pulse = ready ? 0.5 + 0.5 * Math.sin(t * 1.6 + i * 2.1) : 0;
 
       const g = ctx.createRadialGradient(z.x, z.y, z.r * 0.12, z.x, z.y, z.r);
-      g.addColorStop(0, `rgba(163,240,240,${((here ? 0.26 : 0.14) + pulse * 0.05).toFixed(3)})`);
-      g.addColorStop(1, 'rgba(163,240,240,0)');
+      g.addColorStop(0, `rgba(${tint},${((here ? 0.26 : 0.14) * (ready ? 1 : 0.5) + pulse * 0.05).toFixed(3)})`);
+      g.addColorStop(1, `rgba(${tint},0)`);
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.fill();
 
       ctx.save();
-      ctx.strokeStyle = MINT;
-      ctx.globalAlpha = here ? 0.95 : 0.45;
+      ctx.strokeStyle = ready ? MINT : 'rgb(150,150,150)';
+      ctx.globalAlpha = (here ? 0.95 : 0.45) * (ready ? 1 : 0.55);
       ctx.lineWidth = Math.max(2.5 / cam.zoom, here ? 5 : 3.5);
       ctx.setLineDash([30, 22]);
-      ctx.lineDashOffset = -t * 36;
+      ctx.lineDashOffset = -t * (ready ? 36 : 8);
       ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.stroke();
       ctx.restore();
 
+      if (!ready) continue;      // 再装填中は泡を止める。「今は湧いていない」と読ませる
       ctx.fillStyle = 'rgba(163,240,240,.45)';
       for (let k = 0; k < 9; k++) {
         const ph = (t * 0.33 + k * 0.111 + i * 0.37) % 1;
@@ -729,10 +772,13 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // 「入っている」は自機のまわりだけで完結させる。そばガードの輪（破線・黄・半径 2.4r）と
     // 見分けが付くよう、こちらは実線・ミントで外側（3.9r）に置く
     if (gim.springAt(player.x, player.y)) {
+      // 再装填中は灰色の細い実線。輪そのものは消さず「入ってはいるが今はもらえない」を
+      // 色で言い分ける —— 消すと、ゾーンを外したのか再装填中なのか区別が付かない
+      const ready = player.springT <= 0;
       ctx.save();
-      ctx.strokeStyle = MINT;
-      ctx.lineWidth = Math.max(3.5 / cam.zoom, 4.5);
-      ctx.globalAlpha = 0.5 + 0.35 * Math.sin(t * 5);
+      ctx.strokeStyle = ready ? MINT : 'rgb(150,150,150)';
+      ctx.lineWidth = Math.max(3.5 / cam.zoom, ready ? 4.5 : 2.5);
+      ctx.globalAlpha = ready ? 0.5 + 0.35 * Math.sin(t * 5) : 0.35;
       ctx.beginPath(); ctx.arc(player.x, player.y, hr * 3.9, 0, TAU); ctx.stroke();
       ctx.globalAlpha = 1;
       ctx.restore();
@@ -966,8 +1012,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     for (const o of sharks) {
       if (!o.alive) continue;
       mctx.beginPath();
-      mctx.arc(o.x, o.y, (o === player ? 5 * scale : 3.2 * scale) / k, 0, TAU);
-      mctx.fillStyle = o === player ? YELLOW : '#e07a6a';
+      mctx.arc(o.x, o.y, ((o === player ? 5 : o.isBoss ? 8 : 3.2) * scale) / k, 0, TAU);
+      mctx.fillStyle = o === player ? YELLOW : o.isBoss ? o.def.accent : '#e07a6a';
       mctx.fill();
       mctx.strokeStyle = INK; mctx.stroke();
     }
@@ -1015,7 +1061,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         time: world.elapsed,
         cd: player.cd, cdMax: player.def.skill.cd,
         stam: player.stam, winded: player.winded,
-        guard: player.guard > 0,
+        guard: player.guard > 0 || player.guardStock > 0,
+        guardStock: player.guardStock,
+        // 湧水の再装填。0 なら次のゾーンで1個もらえる
+        springT: player.springT,
         boost: !player.winded && player.stam > 0,
         boosting: player.boost && !player.winded && player.stam > 0,
         humans: net ? world.humans() : 0,
@@ -1023,6 +1072,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
           name: s.name, mass: Math.round(s.mass), me: s === player, human: s.nid[0] !== 'b',
         })),
         edge: player.alive ? clamp((180 - arena.edgeDist(player.x, player.y)) / 140, 0, 1) : 0,
+        // ボスの残り耐久。ボスの居ないエリアでは null で、HUD 側がバーごと畳む
+        boss: world.boss
+          ? { name: map.boss.name, hp: world.boss.hp, max: map.boss.hp, hit: world.boss.iframe > 0 }
+          : null,
       });
     }
     requestAnimationFrame(frame);

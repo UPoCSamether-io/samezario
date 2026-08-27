@@ -588,7 +588,9 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   w.destroy();
 }
 
-// 18. 深大寺の湧水ゾーン：スタミナの戻りが速く、そばガードが張られる
+// 18. 深大寺の湧水ゾーン：入った瞬間にガードを1個もらう。**それだけ**。
+//     ガードは「在庫」で、次にもらえるのは rearm 秒後（居座っても増えない）。
+//     スタミナには触らない —— 効果を2つ持たせると「何をもらいに行く場所か」がぼやける
 {
   const map = MAPS.find((m) => m.id === 'jindaiji');
   const w = createWorld({ map });
@@ -610,14 +612,76 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
     a.x = z.x; a.y = z.y; b.x = out.x; b.y = out.y;
     w.step(1 / 30);
   }
-  const gained = (a.stam - 0.2) / (b.stam - 0.2);
-  assert.ok(gained > 1.8 && gained < 2.2, `スタミナの戻りが2倍になっていない: ${gained.toFixed(2)}倍`);
-  assert.ok(a.guard > 0, '湧水ゾーンでそばガードが張られない');
-  assert.equal(b.guard, 0, 'ゾーンの外でガードが張られている');
+  // スタミナには触らない。ゾーンの内と外で戻り方が同じであること
+  assert.ok(Math.abs(a.stam - b.stam) < 1e-9,
+    `湧水がスタミナに触っている: 中 ${a.stam.toFixed(4)} / 外 ${b.stam.toFixed(4)}`);
 
-  // 出れば切れる（「一時付与」）
-  for (let i = 0; i < 45; i++) { a.x = out.x; a.y = out.y; b.x = z.x; b.y = z.y; w.step(1 / 30); }
-  assert.equal(a.guard, 0, 'ゾーンを出てもガードが残り続けている');
+  // 入った瞬間に1個。1.5秒（45ティック）居座っても増えない ——
+  // ここが「張り直し」だったころは、居座るだけで無敵になっていた
+  assert.equal(a.guardStock, 1, `湧水でガードが1個もらえていない: ${a.guardStock}`);
+  assert.equal(b.guardStock, 0, 'ゾーンの外でガードをもらっている');
+  assert.ok(a.springT > 0, '再装填が始まっていない');
+
+  // 出て入り直しても、再装填が終わるまでは増えない
+  for (let i = 0; i < 45; i++) { a.x = out.x; a.y = out.y; w.step(1 / 30); }
+  for (let i = 0; i < 45; i++) { a.x = z.x; a.y = z.y; w.step(1 / 30); }
+  assert.equal(a.guardStock, 1, `再装填中に入り直してガードが増えた: ${a.guardStock}`);
+
+  // 再装填が明けても、上限（stockMax=1）を超えて貯まらない
+  assert.equal(map.gimmick.stockMax, 1, '前提: 在庫の上限が1になっていない');
+  a.springT = 0;
+  for (let i = 0; i < 30; i++) { a.x = out.x; a.y = out.y; w.step(1 / 30); }
+  for (let i = 0; i < 30; i++) { a.x = z.x; a.y = z.y; w.step(1 / 30); }
+  assert.equal(a.guardStock, 1, `在庫が上限を超えた: ${a.guardStock}`);
+
+  // 使い切ったあとは、再装填が明ければまた1個もらえる
+  a.guardStock = 0; a.springT = 0;
+  for (let i = 0; i < 30; i++) { a.x = out.x; a.y = out.y; w.step(1 / 30); }
+  for (let i = 0; i < 30; i++) { a.x = z.x; a.y = z.y; w.step(1 / 30); }
+  assert.equal(a.guardStock, 1, '使い切った後にもらい直せない');
+
+  // 在庫はゾーンを出ても消えない（秒数ではなく個数だから）
+  for (let i = 0; i < 120; i++) { a.x = out.x; a.y = out.y; w.step(1 / 30); }
+  assert.equal(a.guardStock, 1, 'ゾーンを出たら在庫が消えた');
+  w.destroy();
+}
+
+// 18b. 深大寺サメのスキルは「秒数」のまま。在庫と混ざっていないこと ——
+//      在庫にすると期限が消えて「押しておけば得」になり、使いどころを読む判断が消える
+{
+  const w = createWorld({ map: MAPS.find((m) => m.id === 'chofu') });   // 湧水の無いエリアで見る
+  const s = w.addPlayer({ nid: 'p1', sharkId: 'jindaiji', name: 'P' });
+  w.useSkill(s);
+  assert.equal(s.guard, s.def.skill.dur, 'そばガードが秒数で張られていない');
+  assert.equal(s.guardStock, 0, 'スキルが在庫を増やしている');
+  // 壁から十分離れた1点に毎ティック置き直す。放っておくと湧いた向きへ直進して外壁で死に、
+  // 死んだサメは step の先頭で飛ばされるので guard が減らないまま残る（実測 12回中8回）。
+  // home は「内側のどこか」でしかなく縁に寄ることがあるので、clearance を見て選ぶ
+  // （home 決め打ちでも 40回に1回すり抜けた）
+  let safe = null;
+  for (let i = 0; i < 20000 && !safe; i++) {
+    const q = w.arena.spot();
+    if (w.arena.edgeDist(q.x, q.y) > 700) safe = q;
+  }
+  assert.ok(safe, '壁から離れた点が見つからない');
+  for (let i = 0; i < 30 * (s.def.skill.dur + 1); i++) {
+    s.x = safe.x; s.y = safe.y;
+    w.step(1 / 30);
+  }
+  assert.ok(s.alive, '前提: サメが生きたまま測れていない');
+  assert.equal(s.guard, 0, 'そばガードが時間で切れていない');
+  w.destroy();
+}
+
+// 18c. ボスは湧水の対象外。湧水はプレイヤーの逃げ場なので、ヌシまで潤すと逃げ場でなくなる
+{
+  const map = MAPS.find((m) => m.id === 'jindaiji');
+  const w = createWorld({ map });
+  const boss = w.spawnBoss();
+  const z = w.gimmick.springs[0];
+  for (let i = 0; i < 60; i++) { boss.x = z.x; boss.y = z.y; boss.boost = false; w.step(1 / 30); }
+  assert.equal(boss.guardStock, 0, 'ボスが湧水でガードをもらっている');
+  assert.equal(boss.springT, 0, 'ボスで湧水の再装填が動いている');
   w.destroy();
 }
 
@@ -659,6 +723,148 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
     assert.equal(w.snapshot(true).e, undefined, `${id} の full に環境の時計が載っている`);
     w.destroy();
   }
+}
+
+// 21. 深大寺のボス戦。
+//     普通のサメは「頭が相手の胴体に触れたら突っ込んだ側が死ぬ」だが、ボスだけは
+//     その当たりを HP1 の被弾として受ける。この折り返しが消えると、ボスが自分から
+//     突っ込んで勝手に死ぬ（＝戦いが成立しない）ので、規則そのものを検査する
+{
+  const map = MAPS.find((m) => m.id === 'jindaiji');
+  assert.ok(map.boss, '深大寺にボスが居ない');
+  assert.ok(map.solo, 'ボスステージがシングルプレイになっていない');
+  for (const m of MAPS) {
+    if (m.id !== 'jindaiji') assert.equal(m.boss, undefined, `${m.id} にボスが居る`);
+  }
+
+  const w = createWorld({ map });
+  const p = w.addPlayer({ nid: 'p1', sharkId: 'cinema', name: 'P' });
+  const boss = w.spawnBoss();
+  assert.ok(boss, 'ボスが湧かない');
+  assert.equal(boss.hp, map.boss.hp);
+  assert.equal(w.spawnBoss(), null, 'ボスが2体湧いた');
+  assert.equal(w.sharks.filter((s) => s.isBoss).length, 1);
+
+  // 体を作らせてから、ボスの頭をプレイヤーの胴体の真ん中へ置く
+  w.step(1 / 30); w.drainEvents();
+  const hitOnce = () => {
+    boss.iframe = 0;
+    const mid = p.body[Math.floor(p.body.length / 2)];
+    boss.x = mid.x; boss.y = mid.y;
+    w.step(1 / 30);
+    return w.drainEvents();
+  };
+
+  const hp0 = boss.hp;
+  const ev = hitOnce();
+  assert.ok(boss.alive, 'ボスが1回の接触で死んだ');
+  assert.equal(boss.hp, hp0 - 1, 'ボスの HP が減っていない');
+  assert.ok(ev.some((e) => e.k === 'bosshit'), 'bosshit イベントが出ない');
+  assert.ok(p.alive, 'ボスに当てたプレイヤーが死んだ');
+
+  // 無敵時間の間は削れない（30Hz で重なったままだと一瞬で削り切れてしまう）
+  const hp1 = boss.hp;
+  const mid = p.body[Math.floor(p.body.length / 2)];
+  boss.x = mid.x; boss.y = mid.y;
+  w.step(1 / 30); w.drainEvents();
+  assert.equal(boss.hp, hp1, '無敵時間中にも HP が減っている');
+
+  // 残りを削り切ると撃破。高得点の餌がまとまって散る
+  const foodBefore = w.food.length;
+  let down = null;
+  for (let i = 0; i < map.boss.hp + 2 && !down; i++) {
+    down = hitOnce().find((e) => e.k === 'bossdown') ?? null;
+  }
+  assert.ok(down, 'HP を削り切っても bossdown が出ない');
+  assert.equal(boss.alive, false);
+  assert.equal(w.boss, null, '撃破後も world.boss が残っている');
+  assert.ok(w.food.length > foodBefore + 50, `報酬の餌が散っていない: ${foodBefore} -> ${w.food.length}`);
+  w.destroy();
+}
+
+// 21b. ボスの HP を削れるのは**胴体**だけ。ダッシュの航跡はすり抜ける。
+//      航跡も数えていたころは、ヌシが自分から突進して跡を踏み抜き、プレイヤーが
+//      何もしていないのに HP が減っていった（実測: 被弾50回のうち32回が航跡）。
+//      「ボスが勝手にダメージを受けている」の正体がこれ
+{
+  const map = MAPS.find((m) => m.id === 'jindaiji');
+  const w = createWorld({ map });
+  const p = w.addPlayer({ nid: 'p1', sharkId: 'cinema', name: 'P' });
+  const boss = w.spawnBoss();
+
+  // プレイヤーをダッシュさせて航跡を伸ばす。ボスは遠くへ避けておく
+  const far = w.arena.bb;
+  boss.x = far.x0 + 10; boss.y = far.y0 + 10;
+  p.boost = true;
+  for (let i = 0; i < 60; i++) {
+    p.aim = p.angle;
+    boss.x = far.x0 + 10; boss.y = far.y0 + 10;
+    w.step(1 / 30);
+    w.drainEvents();
+  }
+  assert.ok(p.wake.length > 3, `前提: 航跡が伸びていない (${p.wake.length})`);
+
+  // 航跡のいちばん古い点＝プレイヤーの胴体から最も離れた場所へ、ボスの頭を置く
+  const tail = p.wake[0];
+  const bodyGap = Math.min(...p.body.map((q) => Math.hypot(q.x - tail.x, q.y - tail.y)));
+  assert.ok(bodyGap > 120, `前提: 航跡の端が胴体に近すぎる (${bodyGap.toFixed(0)}px)`);
+
+  const hp0 = boss.hp;
+  for (let i = 0; i < 30; i++) {
+    boss.iframe = 0;
+    boss.x = tail.x; boss.y = tail.y;
+    w.step(1 / 30);
+    for (const e of w.drainEvents()) {
+      assert.notEqual(e.k, 'bosshit', `航跡でボスの HP が減った（how=${e.how}）`);
+    }
+  }
+  assert.equal(boss.hp, hp0, `航跡でボスの HP が減った: ${hp0} -> ${boss.hp}`);
+  w.destroy();
+}
+
+// 22. ボスは壁で死なず、餌でも太らない。
+//     獲物を置かないのが要点 —— 相手が居ると、ボスは追いかけた末に自分から頭を
+//     擦って HP を失い、30秒のうちに撃破されてしまう（それは 21 が見ている正しい挙動で、
+//     ここで混ぜると「壁で死んだ」のか「削られた」のか区別が付かない）。
+//     獲物が居なければ bossThink は直進するだけになり、壁だけが相手として残る
+{
+  const map = MAPS.find((m) => m.id === 'jindaiji');
+  const w = createWorld({ map });
+  w.seedFood();
+  const boss = w.spawnBoss();
+  const mass0 = boss.mass;
+  const hp0 = boss.hp;
+  for (let i = 0; i < 900; i++) { w.step(1 / 30); w.drainEvents(); }
+  assert.ok(boss.alive, 'ボスが壁で死んだ');
+  assert.equal(boss.hp, hp0, '相手が居ないのにボスの HP が減っている');
+  assert.ok(w.arena.inside(boss.x, boss.y), 'ボスが壁の外へ出た');
+  assert.equal(boss.mass, mass0, 'ボスが餌で成長している');
+  w.destroy();
+}
+
+// 22b. 壁へ突っ込ませ続けても死なず、詰まらないこと。
+//      bossThink の先読み（260 + r*6 ≒ 724px）が働くので、普通に回しているだけでは
+//      壁の押し戻しに一度も入らない（実測 120秒で 0 回）。取りこぼしを防ぐため、
+//      毎ティック外向きに舵を上書きして、その分岐だけを名指しで踏ませる
+{
+  const map = MAPS.find((m) => m.id === 'jindaiji');
+  const w = createWorld({ map });
+  const boss = w.spawnBoss();
+  const bb = w.arena.bb;
+
+  for (const [cx, cy] of [[bb.x0, bb.y0], [bb.x1, bb.y0], [bb.x0, bb.y1], [bb.x1, bb.y1]]) {
+    for (let i = 0; i < 240; i++) {
+      // 外接矩形の角＝必ず輪郭の外側へ向かう向きへ、毎ティック向け直す
+      boss.aim = Math.atan2(cy - boss.y, cx - boss.x);
+      w.step(1 / 30);
+      w.drainEvents();
+      assert.ok(boss.alive, 'ボスが壁で死んだ');
+      assert.ok(Number.isFinite(boss.x) && Number.isFinite(boss.y), 'ボスの座標が壊れた');
+    }
+    assert.ok(w.arena.inside(boss.x, boss.y), `角(${Math.round(cx)},${Math.round(cy)})でボスが外に残った`);
+  }
+  assert.equal(boss.hp, map.boss.hp, '壁でボスの HP が減っている');
+  w.destroy();
 }
 
 console.log('sim ok');
