@@ -873,6 +873,64 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   w.destroy();
 }
 
+// 23. ヌシが突進を始めるのは HP を rageHp まで削ってから（#94）。
+//     それまでは他のロケ地のボットと同じ泳ぎ方 —— つまりダッシュを撃たない。
+//     開幕から突進していたころは、間合いの取り方を覚える前に轢かれて終わっていた
+{
+  const map = MAPS.find((m) => m.id === 'jindaiji');
+  assert.ok(map.boss.rageHp > 0 && map.boss.rageHp < map.boss.hp,
+    'rageHp が 0..hp の間に無い（怒る段階が来ないか、最初から怒っている）');
+
+  const w = createWorld({ map });
+  const p = w.addPlayer({ nid: 'p1', sharkId: 'cinema', name: 'P' });
+  const boss = w.spawnBoss();
+  const home = w.arena.home;
+
+  // 壁の先読み（bossThink の 260 + r*6 ≒ 722px）に掛かると、突進は間合いに関係なく
+  // 切られる。境内の輪郭は凹んでいるので、home から真東に並べると向きによっては
+  // そこが外側になる —— 実際 CI だけ落ちた。内側が続く向きを実測で1つ選んでから並べる
+  const dir = (() => {
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * Math.PI * 2;
+      const ok = [500, 725, 900, 1200].every(
+        (d) => w.arena.inside(home.x + Math.cos(a) * d, home.y + Math.sin(a) * d));
+      if (ok) return a;
+    }
+    return null;
+  })();
+  assert.ok(dir !== null, '境内に 1200px の直線が取れない（テストの前提が壊れた）');
+
+  // 突進の判定（bossThink の pd < 950）に必ず入る間合いへ毎ティック置き直す。
+  // 500px 離すのは、胴体が触れて HP が勝手に減るのを避けるため。
+  // 向きまで固定するのは、迎撃点が獲物の向き（湧いたときの乱数）で振れるため
+  const face = (hp) => {
+    boss.hp = hp;
+    boss.x = home.x; boss.y = home.y;
+    boss.angle = dir; boss.aim = dir;
+    p.x = home.x + Math.cos(dir) * 500; p.y = home.y + Math.sin(dir) * 500;
+    p.angle = dir;                   // 迎撃点（獲物の 225px 先）も同じ直線の上に乗る
+    boss.mood = 1; boss.moodT = 9;   // mood の抽選で「今は溜める」に落ちないよう固定
+    boss.winded = false; boss.stam = 1;
+    p.mass = 900;                    // ボットが最優先で狙う質量帯（botThink の 800 以上）
+  };
+
+  for (let i = 0; i < 300; i++) {
+    face(map.boss.hp);
+    w.step(1 / 30); w.drainEvents();
+    assert.equal(boss.boost, false, '削り切る前のヌシが突進した');
+  }
+
+  // rageHp まで削れたら突進する
+  let dashed = false;
+  for (let i = 0; i < 300 && !dashed; i++) {
+    face(map.boss.rageHp);
+    w.step(1 / 30); w.drainEvents();
+    dashed = boss.boost;
+  }
+  assert.ok(dashed, `HP ${map.boss.rageHp} まで削ってもヌシが突進しない`);
+  w.destroy();
+}
+
 console.log('sim ok');
 
 
