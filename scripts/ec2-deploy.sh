@@ -81,8 +81,11 @@ sudo -u $USER_ bash -c "cd $APP_DIR && npm ci --omit=dev --no-audit --no-fund"
 TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
 IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
 SITE="${IP//./-}.nip.io"
+# 本番は ws.samether.io（A レコードが EIP を向いている / Cloudflare は proxy させない＝DNS only。
+# オレンジ雲にすると 443 が Cloudflare 止まりになって Let's Encrypt も wss も通らない）。
+# nip.io も残すのは、DNS を移す前の URL とデプロイの疎通確認がそのまま生きるから。
 cat > /etc/caddy/Caddyfile <<EOF
-$SITE {
+ws.samether.io, $SITE {
 	reverse_proxy 127.0.0.1:$PORT
 }
 EOF
