@@ -889,6 +889,29 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #hud-skill-name { font-size: 10px; padding: 0; }
   #hud-actions > #hud-skill { margin-bottom: 2.25rem; }
   #hud-actions > * { opacity: .6; }
+
+  /* ボスの耐久ゲージ（深大寺）。横持ちスマホは高さが無く、上段は左に SIZE+ミニマップ、
+     右に順位表のスリム帯が既に居るため、中央上部に置くとどちらかへ必ず重なる
+     （実測 844x390 で SIZE の数値と順位表の1位表示がボス板の下に隠れていた）。
+     上を諦め、何も置いていない左下（スキル/ダッシュより左）へ逃がす。
+     幅は右の操作ボタン（84+12+84px ぶん）に噛まないよう viewport 側で切る */
+  #hud-boss {
+    top: auto;
+    left: max(0.75rem, env(safe-area-inset-left));
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    translate: 0 0;   /* 中央寄せの -translate-x-1/2 を打ち消す（transform ではなく translate プロパティ側） */
+    width: min(320px, calc(100vw - 220px));
+  }
+  /* 縦に一番かさばっていた撮影板のヘッダーを畳んで、カード自体を薄くする */
+  #hud-boss-panel > .clapper-stripes { display: none; }
+  #hud-boss-body { padding: 0.35rem 0.55rem; }
+  #hud-boss-name { font-size: 11px; }
+  #hud-boss-hp { font-size: 10px; }
+  #hud-boss-pips { gap: 3px; }
+  #hud-boss-pips .boss-pip, #hud-boss-wait { height: 0.4rem; }
+  /* 待っていい間は薄く、被弾の瞬間だけはっきりさせる（他のタッチHUDと同じ扱い） */
+  #hud-boss { opacity: .82; transition: opacity 150ms ease-out; }
+  #hud-boss.is-hit { opacity: 1; }
 }
 
 /* 縦持ちガード。.io 系は左右の視界が生命線で、縦だと横からの寄りに反応できない。

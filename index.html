@@ -514,11 +514,13 @@
          毎回評価することになり、それだけで 1フレーム 4.8ms 掛かっていた -->
     <div id="vignette" class="absolute inset-0 pointer-events-none"></div>
 
-    <!-- ボス専用の耐久ゲージ。深大寺のボス戦の間だけ出る（main.js の paintHud が畳む） -->
+    <!-- ボス専用の耐久ゲージ。深大寺のボス戦の間だけ出る（main.js の paintHud が畳む）。
+         横持ちスマホでは style.css がこのカードを左下へ逃がし、幅も詰める
+         （#hud-boss-panel / #hud-boss-body はそのためのフック） -->
     <div id="hud-boss" class="hidden absolute top-2 left-1/2 -translate-x-1/2 z-20 w-[min(560px,86vw)] pointer-events-none">
-      <div class="bg-paper ink-4 hard-lg overflow-hidden">
+      <div id="hud-boss-panel" class="bg-paper ink-4 hard-lg overflow-hidden">
         <div class="clapper-stripes h-3 border-b-4 border-ink"></div>
-        <div class="px-3 py-2">
+        <div id="hud-boss-body" class="px-3 py-2">
           <div class="flex items-baseline gap-2 mb-1">
             <span class="font-mono font-bold text-[10px] tracking-[0.3em] text-danger">BOSS</span>
             <span id="hud-boss-name" class="font-display font-extrabold text-sm leading-none truncate"></span>
