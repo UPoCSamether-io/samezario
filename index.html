@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>サメザリオ — SAMEZARIO</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%88%3C/text%3E%3C/svg%3E">
+<!-- ホーム画面に追加（PWA）。名前とアイコンは manifest 側が持つ。
+     iOS 17.4 未満は manifest の display を見ないので、apple-* の3行が全画面表示の担当。
+     status-bar は black-translucent = 時計の帯を画面に重ねる指定で、上の viewport-fit=cover と対。
+     Service Worker は置いていない。オフライン化は BGM と原画まで抱えることになるし、
+     ブラウザのメニューから「ホーム画面に追加」する導線には要らない -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#121d33">
+<link rel="apple-touch-icon" href="/icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="サメザリオ">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- フォント CSS は描画を止めない（media=print → onload で all）。全部 display=swap なので
