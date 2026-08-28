@@ -30,6 +30,10 @@ const BOOST_MULT = 1.85;
 const DASH_DRAIN = 0.42;
 const DASH_REFILL = 0.22;
 const DASH_MIN = 0.18;
+// スコア（＝盤面の質量、HUD に出ている数字）でダッシュが伸びる。
+// SCORE_DASH_PER ポイントごとに満タン1本ぶんの持続が +1秒、上限 SCORE_DASH_MAX 秒。
+const SCORE_DASH_PER = 200;
+const SCORE_DASH_MAX = 5;
 // 航跡：ダッシュ中だけ残る帯。頭から触れた相手は死ぬ（張った本人は平気）。
 // 長さの上限はスタミナが決めるので、囲い込めるかどうかは DASH_DRAIN 側で効く
 const WAKE_LIFE = 2.5;    // 残る秒数
@@ -59,6 +63,21 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const pick = (a) => a[(Math.random() * a.length) | 0];
 export const radiusOf = (m) => 9 + Math.sqrt(m) * 0.72;
+
+/** スコアぶんを足す前の、機種だけで決まるダッシュ1本の長さ(秒) */
+const baseDashOf = (def) => 1 / (DASH_DRAIN * def.boostCost);
+
+/**
+ * スコアで伸びるぶん(秒)。200ポイントごとに +1秒、上限 5秒。
+ *
+ * ボスは対象外。ヌシは質量 8000〜13000 なので入れれば即座に上限まで乗るが、
+ * ヌシの突進は「短く撃って溜め直す」形で成立している（data.js の boostCost 1.3 のメモ）。
+ * 8秒撃てるようにすると 2.5秒残る航跡で境内が埋まり、近づく隙のほうが消える。
+ */
+export const dashBonusOf = (s) => (s.isBoss ? 0 : Math.min(SCORE_DASH_MAX, s.mass / SCORE_DASH_PER));
+
+/** 満タンのゲージを撃ち切るまでの秒数。素の長さ＋スコアぶん */
+export const dashSecondsOf = (s) => baseDashOf(s.def) + dashBonusOf(s);
 
 /** a から b への最短の角度差（-π..π）。畳まずに引くと 2π の段差が差に化ける */
 const angDiff = (a, b) => ((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI;
@@ -1029,13 +1048,20 @@ export function createWorld({ map, authority = true, diffs = false }) {
       else if (s.isBot) botThink(s, dt);
       // 人のサメ（自分・他人とも）は aim/boost が外から入る。ここでは何もしない
 
-      // ダッシュ（スタミナ消費。サイズは減らない）
+      // ダッシュ（スタミナ消費。サイズは減らない）。
+      // スコアが伸ばすのは「1本の長さ」であって「撃てる割合」ではない。
+      // ゲージ(0..1)は据え置きのまま、満タン＝dashSecondsOf 秒ぶんと読み替える。
+      // 消費も回復も同じ倍率で薄めるので、1秒撃って何秒待つかは伸びる前と変わらない ——
+      // 短く刻む撃ち方の手触りはそのままで、撃ち続けられる上限だけが伸びる。
+      // 回復を据え置きにすると（満タン 7.4秒 に対して全快 4.5秒）大物のダッシュが
+      // ほぼ切れなくなり、2.5秒残る航跡を常時ぶら下げた＝触れない相手になる
+      const dashSec = dashSecondsOf(s);
       const canBoost = s.boost && !s.winded && s.stam > 0;
       if (canBoost) {
-        s.stam = Math.max(0, s.stam - DASH_DRAIN * s.def.boostCost * dt);
+        s.stam = Math.max(0, s.stam - dt / dashSec);
         if (s.stam === 0) s.winded = true;
       } else {
-        s.stam = Math.min(1, s.stam + DASH_REFILL * dt);
+        s.stam = Math.min(1, s.stam + DASH_REFILL * (baseDashOf(s.def) / dashSec) * dt);
         if (s.winded && s.stam >= DASH_MIN) s.winded = false;
       }
       // 湧水がくれるのはこれだけ（スタミナ2倍は外した。§3 ⑤ から変更）。

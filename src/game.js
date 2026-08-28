@@ -8,7 +8,7 @@ import { paintShark, paintSpriteShark } from './shark-art.js';
 import { makeSteer } from './steer.js';
 import { sfx } from './audio.js';
 import { HAPTIC, buzz, hush } from './haptics.js';
-import { createWorld, radiusOf, clamp, rand, pick, TAU } from './sim.js';
+import { createWorld, radiusOf, dashBonusOf, clamp, rand, pick, TAU } from './sim.js';
 
 // 地響き。1発ぶんの揺れ（cam.shake の 0.88 減衰）は 0.5秒で消えてしまい、
 // 20秒待った末に何かが起き上がる出来事としては軽すぎた。こちらは秒数を持たせて
@@ -1127,6 +1127,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         time: world.elapsed,
         cd: player.cd, cdMax: player.def.skill.cd,
         stam: player.stam, winded: player.winded,
+        // スコアで伸びたダッシュのぶん(秒)。ゲージは正規化されていて長さが見えないので、
+        // 伸びていること自体はリールの中央に数字で出す
+        dashBonus: dashBonusOf(player),
         guard: player.guard > 0 || player.guardStock > 0,
         guardStock: player.guardStock,
         // 湧水の再装填。0 なら次のゾーンで1個もらえる

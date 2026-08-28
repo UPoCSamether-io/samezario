@@ -71,11 +71,15 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 - `TURN_RADIUS` — 旋回半径 ≒ 体の半径 × この値。大きいほど重い操作感
 - `BOT_COUNT` / `BOT_GROWTH` — ボットの数と成長率（難易度）
 - `DASH_DRAIN` / `DASH_REFILL` / `DASH_MIN` — ダッシュのスタミナ消費・回復・息切れ解除ライン
+- `SCORE_DASH_PER` / `SCORE_DASH_MAX` — スコア（＝質量）で伸びるダッシュ。`SCORE_DASH_PER` ポイント
+  ごとにダッシュ1本が +1秒、上限 `SCORE_DASH_MAX` 秒。伸びるのは**1本の長さだけ**で、消費と回復を
+  同じ倍率で薄めてあるので「1秒撃って何秒待つか」は変わらない（回復を据え置くと大物のダッシュが
+  切れなくなり、2.5秒残る航跡を常時ぶら下げた相手になる）。ボスは対象外 —— `sim.test.mjs` §26
 - `WAKE_LIFE` / `WAKE_R` — 航跡の寿命と太さ。囲い込みの成否はこれと `DASH_DRAIN`（＝航跡の長さ）で決まる
 - `SEG_PX` / `SEGS_MIN` / `SEGS_MAX` — rope の骨の間隔(px)と節数の範囲。体長（`shark-art.js` の
   `bodyLength()` ＝ 太さ × `def.aspect`）を `SEG_PX` で割って節数にする。`SEGS_MIN` は見た目ではなく
   **判定**が決めている —— 胴体は半径 `r*taper(i/n)` の円の連なりなので、節間隔が隣り合う円の
-  半径の和を超えると尾で判定が途切れる。下げるなら `sim.test.mjs` §24b が止める
+  半径の和を超えると尾で判定が途切れる。下げるなら `sim.test.mjs` §25b が止める
 - `HEAD_SAFE` — 頭から体長の何割までが「当たっても死なない」か。節数が体長で動くので割合で持つ
 
 エリア固有の環境ギミック（多摩川の急流カレント・飛行場のプロペラ気流・深大寺の湧水ゾーン）は

@@ -1273,6 +1273,7 @@ const vignette = $('#vignette');
 const hudMass = $('#hud-mass'), hudScene = $('#hud-scene'), hudTime = $('#hud-time');
 const hudBoard = $('#hud-board'), hudCd = $('#hud-cd'), hudReel = $('#hud-reel');
 const hudStam = $('#hud-stam');
+const hudDashLabel = $('#hud-dash-label');   // 素は DASH。スコアで伸びている間は伸びぶんの秒数
 const hudGuard = $('#hud-guard');   // そばガード（湧水/スキル）を持っている間だけ出す
 const hudSpring = $('#hud-spring'), hudSpringT = $('#hud-spring-t');
 const hudBoss = $('#hud-boss'), hudBossName = $('#hud-boss-name');
@@ -1346,6 +1347,12 @@ function paintHud(h) {
   hudReel.style.filter = h.boost ? '' : 'grayscale(1) brightness(.75)';
   const spent = h.winded ? 'rgba(186,26,26,.66)' : 'rgba(11,32,34,.74)';
   hudStam.style.background = `conic-gradient(transparent ${h.stam}turn, ${spent} 0)`;
+  // ゲージは満タンを 1 に正規化してあるので、伸びたことがゲージの見た目には出ない。
+  // 0.5秒（＝100ポイント）までは DASH のまま —— 湧いた時点で既に 30ポイント＝0.15秒
+  // 乗っているので、0 より上で出す条件にするとラベルが最初から数字で、
+  // 「スコアで伸びる」ではなく「DASH という文字が無い」だけに見える
+  const dashBonus = h.dashBonus ?? 0;
+  hudDashLabel.textContent = dashBonus >= 0.5 ? `+${dashBonus.toFixed(1)}s` : 'DASH';
   hudGuard.classList.toggle('hidden', !h.guard);
   // 再装填中だけ残り秒数を出す（0 になったら消える＝次のゾーンでもらえる合図）
   const refilling = h.springT > 0;
