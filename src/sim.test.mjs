@@ -632,9 +632,14 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   const a = w.addPlayer({ nid: 'in', sharkId: 'cinema', name: 'IN' });
   const b = w.addPlayer({ nid: 'out', sharkId: 'cinema', name: 'OUT' });
   a.stam = b.stam = 0.2;
-  // 泳いでゾーンを出入りしないよう、毎ティック置き直してから回す
+  // 泳いでゾーンを出入りしないよう、毎ティック置き直してから回す。
+  // 質量もそろえる —— スタミナの戻る速さはスコアで変わる（sim.js の dashSecondsOf）ので、
+  // 置いた先にたまたま餌があって片方だけ太ると、湧水と関係なく戻り方がずれる。
+  // 揃えないと 40回に3回ほど「中 36.7 / 外 30.0」で落ちる。餌を食うのは resolve で、
+  // スタミナを動かす走査より後なので、step の前に戻しておけばその1ティックには効く
   for (let i = 0; i < 45; i++) {
     a.x = z.x; a.y = z.y; b.x = out.x; b.y = out.y;
+    a.mass = b.mass = 30;
     w.step(1 / 30);
   }
   // スタミナには触らない。ゾーンの内と外で戻り方が同じであること
