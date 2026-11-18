@@ -851,7 +851,6 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #hud-actions > *:active { opacity: 1; }
 }
 
-/* 横持ちスマホ特有の調整（高さ500px以下） */
 /* 順位表（#5）: 上位3人＋自分。4・5位はタップで広げたときだけ出す。
    自分の行のすぐ下に「あと N で X 位」を小さく添える（スリム帯では「+N→X位」に縮める） */
 #hud-board-card:not(.expanded) #hud-board > li.board-extra { display: none; }
@@ -867,7 +866,20 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   font-weight: 700;
   white-space: nowrap;
 }
+/* N の数字は一段大きく、黄の下線で「ここを見る」を示す */
+#hud-board > li.board-next > b {
+  font-size: 1.15em;
+  text-decoration: underline 3px var(--color-yellow);
+  text-underline-offset: 2px;
+}
+/* ボスの行は番号を付けず、ボスの耐久ゲージと同じ赤の「BOSS」札を前に置く（サメの順位には数えない） */
+#hud-board .board-boss-tag {
+  color: var(--color-danger);
+  font-size: 0.8em;
+  letter-spacing: 0.15em;
+}
 
+/* 横持ちスマホ特有の調整（高さ500px以下） */
 @media (max-height: 500px) {
   #hud-top-left { gap: 0.25rem; }
   #hud-size { width: auto; min-width: 120px; }
@@ -920,6 +932,8 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #hud-board-card:not(.expanded) #hud-board > li.has-next .board-mass { display: none; }
   /* 「+N→X位」のぶん自分の欄を広く取り、名前が「Y…」まで潰れないようにする */
   #hud-board-card:not(.expanded) #hud-board > li.has-next { flex-grow: 1.5; }
+  /* 1位の重さも帯では消して、名前に幅を回す（4桁になると名前が「Fin…」まで潰れていた） */
+  #hud-board-card:not(.expanded) #hud-board > li.board-lead:not(.board-me) .board-mass { display: none; }
   #hud-board .board-next-short rt { line-height: 1; }
   #hud-board > li.board-sep { margin-top: 0; }
 
@@ -929,6 +943,11 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   /* 自分が1位の時: 1位（自分）と 2位 を表示 */
   #hud-board-card.is-lead #hud-board > li:not(.board-lead):not(.board-second) { display: none; }
   #hud-board-card.is-lead #hud-board > li.board-second { display: flex; }
+
+  /* 自分しかサメが居ない時: 2位の代わりにボスの行を出す（帯が自分1人で伸びないように） */
+  #hud-board-card.is-lead.solo #hud-board > li.board-boss { display: flex; }
+  #hud-board-card:not(.expanded) #hud-board .board-boss-tag { color: #ff9182; }
+  #hud-board-card:not(.expanded) #hud-board > li.board-boss .board-mass { display: none; }
 
   #hud-board > li.board-lead:not(.board-me) { color: var(--color-mint); }
   #hud-board > li.board-second:not(.board-me) { color: var(--color-mint); }

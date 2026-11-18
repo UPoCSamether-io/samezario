@@ -33,6 +33,9 @@ const YOU_RISE = 12;   // フェードしながら浮かせる高さ（画面 px
 const CROWN_W = 30, CROWN_H = 20;
 const CROWN_GAP = 4;   // 名前の上端と王冠の下端のすき間（画面 px）
 const CROWN_GOLD = '#ffd84a';
+// 王冠を移すのは、今の持ち主よりこの割合以上重くなってから。抜きつ抜かれつの間に
+// 王冠がフレームごとに行き来してちらつかないようにする（順位表の1位も王冠に合わせる）
+const CROWN_SWAP = 1.03;
 
 // 食べる・倒すの手応え（#4）。
 // 粒の同時数の上限。上限が無かったころは、ボス撃破（100粒）と死の連鎖が重なると
@@ -734,10 +737,11 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
 
     // 1位の王冠。名前を出さない引きの絵でも出す（狙う目標なので）
-    if (s === crowned) drawCrown(s);
+    const named = cam.zoom > 0.4 || s === player || s.isBoss;
+    if (s === crowned) drawCrown(s, named);
 
     // 名前
-    if (cam.zoom > 0.4 || s === player || s.isBoss) {
+    if (named) {
       ctx.save();
       ctx.font = `700 ${Math.max(12, hr * 0.75)}px "Space Grotesk", sans-serif`;
       ctx.textAlign = 'center';
@@ -1278,15 +1282,32 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // ゾーンの内外と再装填の状態は drawSprings の縁と泡（ミント／灰）が持つ
   }
 
-  // 盤面の1位（生きている中で質量最大・ボスは除く）。draw() が毎フレーム決め、drawShark が王冠を載せる。
-  // ボスを除くのは、深大寺のヌシ（質量 8000〜13000）が常に1位になってしまうから
+  // 盤面の1位（生きている中で質量最大・ボスは除く）。updateCrown() が決め、drawShark が王冠を載せ、
+  // HUD の順位表もこのサメを1位に置く。ボスを除くのは、深大寺のヌシ（質量 8000〜13000）が
+  // 常に1位になってしまうから（順位表でもボスは番号の無い「BOSS」札で、サメの順位に数えない）
   let crowned = null;
+  /** 質量の重い順。同じ重さなら nid の順に固定して、順位表と王冠の並びを食い違わせない */
+  const byMass = (a, b) => b.mass - a.mass || (a.nid < b.nid ? -1 : a.nid > b.nid ? 1 : 0);
+  /** 王冠の持ち主を決め直す。今の持ち主より CROWN_SWAP 倍以上重いサメが出たときだけ移す */
+  function updateCrown() {
+    let best = null;
+    for (const o of sharks) {
+      if (!o.alive || o.isBoss) continue;
+      if (!best || byMass(o, best) < 0) best = o;
+    }
+    if (!crowned || !crowned.alive || crowned.isBoss || !best
+      || (best !== crowned && best.mass >= crowned.mass * CROWN_SWAP)) crowned = best;
+  }
   // 王冠の輪郭。原点が王冠の下辺の中央で、画面 px。Path2D はブラウザにしか無いので遅れて作り、使い回す
   let crownPath = null;
   /** s の名前の上端（ワールド座標）。名前は s.y - hr - 12/zoom に、字の高さ max(12, hr*0.75) で描かれる */
   const nameTopOf = (s) => s.y - s.body[0].r - 12 / cam.zoom - Math.max(12, s.body[0].r * 0.75);
-  /** 名前の上に王冠を載せる。塗りとインクの縁を1回ずつ */
-  function drawCrown(s) {
+  /**
+   * 名前の上に王冠を載せる。塗りとインクの縁を1回ずつ。
+   * 名前を出していない引きの絵では、名前の位置だと上を向いて泳ぐ大物の胴にかかるので、
+   * 体の上端（頭側の節の円の上端のうち一番上）と比べて高いほうに置く
+   */
+  function drawCrown(s, named) {
     if (!crownPath) {
       const w = CROWN_W / 2, h = CROWN_H;
       crownPath = new Path2D();
@@ -1300,8 +1321,14 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       crownPath.closePath();
     }
     const k = 1 / cam.zoom;
+    let top = nameTopOf(s);
+    if (!named) {
+      // 尾の先は絵が細く、節の円で測ると上に浮きすぎるので、頭側の 6割だけで測る
+      const b = s.body, m = Math.ceil(b.length * 0.6);
+      for (let i = 0; i < m; i++) top = Math.min(top, b[i].y - b[i].r);
+    }
     ctx.save();
-    ctx.translate(s.x, nameTopOf(s));
+    ctx.translate(s.x, top);
     ctx.scale(k, k);
     ctx.translate(0, -CROWN_GAP);
     ctx.lineJoin = 'round';
@@ -1480,10 +1507,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // サメ（小さい順に描いて大物を前面へ）。画面外は捨てる —
     // rope は1匹あたり節の数だけ drawImage するので、映らない分を描かないのが一番効く
     const alive = sharks.filter((s) => s.alive).sort((a, b) => a.mass - b.mass);
-    crowned = null;
-    for (let i = alive.length - 1; i >= 0; i--) {
-      if (!alive[i].isBoss) { crowned = alive[i]; break; }
-    }
+    updateCrown();
     for (const s of alive) {
       if (s.x + s.reach < vx0 || s.x - s.reach > vx1) continue;
       if (s.y + s.reach < vy0 || s.y - s.reach > vy1) continue;
@@ -1668,23 +1692,28 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     hudT += dt;
     if (hudT > 0.08) {
       hudT = 0;
-      // 表示は上位3人＋自分だが、順位表をタップして広げたときだけ上位5人を出すので5人ぶん送る（#5）
-      const ranked = sharks.filter((s) => s.alive).sort((a, b) => b.mass - a.mass);
-      const board = ranked.slice(0, 5);
-      const rank = 1 + sharks.filter((o) => o.alive && o !== player && o.mass > player.mass).length;
-      // ひとつ上の相手（自分より重い中でいちばん軽いサメ）。HUD が「あと N で X 位」を出す。
-      // rank と同じく「自分より重い」で数えるので、同じ重さの相手は上に数えない。
-      // ボスは目標にしない（深大寺のヌシは 8000 以上あり、「あと 8949 で 1位」は手が届く目標にならない）。
-      // ボスはいつも1位なので、飛ばしても rank - 1 はひとつ上のサメの順位のまま
-      let above = null;
-      for (const o of ranked) {
-        if (o === player || o.isBoss || o.mass <= player.mass) continue;
-        if (!above || o.mass < above.mass) above = o;
+      // 順位表（#5）。サメはボスを除いて重い順に数え、王冠の持ち主を1位に置く（王冠と表の1位を揃える）。
+      // ボスは番号の無い「BOSS」札として先頭に別に付ける。
+      // 表示は上位3人＋自分だが、順位表をタップして広げたときだけ上位5人を出すので5人ぶん送る
+      updateCrown();
+      const ranked = sharks.filter((s) => s.alive && !s.isBoss).sort(byMass);
+      if (crowned && ranked[0] !== crowned) {
+        ranked.splice(ranked.indexOf(crowned), 1);
+        ranked.unshift(crowned);
       }
+      const bossShark = sharks.find((s) => s.alive && s.isBoss);
+      const meAt = ranked.indexOf(player);
+      const rank = meAt >= 0 ? meAt + 1
+        : 1 + sharks.filter((o) => o.alive && !o.isBoss && o !== player && o.mass > player.mass).length;
+      // ひとつ上の相手。HUD が「あと N で X 位」を出す。ボスは目標にしない（数えていない）。
+      // 抜くのに要る質量は、ふつうはその相手の質量、相手が王冠持ちなら CROWN_SWAP 倍
+      const above = meAt > 0 ? ranked[meAt - 1] : null;
+      const need = above ? (above === crowned ? above.mass * CROWN_SWAP : above.mass) : 0;
+      const board = ranked.slice(0, 5);
       onHud?.({
         mass: Math.round(player.mass),
         rank,
-        next: above && player.alive ? { rank: rank - 1, mass: Math.round(above.mass) } : null,
+        next: above && player.alive ? { rank: meAt, mass: Math.ceil(need) } : null,
         alive: sharks.filter((s) => s.alive).length,
         time: world.elapsed,
         cd: player.cd, cdMax: player.def.skill.cd,
@@ -1699,8 +1728,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         boost: !player.winded && player.stam > 0,
         boosting: player.boost && !player.winded && player.stam > 0,
         humans: net ? world.humans() : 0,
-        board: board.map((s) => ({
+        board: (bossShark ? [bossShark, ...board] : board).map((s) => ({
           name: s.name, mass: Math.round(s.mass), me: s === player, human: s.nid[0] !== 'b',
+          boss: s.isBoss,
         })),
         edge: player.alive ? clamp((180 - arena.edgeDist(player.x, player.y)) / 140, 0, 1) : 0,
         // ボスの残り耐久。ボスの居ないエリアでは null で、HUD 側がバーごと畳む
