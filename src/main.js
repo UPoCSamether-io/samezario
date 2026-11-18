@@ -556,6 +556,12 @@ const RUBY_DY = -42;
 const offsetIn = (m, cen, dy) => (insidePath(m.path, cen.x, cen.y + dy) ? dy : 0);
 // 条件は style.css の .map-label を消すブロックと一字一句そろえること
 const compactMap = matchMedia('(max-height: 500px)');
+// 解放済みエリアを続けて2回押したら、そのままサメ選択へ進む。dblclick は iOS Safari で
+// 当てにならないので pointerup の時刻で自前に判定する。350ms は OS のダブルクリック
+// 既定（Windows 500ms / iOS のダブルタップ 300ms 前後）の間で、1回押して迷ってから
+// もう一度押した人を誤って進めない短さ
+const DOUBLE_TAP_MS = 350;
+let lastTap = { m: null, t: -Infinity };
 
 function placeLocks() {
   $$('.map-lock').forEach((lk) => {
@@ -575,6 +581,24 @@ function renderMaps(keep = null) {
       'aria-label': `${plainText(m.name)}${open ? '' : '（未解放）'}`,
     });
     p.onclick = p.onfocus = () => selectMap(m);
+    p.onpointerup = (e) => {
+      if (e.button !== 0) return;   // 右クリック・中クリックは数えない
+      const now = performance.now();
+      // 未解放エリアの2回押しでは何もしない（解放パネルを勝手に開かない）
+      if (open && lastTap.m === m && now - lastTap.t < DOUBLE_TAP_MS) {
+        lastTap = { m: null, t: -Infinity };
+        show('shark');
+      } else lastTap = { m, t: now };
+    };
+    // キーボードでは、Tab で選んで Enter で次へ（主ボタンを押したのと同じ）
+    p.onkeydown = (e) => {
+      // 画面を離れても path にフォーカスが残る。リザルトの Enter（もう一度撮る）が
+      // ここに届いてサメ選択へ飛ばないよう、ロケ地選択が見えている間だけ受ける
+      if (cur !== 'map' || e.key !== 'Enter') return;
+      e.preventDefault();
+      selectMap(m);
+      goMapNext();
+    };
     areas.appendChild(p);
 
     const cen = centroidOfPath(m.path);
@@ -618,12 +642,33 @@ function selectMap(m) {
   $$('.map-area').forEach((n, i) => n.setAttribute('aria-checked', MAPS[i] === m));
   // 選択リングは別レイヤ。
   $('#map-ring').setAttribute('d', m.path);
-  $('#map-next').disabled = !open;
-  // 押せない理由をボタン自身に出す。ラベルが「サメ選択 →」のままだと袋小路に見える。
-  // 長い文言は折り返してボタンが伸び、ツールバーごと下の地図を押し下げていた
-  // （実測 667x375 で3行・56→76px・地図が 20px 縮んでずれる）。
-  // 短くしたうえで style.css 側で nowrap にし、行数を常に1に固定する
-  $('#map-next-label').innerHTML = open ? rubify('サメ｜選択《せんたく》 →') : rubify('まだ｜遊《あそ》べません');
+  // 主ボタン（情報パネルの下）。未解放でも押せないボタンにはせず、同じ場所を
+  // 「解放しに行く」入口に変える。「まだ遊べません」で止めると袋小路に見えていた。
+  // 文言は style.css で1行に固定し、細いパネルでは短い形（.short）に差し替わる
+  $('#map-next').disabled = !open && !m.spot;   // スポットの無い未解放エリアだけは本当に行き止まり
+  $('#map-next-label').innerHTML = open
+    ? `<span class="long">${rubify('このロケ｜地《ち》で｜撮影《さつえい》する →')}</span>`
+      + `<span class="short">${rubify('｜撮影《さつえい》する →')}</span>`
+    : `${icon('photo_camera', '!text-xl shrink-0')}`
+      + `<span class="long">${rubify('｜現地《げんち》で｜写真《しゃしん》を｜撮《と》って｜解放《かいほう》')}</span>`
+      + `<span class="short">${rubify('｜写真《しゃしん》で｜解放《かいほう》')}</span>`;
+  // 右上の文字リンクは解放済みのときだけ。未解放で「サメ選びへ」と書くと嘘になる
+  // 未解放のときは「いま遊べる場所」へ選び直す道を添える。主ボタンは解放（現地へ行く）
+  // なので、今すぐ遊びたい人がそこで行き止まらないように。置き場は2か所:
+  //   - 主ボタンのすぐ下（#map-alt）。横持ちでは本文の高さを食うので style.css が畳む
+  //   - 右上の文字リンク（#map-skip）。解放済みでは「サメ選びへ →」、未解放ではこれ。
+  //     ツールバーの空いている列なので、横持ちでも高さを食わない
+  const playable = open ? null : MAPS.find(isUnlocked);
+  const alt = $('#map-alt'), skip = $('#map-skip');
+  alt.hidden = !playable;
+  skip.style.visibility = open || playable ? '' : 'hidden';
+  if (playable) {
+    alt.innerHTML = skip.innerHTML = rubify(`いま｜遊《あそ》べるのは ${playable.name} →`);
+    alt.onclick = skip.onclick = () => selectMap(playable);
+  } else {
+    skip.innerHTML = rubify('サメ｜選《えら》びへ →');
+    skip.onclick = () => { if (isUnlocked(selMap)) show('shark'); };
+  }
   // 並びは重要な順。パネルは横持ちで本文 197px しか映らず（実測 844x390）、下に置いたものは
   // 読まれない。従来の順（blurb → HISTORY）だと史実が丸ごと折り返しの下に沈んでいた。
   // 史実とロック解除の導線がこの画面の主役、blurb は雰囲気づけなので最後に回す
@@ -638,7 +683,7 @@ function selectMap(m) {
       </div>
     </div>
     <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${rubify(m.name)}</h3>
-    <div class="mb-4 flex items-center gap-1.5 flex-wrap">
+    <div id="map-badges" class="mb-4 flex items-center gap-1.5 flex-wrap">
       <span id="map-badge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
         ${open ? rubify('｜解放済《かいほうず》み') : rubify('｜未解放《みかいほう》')}
       </span>
@@ -686,7 +731,8 @@ function spotCard(m) {
   const head = open
     ? (done ? rubify('｜撮影《さつえい》ずみのスポット') : rubify('｜現地《げんち》スポット（ボーナス）'))
     : rubify('｜現地写真《げんちしゃしん》で｜解放《かいほう》');
-  const label = done ? rubify('もう｜一度《いちど》｜撮《と》る') : open ? rubify(`｜写真《しゃしん》を｜撮《と》る +${s.points}pt`) : rubify('｜写真《しゃしん》を｜撮《と》って｜解放《かいほう》');
+  // 未解放のときのボタンは出さない（主ボタン #map-next が解放の入口を兼ねる）
+  const label = done ? rubify('もう｜一度《いちど》｜撮《と》る') : rubify(`｜写真《しゃしん》を｜撮《と》る +${s.points}pt`);
   return `
     <div class="mt-4 bg-paper/10 ink-2 border-paper/30 rounded p-3">
       <div class="font-display font-bold text-sm mb-1.5 flex items-center gap-1.5">
@@ -701,16 +747,24 @@ function spotCard(m) {
       <div class="mt-2 font-mono text-[10px] text-paper/55">
         ${rubify(`｜一致度《いっちど》 ${rec.score}% ・ ${rec.shared ? 'シェア｜済《ず》み' : 'シェア｜未《み》'}`)}
       </div>` : ''}
+      ${open ? `
       <button data-unlock="${m.id}"
-              class="mt-3 w-full bg-yellow text-ink ink-2 rounded hard-sm px-2.5 py-2 font-display font-extrabold text-[13px] sm:text-sm
+              class="mt-3 w-full bg-transparent text-yellow border-2 border-yellow rounded px-2.5 py-1.5 font-display font-extrabold text-[13px] sm:text-sm
                      flex items-center justify-center gap-1.5 transition-transform hover:-translate-y-0.5 active:translate-y-0.5 whitespace-nowrap">
         ${icon('photo_camera', '!text-lg shrink-0')}<span class="whitespace-nowrap">${label}</span>
-      </button>
+      </button>` : ''}
       <p class="mt-1.5 font-mono text-[10px] text-paper/45">${rubify(`｜現地《げんち》（｜半径《はんけい》${s.radius}m）で｜撮影《さつえい》してください`)}</p>
     </div>`;
 }
 
-$('#map-next').onclick = () => { if (isUnlocked(selMap)) show('shark'); };
+// 未解放では主ボタンが解放の入口になる（spotCard の中のボタンは解放済みのボーナス撮影だけ。
+// 同じ働きの黄色いボタンが2つ並ばないように、未解放のときはパネル内に出さない。
+// 解放済みのボーナス撮影も枠だけにして、塗りの黄色は「進む」の主ボタン1つに絞る）
+function goMapNext() {
+  if (isUnlocked(selMap)) show('shark');
+  else openUnlock(selMap);
+}
+$('#map-next').onclick = goMapNext;
 // 起動時は前回のロケ地を選んだ状態から始める（selShark が save.shark から戻るのと同じ）。
 // 解放状態は史料の獲得などで変わるので、閉じていたら黙って既定の選び方へ落とす
 renderMaps(MAPS.find((m) => m.id === save.map && isUnlocked(m)));
