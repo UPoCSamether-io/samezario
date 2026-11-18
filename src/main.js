@@ -1,4 +1,4 @@
-import { SHARKS, MAPS, TIPS } from './data.js';
+import { SHARKS, MAPS, tipFor } from './data.js';
 import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
@@ -1801,5 +1801,6 @@ function showResult(r) {
        ${rubify(`｜第《だい》${done.era}｜幕《まく》`)}${rubify('の｜史料《しりょう》がすべて｜読《よ》めるようになった！')}`);
   }
   $('#res-level').innerHTML = lines.join('<br>');
-  $('#res-tip').innerHTML = rubify(TIPS[(Math.random() * TIPS.length) | 0]);
+  // 遊んだロケ地の話だけを出す（data.js の TIPS 冒頭の注記）
+  $('#res-tip').innerHTML = rubify(tipFor(selMap.id));
 }
