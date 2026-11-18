@@ -21,6 +21,17 @@ const PAPER = '#f4efea';
 const YELLOW = '#f3b553';
 const MINT = '#a3f0f0';
 
+// 調布飛行場（RJTF）の滑走路番号。[0] を風上の端（x0,y0 ＝北北西）、[1] を風下の端に描く。
+// 番号は「その端から進入したときの磁方位の 1/10」なので、北の端には南向きの 17、
+// 南の端には北向きの 35 が来る。差し替えるときはここだけ書き換える
+const RUNWAY_NUMBERS = ['17', '35'];
+// 気流の何秒前から進入灯を流して予告するか。周期 9秒・吹くのは 2.6秒（data.js）なので、
+// 凪の 6.4秒のうち最後の 2.5秒。短いと気づく前に吹き、長いと「ずっと光っている」になる
+const GUST_WARN = 2.5;
+// 予告の間に灯が端から端へ流れる回数。1回きりだと 2.5秒かけて 1本の光がのろのろ進むだけで、
+// スマホ横（縦 390px）では画面に入っている数灯の前を一度しか通らず見落とす
+const WARN_SWEEPS = 3;
+
 /** 小数部だけ取り出す。泡の散らばりを添字から作るのに使う（乱数を持つと端末ごとに絵が割れる） */
 const frac = (n) => n - Math.floor(n);
 
@@ -30,6 +41,41 @@ const frac = (n) => n - Math.floor(n);
  */
 function hexA(hex, a) {
   return hex + Math.round(clamp(a, 0, 1) * 255).toString(16).padStart(2, '0');
+}
+
+/**
+ * 気流のときに頭上を飛んでいくプロペラ機の影。調布の離島便（新中央航空）と同じ
+ * 双発の高翼機（Do 228 くらい：翼幅 17m・全長 16.6m）を真上から見た形。
+ * 座標はメートルで、機首が +x。右半分（y ≥ 0）の外形を機首から尾まで書き、
+ * 鏡に映して1本の閉じた多角形にする —— 胴・主翼・尾翼を別々の図形で重ねると、
+ * 向き（巻き方向）が食い違った所で塗りに穴が開く。1本なら起きない。
+ */
+const PLANE_HALF = [
+  [8.3, 0], [8.0, 0.35], [7.3, 0.65], [6.2, 0.8],            // 機首・操縦席
+  [1.6, 0.8],                                                 // 主翼の付け根（前縁）
+  [1.55, 2.55], [3.6, 2.6], [3.9, 2.85], [3.9, 3.15], [3.6, 3.4], [1.5, 3.45],   // エンジンの張り出し
+  [1.4, 7.6], [1.0, 8.5], [0.3, 8.5], [-0.4, 7.6],            // 翼端
+  [-0.8, 3.45], [-1.5, 3.2], [-1.5, 2.8], [-0.85, 2.55],      // ナセルの後ろ
+  [-0.9, 0.8], [-5.6, 0.75],                                  // 胴の後ろ半分
+  [-6.3, 0.6], [-7.2, 3.2], [-7.9, 3.25], [-8.0, 0.45],       // 水平尾翼
+  [-8.4, 0.3], [-8.6, 0],
+];
+const PLANE_SCALE = 65;              // 1m あたりの px。翼幅 17m → 1105px ＝ 画面1枚分前後
+const PLANE_R = 8.7 * PLANE_SCALE;   // 外接円の半径。画面外の判定に使う
+let planeArt = null;                 // Path2D はブラウザにしか無いので、初めて使うときに1回だけ作る
+
+function planeShadowArt() {
+  if (planeArt) return planeArt;
+  const S = PLANE_SCALE;
+  const body = new Path2D();
+  const pts = [...PLANE_HALF, ...PLANE_HALF.slice(1, -1).reverse().map(([x, y]) => [x, -y])];
+  body.moveTo(pts[0][0] * S, pts[0][1] * S);
+  for (let i = 1; i < pts.length; i++) body.lineTo(pts[i][0] * S, pts[i][1] * S);
+  body.closePath();
+  // 回っているプロペラは真上から見ると細い帯。胴より薄く描いて「回っている」に見せる
+  const props = new Path2D();
+  for (const side of [-1, 1]) props.rect(3.95 * S, (side * 3.0 - 1.35) * S, 0.25 * S, 2.7 * S);
+  return (planeArt = { body, props });
 }
 
 /**
@@ -686,61 +732,233 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
   }
 
-  /** 飛行場のプロペラ気流。滑走路の帯は凪の間もうっすら残す＝「ここで吹く」と先に分かる */
+  // 滑走路の絵のうち、時間で変わらない部分（舗装の帯のグラデーションと白い標識）。
+  // 滑走路は試合中に動かないので初回に1回だけ作る（drawCurrent の tint と同じやり方）。
+  // どれも滑走路の座標系（x0,y0 が原点、+x が気流の向き）で作ってあるので、
+  // 塗るときも同じ translate/rotate の下で塗る
+  let runwayArt = null;
+
+  function makeRunwayArt(r) {
+    const pw = r.w * 0.55;           // 舗装の半幅。帯（＝気流の効く幅）の内側 55%
+    // 帯の濃さ。効き k = 1 - d/w（sim.js の nearRunway）と同じ直線で中心から縁の 0 へ落とす ——
+    // 「濃い所ほど強く押される」が絵で読める。舗装の外に見えているのが路肩
+    const band = ctx.createLinearGradient(0, -r.w, 0, r.w);
+    band.addColorStop(0, hexA(INK, 0));
+    band.addColorStop(0.5, hexA(INK, 0.42));
+    band.addColorStop(1, hexA(INK, 0));
+    // 吹いている間だけ重ねる白っぽい明るみ。形は同じ直線で、濃さは level で決める
+    const wash = ctx.createLinearGradient(0, -r.w, 0, r.w);
+    wash.addColorStop(0, hexA(PAPER, 0));
+    wash.addColorStop(0.5, hexA(PAPER, 0.24));
+    wash.addColorStop(1, hexA(PAPER, 0));
+
+    // 白い標識はぜんぶ矩形なので Path2D 1本にまとめて fill 1回で塗る
+    // （rect() はどれも同じ向きに巻くので、重なっても穴が開かない）
+    const marks = new Path2D();
+    const edge = 9;                                          // 両脇の側線の幅
+    marks.rect(0, -pw + 14, r.len, edge);
+    marks.rect(0, pw - 14 - edge, r.len, edge);
+    // ピアノの鍵盤。片側 5本ずつ、真ん中を空けて両端に置く
+    const KEY0 = 70, KEYL = 300, KEYS = 5, mid = 22;
+    const kw = (pw - 30 - mid) / (KEYS * 2 - 1);             // 縞と隙間を同じ幅に
+    // 番号は縦に引き伸ばして描く（本物の路面標示も進入方向に長い）。文字高 ≈ 舗装幅の 0.6
+    const numPx = Math.round(pw * 1.18), numStretch = 1.4;
+    const numH = numPx * 0.72 * numStretch;
+    const numAt = KEY0 + KEYL + 90 + numH / 2;               // 端から番号の中心まで
+    for (const end of [0, 1]) {
+      const u0 = end ? r.len - KEY0 - KEYL : KEY0;
+      for (let i = 0; i < KEYS; i++) {
+        const v = mid + i * kw * 2;
+        marks.rect(u0, v, KEYL, kw);
+        marks.rect(u0, -v - kw, KEYL, kw);
+      }
+      // 接地帯の目印（太い2本）。番号の先にあると「滑走路」の読みが一段強くなる
+      const ua = end ? r.len - numAt - numH / 2 - 380 - 320 : numAt + numH / 2 + 380;
+      marks.rect(ua, pw * 0.3, 320, pw * 0.22);
+      marks.rect(ua, -pw * 0.3 - pw * 0.22, 320, pw * 0.22);
+    }
+    // センターラインは実線の短冊の列（setLineDash は使わない）
+    const c0 = numAt + numH / 2 + 120, c1 = r.len - c0;
+    const cw = 12, dash = 150, gap = 110;
+    for (let u = c0; u + dash <= c1; u += dash + gap) marks.rect(u, -cw / 2, dash, cw);
+
+    return { pw, band, wash, marks, numPx, numStretch, numAt };
+  }
+
+  /**
+   * 飛行場。水に沈んだ滑走路（凪の間もはっきり見える）、気流の前に流れる進入灯、
+   * 吹いている間に気流の向きへ巻き上がる泡。
+   *
+   * 演出の時刻はすべて world.envT から出す —— envT はスナップショットで全員にそろうので、
+   * 同じ部屋の2台で灯の流れも泡も同じ絵になる（Math.random や t を混ぜると割れる）。
+   * 向きは「泡の流れ」「影の進む向き」（drawPlaneShadow）「餌の渦」（sim.js の swirlFood）で伝える。
+   * 以前の黄色い破線と矢羽根（最大 700本の Path）はやめた
+   */
   function drawGust(t, view) {
     const r = gim.runway;
-    const lv = gim.level(world.envT);
+    // 帯の外接矩形が画面にかからなければ何もしない（灯も泡も帯の中にしか出ない）
+    if (Math.max(r.x0, r.x1) + r.w < view.x0 || Math.min(r.x0, r.x1) - r.w > view.x1
+      || Math.max(r.y0, r.y1) + r.w < view.y0 || Math.min(r.y0, r.y1) - r.w > view.y1) return;
+
+    const env = world.envT;
+    const { period, dur } = gim.def;
+    const lv = gim.level(env);
+    // level（sim.js）と同じ floor の畳み方。二重剰余だと窓の端が内側へ落ちる
+    const ph = env - Math.floor(env / period) * period;
+    if (!runwayArt) runwayArt = makeRunwayArt(r);
+    const art = runwayArt;
 
     ctx.save();
     ctx.translate(r.x0, r.y0);
     ctx.rotate(r.ang);
-    const g = ctx.createLinearGradient(0, -r.w, 0, r.w);
-    g.addColorStop(0, 'rgba(243,181,83,0)');
-    g.addColorStop(0.5, `rgba(243,181,83,${(0.05 + lv * 0.2).toFixed(3)})`);
-    g.addColorStop(1, 'rgba(243,181,83,0)');
-    ctx.fillStyle = g;
+
+    // 帯（路肩→水）と舗装。水の中なので舗装も少し沈ませる
+    ctx.fillStyle = art.band;
     ctx.fillRect(0, -r.w, r.len, r.w * 2);
-
-    ctx.strokeStyle = `rgba(243,181,83,${(0.3 + lv * 0.45).toFixed(3)})`;
-    ctx.lineWidth = Math.max(2.5 / cam.zoom, 3);
-    ctx.setLineDash([90, 70]);
-    ctx.lineDashOffset = -t * (50 + lv * 400);
-    ctx.beginPath();
-    ctx.moveTo(0, -r.w); ctx.lineTo(r.len, -r.w);
-    ctx.moveTo(0, r.w); ctx.lineTo(r.len, r.w);
-    ctx.stroke();
-    // センターライン。路面標識と同じ刻みにしておくと、凪の間も滑走路として読める
-    ctx.strokeStyle = `rgba(243,181,83,${(0.16 + lv * 0.3).toFixed(3)})`;
-    ctx.lineWidth = Math.max(2 / cam.zoom, 2.5);
-    ctx.setLineDash([150, 150]);
-    ctx.lineDashOffset = -t * (50 + lv * 400);
-    ctx.beginPath();
-    ctx.moveTo(0, 0); ctx.lineTo(r.len, 0);
-    ctx.stroke();
-    ctx.restore();
-
-    if (lv > 0.02) {
-      // 矢羽根は帯の中だけ。走査する範囲も帯の外接矩形と視界の重なりに絞る
-      const bx0 = Math.min(r.x0, r.x1) - r.w, bx1 = Math.max(r.x0, r.x1) + r.w;
-      const by0 = Math.min(r.y0, r.y1) - r.w, by1 = Math.max(r.y0, r.y1) + r.w;
-      const box = {
-        x0: Math.max(view.x0, bx0), x1: Math.min(view.x1, bx1),
-        y0: Math.max(view.y0, by0), y1: Math.min(view.y1, by1),
-      };
-      if (box.x0 < box.x1 && box.y0 < box.y1) {
-        ctx.save();
-        ctx.translate(r.x0, r.y0);
-        ctx.rotate(r.ang);
-        ctx.beginPath();
-        ctx.rect(0, -r.w, r.len, r.w * 2);
-        ctx.clip();
-        ctx.rotate(-r.ang);
-        ctx.translate(-r.x0, -r.y0);
-        ctx.globalAlpha = 0.15 + lv * 0.6;
-        chevrons(t, r.ang, gim.def.push * 1.7, box, 130, 270, YELLOW, Math.max(2.2 / cam.zoom, 3));
-        ctx.restore();
-      }
+    ctx.fillStyle = hexA(INK, 0.55);
+    ctx.fillRect(0, -art.pw, r.len, art.pw * 2);
+    if (lv > 0) {
+      ctx.globalAlpha = lv;
+      ctx.fillStyle = art.wash;
+      ctx.fillRect(0, -r.w, r.len, r.w * 2);
+      ctx.globalAlpha = 1;
     }
+
+    // 白い標識（側線・鍵盤・接地帯・センターライン）と番号
+    ctx.fillStyle = hexA(PAPER, 0.62);
+    ctx.fill(art.marks);
+    ctx.font = `700 ${art.numPx}px "Space Grotesk", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const end of [0, 1]) {
+      // その端から進入する向きに立てる＝文字の上が滑走路の奥を向く
+      ctx.save();
+      ctx.translate(end ? r.len - art.numAt : art.numAt, 0);
+      ctx.rotate(end ? -Math.PI / 2 : Math.PI / 2);
+      ctx.scale(1, art.numStretch);
+      ctx.fillText(RUNWAY_NUMBERS[end], 0, 0);
+      ctx.restore();
+    }
+
+    // 進入灯。舗装の両脇に 24個ずつ、風上の端から風下へ並べる。仕様の目安（10〜14個）より多いのは、
+    // 3570px に 14個だと間隔 255px になり、スマホ横（縦 390px）の画面には片側 1〜2灯しか入らず
+    // 「流れている」が読めないため。数が増えても Path にまとめて塗るので fill の回数は変わらない
+    const N = 24;
+    const lr = Math.max(10, 3 / cam.zoom);         // 灯の半径。引きの絵でも画面上 3px は残す
+    const lv0 = art.pw + 40;
+    const warnS = (ph - (period - GUST_WARN)) / GUST_WARN;   // 予告の進み 0..1（予告中だけ）
+    const warning = warnS >= 0 && warnS < 1;
+    const base = new Path2D(), lit = [new Path2D(), new Path2D(), new Path2D()];
+    // 先頭の位置（灯の添字の単位）。尾を引く 3灯ぶん先まで流してから次の回へ
+    const head = warning ? frac(warnS * WARN_SWEEPS) * (N + 3) : -99;
+    for (let i = 0; i < N; i++) {
+      const u = ((i + 0.5) / N) * r.len;
+      const d = head - i;                          // 0 = いま先頭、1・2 = その後ろ
+      const p = d >= 0 && d < 3 ? lit[Math.floor(d)] : base;
+      for (const v of [-lv0, lv0]) { p.moveTo(u + lr, v); p.arc(u, v, lr, 0, TAU); }
+    }
+    // 凪＝消えた灯具（小さく暗い点）。予告中＝全灯が黄色く点き、その上を白い閃光が風上から風下へ流れる
+    // （止め絵でも凪と見分けが付くよう、閃光の通っていない灯も点けておく）。
+    // 吹いている間＝全灯が弱く点きっぱなし
+    if (warning || lv > 0) {
+      // 光の滲み：同じ点を大きく描き直す代わりに太い線で縁取る（Path を作り直さない）
+      ctx.strokeStyle = YELLOW;
+      ctx.lineWidth = lr * 2.2;
+      ctx.globalAlpha = warning ? 0.3 : 0.18 * lv;
+      ctx.stroke(base);
+      ctx.fillStyle = warning ? YELLOW : PAPER;
+      ctx.globalAlpha = warning ? 0.85 : 0.3 + lv * 0.4;
+      ctx.fill(base);
+    } else {
+      ctx.fillStyle = PAPER;
+      ctx.globalAlpha = 0.2;
+      ctx.fill(base);
+    }
+    if (warning) {
+      ctx.strokeStyle = PAPER;
+      for (let k = 0; k < 3; k++) {
+        ctx.lineWidth = lr * [3.6, 2.6, 1.8][k];       // 先頭ほど大きく滲む
+        ctx.globalAlpha = [0.45, 0.28, 0.15][k];
+        ctx.stroke(lit[k]);
+      }
+      ctx.fillStyle = PAPER;
+      ctx.globalAlpha = 1;
+      for (let k = 0; k < 3; k++) ctx.fill(lit[k]);
+    }
+    ctx.globalAlpha = 1;
+
+    // 巻き上がる泡。吹いている間だけ、帯の中から気流の向きへ流れながら消える。
+    // 位置も大きさも添字と envT だけから作る（drawSprings の泡と同じ作り）。
+    // 消えぎわは透明度ではなく大きさで落とす —— そうすれば全部を Path 1本・fill 1回で塗れる
+    if (lv > 0) {
+      const LIFE = 0.9, TRAVEL = 560;
+      const bub = new Path2D();
+      const rmin = 2.5 / cam.zoom;
+      for (let k = 0; k < 48; k++) {
+        const seed = frac(Math.sin(k * 12.9898) * 43758.5453);
+        const life = env / LIFE + seed;
+        const q = frac(life);                                  // 0=湧いた所、1=消える所
+        // 生まれ変わるたびに場所を変える。回数も envT から出るので端末で割れない
+        const s = frac(Math.sin((k + Math.floor(life) * 57) * 78.233) * 43758.5453);
+        const u = frac(s * 7.13) * (r.len - TRAVEL) + q * TRAVEL;
+        // 真ん中ほど多く（＝強く押される所ほど泡立つ）
+        const v = (frac(s * 3.71) * 2 - 1) * r.w * 0.8 * (0.35 + 0.65 * frac(s * 5.31))
+          + Math.sin(q * TAU + k) * 28;                        // 巻き上がる揺れ
+        const grow = Math.sin(q * Math.PI);
+        const rad = Math.max((4 + 8 * frac(s * 2.17)) * lv, rmin) * grow;
+        if (rad <= 0.5) continue;
+        bub.moveTo(u + rad, v);
+        bub.arc(u, v, rad, 0, TAU);
+      }
+      ctx.globalAlpha = 0.6 * Math.min(1, lv * 2);
+      ctx.fillStyle = PAPER;
+      ctx.fill(bub);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  /**
+   * プロペラ機の影。吹いている間（0 ≤ ph < dur）だけ、滑走路の手前から先まで
+   * 気流と同じ向きに横切る。3570px を 2.6秒で抜けるので、押される速さ（205px/s）より
+   * ずっと速い ——「頭上を何かが飛んでいった」に見せるため。
+   * 水面に落ちた影なので、サメと餌より上に描く（draw() で drawEnvFront の後に呼ぶ）。
+   * 外周の外には落とさない。時刻は world.envT だけから出すので全員に同じ時に通る。
+   */
+  function drawPlaneShadow(t, view) {
+    if (!gim?.runway) return;
+    const r = gim.runway;
+    const env = world.envT;
+    const { period, dur } = gim.def;
+    const ph = env - Math.floor(env / period) * period;
+    if (ph >= dur) return;
+
+    const k = ph / dur;
+    const M = PLANE_R + 300;                 // 端の手前・先の余白。影が滑走路の上で湧いて見えないように
+    const u = -M + (r.len + M * 2) * k;
+    const cx = r.x0 + r.ux * u, cy = r.y0 + r.uy * u;
+    if (cx + PLANE_R < view.x0 || cx - PLANE_R > view.x1
+      || cy + PLANE_R < view.y0 || cy - PLANE_R > view.y1) return;
+
+    const { body, props } = planeShadowArt();
+    // 出はじめと抜けぎわは薄く。外周の内側で影がいきなり現れ・消えるのを和らげる
+    const a = Math.min(1, k * 8, (1 - k) * 8);
+    ctx.save();
+    ctx.clip(outline);
+    ctx.translate(cx, cy);
+    ctx.rotate(r.ang);
+    ctx.fillStyle = '#101f23';
+    // 半影：少し大きく薄く敷いてから本影を重ねる（ぼかしフィルタより安い）
+    ctx.globalAlpha = 0.08 * a;
+    ctx.save();
+    ctx.scale(1.05, 1.07);
+    ctx.fill(body);
+    ctx.restore();
+    ctx.globalAlpha = 0.26 * a;
+    ctx.fill(body);
+    ctx.globalAlpha = 0.12 * a;
+    ctx.fill(props);
+    ctx.restore();
   }
 
   /**
@@ -950,6 +1168,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       drawShark(s, t);
     }
 
+    drawPlaneShadow(t, { x0: vx0, y0: vy0, x1: vx1, y1: vy1 });   // 飛行場の影。水面に落ちるのでサメより上
     // いま自分に効いているギミック。サメの上に重ねないと自分のことだと分からない
     drawEnvFront(t);
 
