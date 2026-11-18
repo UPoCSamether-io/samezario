@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server/index.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "shots": "node scripts/shots.mjs"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
