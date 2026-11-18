@@ -37,9 +37,15 @@ const WARN_SWEEPS = 3;
 const RIVER_COLORS = ['#5fb7ad', '#2f8a8f', '#18575f'];
 // 水色の不透明度（流速 0 → 最大）。深い帯ほど濃く塗って、下に敷いた川底の石を沈ませる
 const RIVER_ALPHA = [0.62, 0.8];
-// 流れていく落ち葉の色。若葉の緑と枯れ葉の黄土の間の1色。2色に分けると塗りが1回増え、
-// スマホ横の fps に響いた（描画命令は種類ごとに1回なので、色の数がそのまま回数になる）
-const LEAF_COLOR = '#b4ad55';
+// 流れていく落ち葉の色。くすんだ枯れ葉の1色。明るい黄緑にすると黄色い餌と同系色に見えて
+// 張り合うので、暗く彩度を落とす。2色に分けると塗りが1回増え、スマホ横の fps に響いた
+// （描画命令は種類ごとに1回なので、色の数がそのまま回数になる）
+const LEAF_COLOR = '#8c8a4e';
+// 落ち葉の画面上の長さ(px)。この幅で葉ごとにばらつかせる。餌（画面上 20px 前後）より
+// ひと回り小さくして、拾える物と見間違えないようにする
+const LEAF_PX = [10, 14];
+// 泡の塊の粒の並び（中心からのずれ・半径の倍率）。粒ごとに配列を作らないよう外に置く
+const FOAM_DX = [0, 1.7], FOAM_DY = [0, -0.8], FOAM_R = [1, 0.7];
 // 漂流物の行の間隔(px)。急流ほど詰める（drawCurrent の drifts）。旧 streaks の 240 より
 // 詰めたのは、線より物のほうが小さく、同じ間隔だと餌に紛れて川面がまばらに見えるため
 const DRIFT_GAP = 150;
@@ -649,7 +655,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     };
     // 引きの絵（スマホ横は zoom 0.22 まで下がる）で点にならないよう、画面上の大きさに下限を持つ
     // （drawSprings の泡が 4.5 / cam.zoom を下限にしているのと同じ）
-    const leafMin = 3.2 / z, foamMin = 1.6 / z;
+    const foamMin = 1.6 / z;
     let n = 0;
     for (let row = Math.ceil((v0 - gap) / gap); row * gap <= v1 + gap && n < cap; row++) {
       // 行ごとに位相をずらす。揃えると格子に見えて水に見えない
@@ -663,9 +669,12 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         const v = row * gap + (h2 - 0.5) * gap * 0.6 + Math.sin(t * 0.9 + h1 * TAU) * gap * 0.04;
         n++;
         if (kind < 0.42) {
-          // 落ち葉。細長い楕円をゆっくり回す（向きも回り方も添字で決まる）
-          const rx = Math.max(10 + 7 * h3, leafMin), ry = rx * 0.42;
-          const rot = h1 * TAU + t * (h2 - 0.5) * 1.6;
+          // 引きの絵（川底の石を省く倍率より引いた絵）では葉を描かない。点になって餌と紛れる
+          if (z < STONE_MIN_ZOOM) continue;
+          // 落ち葉。大きさは画面上の px で決め（LEAF_PX）、向きは流れの向き ±30° に揃えて
+          // ゆっくり揺らす（向きも揺れ方も添字で決まる）。流れに乗っている物だと読めるように
+          const rx = (LEAF_PX[0] + (LEAF_PX[1] - LEAF_PX[0]) * h3) / 2 / z, ry = rx * 0.42;
+          const rot = (h1 - 0.5) * 0.7 + Math.sin(t * 0.8 + h2 * TAU) * 0.15;
           const p = art.leaf;
           // ellipse は直前の点から線を引いてしまうので、楕円の始点へ先に飛んでおく
           p.moveTo(u + Math.cos(rot) * rx, v + Math.sin(rot) * rx);
@@ -676,8 +685,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
           // 引きの絵では塊の粒が潰れて見分けられないので1粒だけ積む（ellipse/arc の数を減らす）
           const blobs = z < 0.5 ? 1 : 2;
           for (let k = 0; k < blobs; k++) {
-            const bx = u + [0, r * 1.7, -r * 1.3][k], by = v + [0, -r * 0.8, r * 1.0][k];
-            const br = r * [1, 0.7, 0.6][k];
+            const bx = u + FOAM_DX[k] * r, by = v + FOAM_DY[k] * r;
+            const br = r * FOAM_R[k];
             art.foam.moveTo(bx + br, by);
             art.foam.arc(bx, by, br, 0, TAU);
           }
@@ -723,6 +732,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
    * 引きの絵では1フレーム数百回の ellipse になり、描画の JS だけで数 ms 掛かっていた）
    */
   const stoneChunks = new Map();
+  let bed = null, bedKey = '';   // 映っている塊を束ねた Path と、その範囲（drawCurrent）
   function stoneChunk(kx, ky) {
     const key = kx + ',' + ky;
     let p = stoneChunks.get(key);
@@ -761,7 +771,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     const cx = bb.x0 + KEIO_BRIDGE_U * bb.w, cy = bb.y0 + bb.h / 2;
     // 流れに直交する向き（の単位ベクトル）と、流れの向き
     const nx = -Math.sin(ang), ny = Math.cos(ang), fx = Math.cos(ang), fy = Math.sin(ang);
-    const half = (bb.h / 2) / ny + 200;      // 上下の端まで届く長さ（外は clip が落とす）
+    // 上下の端まで届く長さ（外は clip が落とす）。流れがほぼ横向きでない限り ny は 1 に近いが、
+    // 縦に近い向きを data.js に書かれても無限に伸びないよう下限を入れる
+    const half = (bb.h / 2) / Math.max(Math.abs(ny), 0.2) + 200;
     const w = KEIO_BRIDGE_W / 2;
     const quad = (along0, along1, across) => {
       const p = new Path2D();
@@ -808,9 +820,17 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // 石が数 px の点になって水のドットと見分けが付かないので、敷かない
     if (cam.zoom >= STONE_MIN_ZOOM) {
       const K = STONE_CHUNK, m = 30;               // m: 隣の塊の石が縁から張り出す分（石の半径の上限 26）
-      const bed = new Path2D();
-      for (let ky = Math.floor((vy0 - m) / K); ky * K < vy1 + m; ky++) {
-        for (let kx = Math.floor((vx0 - m) / K); kx * K < vx1 + m; kx++) bed.addPath(stoneChunk(kx, ky));
+      const kx0 = Math.floor((vx0 - m) / K), kx1 = Math.floor((vx1 + m) / K);
+      const ky0 = Math.floor((vy0 - m) / K), ky1 = Math.floor((vy1 + m) / K);
+      // 映っている塊の範囲が前のフレームと同じなら、束ねた Path をそのまま使う。
+      // 塊は 1080px 四方なので、範囲が変わるのは泳いで塊の境をまたいだときだけ
+      const key = kx0 + ',' + ky0 + ',' + kx1 + ',' + ky1;
+      if (key !== bedKey) {
+        bed = new Path2D();
+        for (let ky = ky0; ky <= ky1; ky++) {
+          for (let kx = kx0; kx <= kx1; kx++) bed.addPath(stoneChunk(kx, ky));
+        }
+        bedKey = key;
       }
       ctx.fillStyle = 'rgba(16,40,44,.4)';
       ctx.fill(bed);
@@ -828,7 +848,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // 変換で描かれるので、いつ作っても絵は変わらない
     if (!tint) {
       // 帯の流速を色の節にする（多摩川なら 0 / 48 / 110 → 浅瀬・中・急流の色）
+      // RIVER_COLORS は帯と同じ数だけ並んでいる前提（帯 j と j+1 の間を補間する）
       const knots = bands.map((b) => b.speed / maxSpeed);
+      if (RIVER_COLORS.length !== knots.length) console.warn('RIVER_COLORS の数が帯の数と合いません');
       tint = ctx.createLinearGradient(0, bb.y0, 0, bb.y1);
       for (let i = 0; i <= 24; i++) {
         const k = gim.currentSpeedAt(bb.y0 + (i / 24) * bb.h) / maxSpeed;
