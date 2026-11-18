@@ -16,6 +16,17 @@ import { createWorld, radiusOf, dashBonusOf, clamp, rand, pick, TAU } from './si
 const QUAKE_DUR = 1.2;
 const QUAKE_SHAKE = 34;   // 地響きが保つ揺れ幅(px)。時間とともに 0 まで落ちる
 
+// 開始の寄り。始まった瞬間に「自分はどれか・どこに居るか」が分かるよう、
+// 自機に寄った絵から INTRO_SEC かけて通常の倍率へ引いていく。
+// 寄り倍率は通常の倍率（fit 込み）に掛ける。スマホ横（高さ INTRO_SHORT_CH 未満）は
+// 1.8倍だと見える縦が狭すぎて周りの危険が見えないので 1.4倍に抑える
+const INTRO_SEC = 2.5;
+const INTRO_ZOOM = 1.8;
+const INTRO_ZOOM_SHORT = 1.4;
+const INTRO_SHORT_CH = 500;
+// 「あなた」の目印は開始の無敵の間だけ出し、切れる前のこの秒数でフェードアウトする
+const YOU_FADE = 0.5;
+
 const INK = '#2d2d2d';
 const PAPER = '#f4efea';
 const YELLOW = '#f3b553';
@@ -164,6 +175,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   const gravel = ctx.createPattern(gravelTile(), 'repeat');
 
   const fx = [];
+  // 位置と倍率は player を作った後の startIntro() で自機に合わせる。
+  // 以前は arena.home から始めて追従で盤面を横切って飛んできていた
   const cam = { x: arena.home.x, y: arena.home.y, zoom: 1, shake: 0, quake: 0 };
   const mouse = { sx: 0, sy: 0 };   // 画面中心からのオフセット(px)
   // menu = ポーズ画面が出ているか、paused = 世界が止まっているか。
@@ -175,6 +188,52 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     nid: net?.id, sharkId, isBot: attract,
     name: attract ? pick(BOT_NAMES) : name,
   });
+
+  // 開始の寄り（INTRO_*）の残り秒数。step(dt) の dt で減らすので、ポーズ中は止まり、
+  // frame() のサブステップの回数にも左右されない。attract（タイトル背面のデモ）では寄らない。
+  // youOn は「あなた」の目印を出しているか。開始の無敵が一度切れたら落とし、
+  // 途中で被弾の無敵が付いても出し直さない
+  let introT = 0, youOn = false;
+  // オンラインでは湧き位置が最初の 'full' で初めて決まる。それで自機がワープしたら
+  // 寄りを最初からやり直す（'full' は入室時の1回だけ。大きなズレの補正ワープでは戻さない）
+  let introOnWarp = false;
+  // キャンバスの大きさ（size）が測れた最初の step で、倍率を追従を待たずに寄りへ合わせる。
+  // 開始直後は画面の切り替え中でキャンバスの幅がまだ 0 のことがあり（実測で約 0.3秒）、
+  // その間に決めた倍率（fit が下限・横画面扱い）から追うと、寄りきる前に引き始めてしまう
+  let introSnap = false;
+  /** 通常の倍率（寄りを掛ける前）。step() のカメラと開始時のズームで共有する */
+  function baseZoom() {
+    const pr = radiusOf(player.mass);
+    // 狭い画面を 1280px 相当の視界まで引き上げる。
+    // 見える幅 = cw / (base * fit)。fit = cw/1280 が効く範囲では cw が約分されて
+    // 1280/base に落ち着き、画面幅によらず一定になる（同じサイズなら実測: 844px も
+    // 1280px も 1219）。上限を 1 で止めてあるので 1280 より広い画面は補正されず、
+    // そのぶん広く見える（同じサイズなら実測: 1920px で 1829）。これはデスクトップの
+    // 見え方を変えないための意図的な割り切りで、補正前の 2.27 倍差が 1.5 倍差に縮む、
+    // という改善に留まる。
+    // 下限 0.62 は、これ以上引くと自分の頭が小さすぎて見えなくなるため
+    // （cw 794px 未満で効きはじめる。実機で詰める調整つまみ）
+    const fit = clamp(size.cw / 1280, 0.62, 1);
+    return clamp(64 / (44 + pr), 0.34, 1.05) * fit;
+  }
+  /** 寄り倍率。introT が INTRO_SEC → 0 と減るにつれ、smoothstep で寄り → 1 へ戻る */
+  function introZoom() {
+    if (introT <= 0) return 1;
+    const u = introT / INTRO_SEC;
+    const k = u * u * (3 - 2 * u);
+    const z = size.ch < INTRO_SHORT_CH ? INTRO_ZOOM_SHORT : INTRO_ZOOM;
+    return 1 + (z - 1) * k;
+  }
+  /** 寄りを最初から。カメラを自機の上に置き、倍率も追従を待たずに寄った絵から始める */
+  function startIntro() {
+    if (attract) return;   // デモのカメラは今までどおり（寄らず、目印も出さない）
+    cam.x = player.x; cam.y = player.y;
+    introT = INTRO_SEC;
+    youOn = true;
+    introSnap = true;
+    cam.zoom = baseZoom() * introZoom();
+  }
+  startIntro();
 
   // サーバから盤面が一度でも届いたか。届かないまま SOLO_WAIT 過ぎたら独りに切り替える
   let gotBoard = false, soloTimer = null;
@@ -306,6 +365,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     switch (m.t) {
       case 'full':
       case 'snap':
+        if (m.t === 'full') introOnWarp = true;
         gotBoard = true;
         world.applySnapshot(m, player.nid);
         break;
@@ -434,7 +494,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         cam.x = player.x; cam.y = player.y;
         break;
       case 'warp':
-        if (s === player) { cam.x = s.x; cam.y = s.y; }
+        if (s !== player) break;
+        if (introOnWarp) { introOnWarp = false; startIntro(); }
+        else { cam.x = s.x; cam.y = s.y; }
         break;
     }
   }
@@ -455,6 +517,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
 
     world.step(dt);
     for (const e of world.drainEvents()) onEvent(e);
+    // 'full' に自機が載っていなかった（ワープが来なかった）ときに、後の補正ワープで
+    // 寄りがやり直されないよう、受け取ったぶんのイベントを流し終えたら下ろす
+    introOnWarp = false;
 
     // ダッシュは sim がイベントを出さない（boost はフラグ）ので、立ち上がりをここで拾う。
     // hud（0.08秒ごと）で拾うと押した音が遅れて聞こえるため毎フレーム見る
@@ -470,19 +535,15 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
 
     // カメラ
-    const pr = radiusOf(player.mass);
-    // 狭い画面を 1280px 相当の視界まで引き上げる。
-    // 見える幅 = cw / (base * fit)。fit = cw/1280 が効く範囲では cw が約分されて
-    // 1280/base に落ち着き、画面幅によらず一定になる（同じサイズなら実測: 844px も
-    // 1280px も 1219）。上限を 1 で止めてあるので 1280 より広い画面は補正されず、
-    // そのぶん広く見える（同じサイズなら実測: 1920px で 1829）。これはデスクトップの
-    // 見え方を変えないための意図的な割り切りで、補正前の 2.27 倍差が 1.5 倍差に縮む、
-    // という改善に留まる。
-    // 下限 0.62 は、これ以上引くと自分の頭が小さすぎて見えなくなるため
-    // （cw 794px 未満で効きはじめる。実機で詰める調整つまみ）
-    const fit = clamp(size.cw / 1280, 0.62, 1);
-    const wantZoom = clamp(64 / (44 + pr), 0.34, 1.05) * fit;
+    // 通常の倍率（fit 込み、baseZoom のコメント参照）に開始の寄りを掛ける。
+    // 寄りが 1 に戻れば「画面幅によらず見える幅が一定」は元どおり。
+    // 寄り → 引きは追従（dt * 2.2）にそのまま乗るので、introT が尽きた後も滑らかに収まる
+    // キャンバスがまだ測れていない（幅 0）間は寄りの時計を進めない —— 画面に映る前に使い切らないように
+    if (size.cw > 0) introT = Math.max(0, introT - dt);
+    const wantZoom = baseZoom() * introZoom();
     cam.zoom += (wantZoom - cam.zoom) * Math.min(1, dt * 2.2);
+    if (introSnap && size.cw > 0) { introSnap = false; cam.zoom = wantZoom; }
+    if (youOn && (!player.alive || player.iframe <= 0)) youOn = false;
     if (player.alive) {
       cam.x += (player.x - cam.x) * Math.min(1, dt * 9);
       cam.y += (player.y - cam.y) * Math.min(1, dt * 9);
@@ -1069,6 +1130,61 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // ゾーンの内外と再装填の状態は drawSprings の縁と泡（ミント／灰）が持つ
   }
 
+  // 「あなた」の吹き出し（下向きの ▼ 付き）。形は画面 px で決めてあり、描くときに
+  // 1/cam.zoom を掛けて画面上の大きさを一定にする。Path2D はブラウザにしか無いので遅れて作る
+  const YOU_W = 64, YOU_H = 26, YOU_TIP = 10, YOU_R = 8;
+  let youPath = null;
+  /**
+   * 自機の頭上（名前のさらに上）に黄色の「あなた」▼ を出す。開始の無敵の間だけで、
+   * 切れる前の YOU_FADE 秒で薄くなって消える。
+   * 輪にはしない —— 自機に付く輪は盾の輪（ミント）1本だけ、という drawEnvFront の方針と
+   * 紛らわしくならないように。色は自機の名前と同じ YELLOW（ミント＝盾・赤＝危険は使わない）
+   */
+  function drawYouMarker(t) {
+    if (attract || !youOn || !player.alive || player.body.length < 3) return;
+    const a = clamp(player.iframe / YOU_FADE, 0, 1);
+    if (a <= 0) return;
+    if (!youPath) {
+      // 原点が ▼ の先。上に角丸の吹き出しを載せた1本の輪郭
+      const w = YOU_W / 2, top = -YOU_TIP - YOU_H, bot = -YOU_TIP, r = YOU_R;
+      youPath = new Path2D();
+      youPath.moveTo(0, 0);
+      youPath.lineTo(-7, bot);
+      youPath.lineTo(-w + r, bot);
+      youPath.arcTo(-w, bot, -w, bot - r, r);
+      youPath.lineTo(-w, top + r);
+      youPath.arcTo(-w, top, -w + r, top, r);
+      youPath.lineTo(w - r, top);
+      youPath.arcTo(w, top, w, top + r, r);
+      youPath.lineTo(w, bot - r);
+      youPath.arcTo(w, bot, w - r, bot, r);
+      youPath.lineTo(7, bot);
+      youPath.closePath();
+    }
+    const k = 1 / cam.zoom;
+    const hr = player.body[0].r;
+    // 名前は drawShark で s.y - hr - 12/zoom に、字の高さ max(12, hr*0.75)（ワールド単位）で描かれる
+    const nameTop = player.y - hr - 12 * k - Math.max(12, hr * 0.75);
+    const bob = Math.sin(t * 4) * 4;   // 上下にゆっくり弾ませる（画面 px）
+    ctx.save();
+    ctx.translate(player.x, nameTop);
+    ctx.scale(k, k);
+    ctx.translate(0, -6 + bob);
+    ctx.globalAlpha = a;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = INK;
+    ctx.fillStyle = YELLOW;
+    ctx.stroke(youPath);
+    ctx.fill(youPath);
+    ctx.fillStyle = INK;
+    ctx.font = '800 16px "M PLUS Rounded 1c", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('あなた', 0, -YOU_TIP - YOU_H / 2 + 1);
+    ctx.restore();
+  }
+
   function draw(t) {
     const dpr = Math.min(2, devicePixelRatio || 1);
     const { cw, ch } = size;
@@ -1180,6 +1296,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r * k, 0, TAU); ctx.fill();
     }
     ctx.globalAlpha = 1;
+    // 「あなた」の目印。パーティクルにも埋もれないよう世界の絵のいちばん上に置く
+    drawYouMarker(t);
     ctx.restore();
 
     // タッチ操舵中のフローティング仮想ジョイスティック描画
