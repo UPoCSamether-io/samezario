@@ -28,9 +28,12 @@ const RUNWAY_NUMBERS = ['17', '35'];
 // 気流の何秒前から進入灯を流して予告するか。周期 9秒・吹くのは 2.6秒（data.js）なので、
 // 凪の 6.4秒のうち最後の 2.5秒。短いと気づく前に吹き、長いと「ずっと光っている」になる
 const GUST_WARN = 2.5;
-// 予告の間に灯が端から端へ流れる回数。1回きりだと 2.5秒かけて 1本の光がのろのろ進むだけで、
-// スマホ横（縦 390px）では画面に入っている数灯の前を一度しか通らず見落とす
-const WARN_SWEEPS = 3;
+// 予告の閃光の流れ方。閃光は灯 WARN_GAP 個おきに何本も続けて走らせる（列車のように）。
+// 1本だけを端から端へ流すと、画面に入っている数灯の前を通るのは一瞬で、止め絵では
+// ほぼ写らず、スマホ横（縦 390px）では見落とす。8個おき（≒1190px）なら PC の寄りの画面に
+// いつも1本はかかる。速さ WARN_RATE は灯/秒（14 → 約 2100px/s、影の速さと同じ桁）
+const WARN_GAP = 8;
+const WARN_RATE = 14;
 
 /** 小数部だけ取り出す。泡の散らばりを添字から作るのに使う（乱数を持つと端末ごとに絵が割れる） */
 const frac = (n) => n - Math.floor(n);
@@ -782,7 +785,14 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     const cw = 12, dash = 150, gap = 110;
     for (let u = c0; u + dash <= c1; u += dash + gap) marks.rect(u, -cw / 2, dash, cw);
 
-    return { pw, band, wash, marks, numPx, numStretch, numAt };
+    return {
+      pw, band, wash, marks, numStretch, numAt,
+      // 毎フレーム同じ文字列を作り直さないよう、色と書体もここで持つ
+      pave: hexA(INK, 0.55), ink: hexA(PAPER, 0.62),
+      // 舗装の上にだけ重ねるごく薄い水の色。標識ごと沈めて「水の底の滑走路」に見せる
+      water: hexA('#3fb8b0', 0.1),
+      font: `700 ${numPx}px "Space Grotesk", sans-serif`,
+    };
   }
 
   /**
@@ -815,7 +825,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // 帯（路肩→水）と舗装。水の中なので舗装も少し沈ませる
     ctx.fillStyle = art.band;
     ctx.fillRect(0, -r.w, r.len, r.w * 2);
-    ctx.fillStyle = hexA(INK, 0.55);
+    ctx.fillStyle = art.pave;
     ctx.fillRect(0, -art.pw, r.len, art.pw * 2);
     if (lv > 0) {
       ctx.globalAlpha = lv;
@@ -825,9 +835,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
 
     // 白い標識（側線・鍵盤・接地帯・センターライン）と番号
-    ctx.fillStyle = hexA(PAPER, 0.62);
+    ctx.fillStyle = art.ink;
     ctx.fill(art.marks);
-    ctx.font = `700 ${art.numPx}px "Space Grotesk", sans-serif`;
+    ctx.font = art.font;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const end of [0, 1]) {
@@ -839,51 +849,70 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       ctx.fillText(RUNWAY_NUMBERS[end], 0, 0);
       ctx.restore();
     }
+    ctx.fillStyle = art.water;
+    ctx.fillRect(0, -art.pw, r.len, art.pw * 2);
 
     // 進入灯。舗装の両脇に 24個ずつ、風上の端から風下へ並べる。仕様の目安（10〜14個）より多いのは、
     // 3570px に 14個だと間隔 255px になり、スマホ横（縦 390px）の画面には片側 1〜2灯しか入らず
-    // 「流れている」が読めないため。数が増えても Path にまとめて塗るので fill の回数は変わらない
+    // 「流れている」が読めないため。数が増えても Path にまとめて塗るので fill の回数は変わらない。
+    //
+    // 灯の芯は餌（半径 8px 前後の黄・橙の丸）より明らかに小さく白くし、にじみは滑走路の向きに
+    // 横長の楕円にする —— 丸く黄色い灯は餌と見分けが付かなかった
     const N = 24;
-    const lr = Math.max(10, 3 / cam.zoom);         // 灯の半径。引きの絵でも画面上 3px は残す
+    const lr = Math.max(4.5, 1.8 / cam.zoom);      // 芯の半径。引きの絵でも画面上 1.8px は残す
     const lv0 = art.pw + 40;
     const warnS = (ph - (period - GUST_WARN)) / GUST_WARN;   // 予告の進み 0..1（予告中だけ）
     const warning = warnS >= 0 && warnS < 1;
-    const base = new Path2D(), lit = [new Path2D(), new Path2D(), new Path2D()];
-    // 先頭の位置（灯の添字の単位）。尾を引く 3灯ぶん先まで流してから次の回へ
-    const head = warning ? frac(warnS * WARN_SWEEPS) * (N + 3) : -99;
+    // 点き方の段。0・1 = 先頭（白く強く）、2・3 = 通り過ぎたあとの尾（黄色く短く）、4 = それ以外
+    const LIT = [
+      { core: PAPER, ca: 1, glow: PAPER, ga: 0.55, gw: 6, gh: 2.6 },
+      { core: PAPER, ca: 0.85, glow: PAPER, ga: 0.35, gw: 5, gh: 2.2 },
+      { core: YELLOW, ca: 0.6, glow: YELLOW, ga: 0.28, gw: 4.5, gh: 1.8 },
+      { core: YELLOW, ca: 0.3, glow: YELLOW, ga: 0.14, gw: 4, gh: 1.6 },
+    ];
+    const cores = [], glows = [];
+    for (let k = 0; k <= LIT.length; k++) { cores.push(new Path2D()); glows.push(new Path2D()); }
+    // 先頭の位置（灯の添字の単位）。予告の始まりに風上の端（添字 0）から出て風下へ進む
+    const head = warning ? warnS * GUST_WARN * WARN_RATE : -99;
+    const allOn = lv > 0;                          // 全灯が点くのは吹いている間だけ
     for (let i = 0; i < N; i++) {
       const u = ((i + 0.5) / N) * r.len;
-      const d = head - i;                          // 0 = いま先頭、1・2 = その後ろ
-      const p = d >= 0 && d < 3 ? lit[Math.floor(d)] : base;
-      for (const v of [-lv0, lv0]) { p.moveTo(u + lr, v); p.arc(u, v, lr, 0, TAU); }
-    }
-    // 凪＝消えた灯具（小さく暗い点）。予告中＝全灯が黄色く点き、その上を白い閃光が風上から風下へ流れる
-    // （止め絵でも凪と見分けが付くよう、閃光の通っていない灯も点けておく）。
-    // 吹いている間＝全灯が弱く点きっぱなし
-    if (warning || lv > 0) {
-      // 光の滲み：同じ点を大きく描き直す代わりに太い線で縁取る（Path を作り直さない）
-      ctx.strokeStyle = YELLOW;
-      ctx.lineWidth = lr * 2.2;
-      ctx.globalAlpha = warning ? 0.3 : 0.18 * lv;
-      ctx.stroke(base);
-      ctx.fillStyle = warning ? YELLOW : PAPER;
-      ctx.globalAlpha = warning ? 0.85 : 0.3 + lv * 0.4;
-      ctx.fill(base);
-    } else {
-      ctx.fillStyle = PAPER;
-      ctx.globalAlpha = 0.2;
-      ctx.fill(base);
-    }
-    if (warning) {
-      ctx.strokeStyle = PAPER;
-      for (let k = 0; k < 3; k++) {
-        ctx.lineWidth = lr * [3.6, 2.6, 1.8][k];       // 先頭ほど大きく滲む
-        ctx.globalAlpha = [0.45, 0.28, 0.15][k];
-        ctx.stroke(lit[k]);
+      // 0 = いま先頭、大きいほど通り過ぎてから経った。先頭がまだ来ていない灯（負）は消えたまま、
+      // 通り過ぎたあとは WARN_GAP ごとに次の閃光が来る
+      const d = head - i < 0 ? -1 : (head - i) % WARN_GAP;
+      const k = d >= 0 && d < LIT.length ? Math.floor(d) : LIT.length;
+      const st = LIT[k];
+      for (const v of [-lv0, lv0]) {
+        cores[k].moveTo(u + lr, v);
+        cores[k].arc(u, v, lr, 0, TAU);
+        if (st) {
+          glows[k].moveTo(u + lr * st.gw, v);
+          glows[k].ellipse(u, v, lr * st.gw, lr * st.gh, 0, 0, TAU);
+        } else if (allOn) {
+          glows[k].moveTo(u + lr * 4, v);
+          glows[k].ellipse(u, v, lr * 4, lr * 1.6, 0, 0, TAU);
+        }
       }
-      ctx.fillStyle = PAPER;
-      ctx.globalAlpha = 1;
-      for (let k = 0; k < 3; k++) ctx.fill(lit[k]);
+    }
+    // 凪と予告中の消えている灯＝うっすら見える灯具。吹いている間＝全灯が弱く点きっぱなし
+    if (allOn) {
+      ctx.fillStyle = YELLOW;
+      ctx.globalAlpha = 0.16 * lv;
+      ctx.fill(glows[LIT.length]);
+    }
+    ctx.fillStyle = PAPER;
+    ctx.globalAlpha = allOn ? 0.35 + lv * 0.45 : 0.22;
+    ctx.fill(cores[LIT.length]);
+    if (warning) {
+      for (let k = LIT.length - 1; k >= 0; k--) {  // 先頭を最後に塗って上に来るように
+        const st = LIT[k];
+        ctx.fillStyle = st.glow;
+        ctx.globalAlpha = st.ga;
+        ctx.fill(glows[k]);
+        ctx.fillStyle = st.core;
+        ctx.globalAlpha = st.ca;
+        ctx.fill(cores[k]);
+      }
     }
     ctx.globalAlpha = 1;
 
@@ -922,10 +951,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
    * プロペラ機の影。吹いている間（0 ≤ ph < dur）だけ、滑走路の手前から先まで
    * 気流と同じ向きに横切る。3570px を 2.6秒で抜けるので、押される速さ（205px/s）より
    * ずっと速い ——「頭上を何かが飛んでいった」に見せるため。
-   * 水面に落ちた影なので、サメと餌より上に描く（draw() で drawEnvFront の後に呼ぶ）。
+   * 水面に落ちた影なので、サメと餌より上に描く（draw() でサメの後・drawEnvFront の前に呼ぶ）。
    * 外周の外には落とさない。時刻は world.envT だけから出すので全員に同じ時に通る。
    */
-  function drawPlaneShadow(t, view) {
+  function drawPlaneShadow(view) {
     if (!gim?.runway) return;
     const r = gim.runway;
     const env = world.envT;
@@ -949,12 +978,12 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.rotate(r.ang);
     ctx.fillStyle = '#101f23';
     // 半影：少し大きく薄く敷いてから本影を重ねる（ぼかしフィルタより安い）
-    ctx.globalAlpha = 0.08 * a;
+    ctx.globalAlpha = 0.1 * a;
     ctx.save();
     ctx.scale(1.05, 1.07);
     ctx.fill(body);
     ctx.restore();
-    ctx.globalAlpha = 0.26 * a;
+    ctx.globalAlpha = 0.35 * a;   // 暗い舗装の上でもプロジェクタで消えない濃さ
     ctx.fill(body);
     ctx.globalAlpha = 0.12 * a;
     ctx.fill(props);
@@ -1168,7 +1197,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       drawShark(s, t);
     }
 
-    drawPlaneShadow(t, { x0: vx0, y0: vy0, x1: vx1, y1: vy1 });   // 飛行場の影。水面に落ちるのでサメより上
+    drawPlaneShadow({ x0: vx0, y0: vy0, x1: vx1, y1: vy1 });   // 飛行場の影。水面に落ちるのでサメより上
     // いま自分に効いているギミック。サメの上に重ねないと自分のことだと分からない
     drawEnvFront(t);
 
