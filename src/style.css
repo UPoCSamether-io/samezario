@@ -926,9 +926,109 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   html.unlocking #rotate-hint { display: none; }
 }
 
-/* ロケ地のツールバー。ボタンの文言は解放状況で入れ替わるので、折り返すと
-   ボタンが伸びてツールバーごと地図を押し下げる。行数を1に固定して高さを保つ */
-#map-next-label { white-space: nowrap; }
+/* ================= 画面のボタン規則 =================
+   どの画面でも「次に押すもの」が一目で分かるように、形で役割を分ける。
+     進む   .btn.primary.go  大きい・黄色の塗り・右下（パネルや一覧の下＝視線の終点）
+     戻る   .btn.back        小さい・白・左上。文言は「← 戻る」程度に短く
+     寄り道 .btn.sub         小さい・白（リザルトの「ロケ地を変える」など）
+     見出し .screen-title    枠も影もない文字だけ。ボタンと同じ「黄色い箱」にすると
+                             押せそうに見えて、本物のボタンと取り合いになっていた
+   中身の寸法はユーティリティではなくここで決める。サメ選択（#2b）でも同じクラスを
+   付けるだけで、同じ大きさにそろう。
+   ラベルは div:last-child で掴む — #retry には SPACE バッジ（span）が先に居るので、
+   :not(.cap) だとバッジまで太らせてしまう */
+/* flex にしないのは、ルビ（<ruby>）と地の文がそれぞれ別の flex アイテムに割れて
+   「もう 一度撮 る」と間が空くため。アイコンは vertical-align で行の真ん中へ */
+.btn.go > div:last-child {
+  display: block;
+  text-align: center;
+  padding: 0.7rem 1rem;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.btn.go .material-symbols-rounded { vertical-align: -0.2em; margin-right: 0.3rem; }
+.btn.back > div:last-child {
+  padding: 0.3rem 0.9rem;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.btn.sub > div:last-child {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+}
+/* 寄り道は影を浅くして、隣の主役より一段引っ込んで見せる */
+.btn.sub { box-shadow: 3px 3px 0 0 var(--color-ink); }
+@media (hover: hover) {
+  .btn.sub:hover { box-shadow: 4px 4px 0 0 var(--color-ink); }
+}
+/* :active は hover より後に書く（.btn と同じ理由） */
+.btn.sub:active { box-shadow: 0 0 0 0 var(--color-ink); transform: translate(3px, 3px); }
+
+/* 見出し。白い字にインクの縁取り（8方向の text-shadow）と、下に黄色い線を1本。
+   -webkit-text-stroke は字の内側にも食い込んで、細いふりがなが潰れるので使わない */
+.screen-title {
+  position: relative;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.5rem;
+  line-height: 1.3;
+  color: var(--color-paper);
+  text-align: center;
+  white-space: nowrap;
+  padding: 0 0.25rem 0.35rem;
+  text-shadow:
+    2px 0 0 var(--color-ink), -2px 0 0 var(--color-ink),
+    0 2px 0 var(--color-ink), 0 -2px 0 var(--color-ink),
+    2px 2px 0 var(--color-ink), -2px 2px 0 var(--color-ink),
+    2px -2px 0 var(--color-ink), -2px -2px 0 var(--color-ink),
+    3px 4px 0 var(--color-ink);
+}
+.screen-title::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-yellow);
+}
+@media (min-width: 48rem) { .screen-title { font-size: 1.875rem; } }
+
+/* 文字だけのリンク。行き先は主ボタンと同じなので、ボタンの形にはしない */
+.text-link {
+  font-weight: 700;
+  font-size: 0.8125rem;
+  color: var(--color-paper);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+@media (hover: hover) { .text-link:hover { color: var(--color-yellow); } }
+
+/* ロケ地の主ボタンの置き場。パネル（#map-info）は overflow-hidden なので、
+   カチンコの腕（ボタンの上 13px、hover で幅×sin2.5° ほど持ち上がる）と
+   右下の影（5〜7px）が切れないだけの余白を取る */
+#map-cta {
+  padding: 0.35rem 0.85rem 0.85rem;
+  border-top: 3px solid var(--color-ink);
+  background: var(--color-navy-deep);
+}
+/* 文言は解放状況で入れ替わる。折り返すとボタンが伸びて本文の見える高さが変わるので、
+   行数を1に固定する（.btn.go 側で nowrap）。それでも入らない細いパネルでは短い形に */
+#map-next-label .short { display: none; }
+@container map-info (width < 250px) {
+  #map-next-label .long { display: none; }
+  #map-next-label .short { display: inline; }
+}
+#map-info { container: map-info / inline-size; }
+/* 地図のエリアはダブルタップで次へ進む（main.js の DOUBLE_TAP_MS）。
+   ブラウザのダブルタップ拡大が残っていると、2打目が拡大に取られる */
+.map-area { touch-action: manipulation; }
 
 /* タイトルの分割ボタン（すぐ遊ぶ｜選ぶ、main.js の paintQuickPlay）。
    並べた2枚は items-stretch で高さがそろうので、中身を縦の真ん中に置く。
@@ -1074,7 +1174,19 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #map-en { display: none; }
   #map-title { font-size: 1.25rem; }
   #map-badge { margin-bottom: 0.4rem; }
+  /* 主ボタンに取られた高さを、バッジの下の空きから返してもらう（16px → 4px） */
+  #map-badges { margin-bottom: 0.25rem; }
   #map-info-body p { line-height: 1.5; }
+  /* 主ボタンのぶん本文がさらに減る。取り返す順に:
+     - パネル上端の縞（20px＋罫 4px）を畳む。カチンコの絵柄は主ボタン自身が持っている
+     - ボタンの上の余白は腕の 13px（.btn の margin-top）だけにし、ラベルを一段薄く
+     - ツールバーの上下の余白を詰める（地図とパネルが同じだけ伸びる） */
+  #map-info > .cap { display: none; }
+  #map-cta { padding: 0 0.6rem 0.5rem; }
+  #map-next.go > div:last-child { padding: 0.15rem 0.75rem; font-size: 1rem; line-height: 1.5; }
+  #map-bar { padding-block: 0.15rem; }
+  .screen-title { font-size: 1.25rem; padding-bottom: 0.25rem; }
+  .screen-title::after { height: 3px; }
 }
 
 /* 図鑑のカード。auto-fill なので列数は幅任せ。下限を 150px まで緩めるのは
