@@ -87,6 +87,8 @@ const SAVES = {
     claimedSharks: ['cinema', 'dogu', 'tamagawa', 'jindaiji', 'kondo', 'airport', 'yokai'],
   },
 };
+// 前回の設定あり（#1 のタイトル「すぐ遊ぶ」が出る状態）。全解放 + 前回は多摩川
+SAVES.quick = { ...SAVES.all, map: 'tamagawa' };
 
 // ---------- dev サーバ ----------
 const freePort = () => new Promise((res, rej) => {
@@ -292,6 +294,15 @@ async function runSize(browser, size, baseUrl) {
     await shot(page, size, '02-map-locked');
     await toShark(page, 0);
     await shot(page, size, '04-shark-locked');
+    });
+  }
+
+  // 01b タイトル（前回の設定あり → 「すぐ遊ぶ」の分割ボタン。#1 より前の版では 01 と同じ絵）
+  if (want(`01b-title-quick-${size.tag}`)) {
+    await withPage(browser, size, SAVES.quick, baseUrl, async (page) => {
+    await advance(page, 1500);
+    await settle(page);
+    await shot(page, size, '01b-title-quick');
     });
   }
 
