@@ -58,7 +58,7 @@ export const fromHex = (s) => BigInt(s);
  *
  * refs が空のスポットは基準写真がまだ無いので、位置だけで通す（blind）。
  * docs/07 4.4 の「どうしても照合が通らないときはしきい値を上げて実質ジオフェンス主判定へ
- * 逃がす」を、写真ゼロ枚の状態まで延ばしたもの。hash-lab.html で撮った基準写真の
+ * 逃がす」を、写真ゼロ枚の状態まで延ばしたもの。tools/hash-lab.html で撮った基準写真の
  * ハッシュを data.js の hashes に書けば、この分岐は自然に無効になる。
  */
 export function matchAny(hash, refs, threshold = 14) {
@@ -146,7 +146,7 @@ export async function normalize(blob) {
 }
 
 /**
- * 写真 → 64bit dHash。基準画像も必ずこの関数を通すこと（hash-lab.html も同じ道を通る）。
+ * 写真 → 64bit dHash。基準画像も必ずこの関数を通すこと（tools/hash-lab.html も同じ道を通る）。
  * 正規化の経路が撮影側と基準側でずれると、同じ被写体でも一致しなくなる。
  */
 export async function photoHash(blob) {
