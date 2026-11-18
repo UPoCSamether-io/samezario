@@ -1675,8 +1675,11 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     if (typeof createImageBitmap === 'function') {
       createImageBitmap(c).then((b) => {
         // 焼き上がる前に試合が畳まれていたら、もう使わないので手放す
-        if (!running) { b.close?.(); return; }
+        if (!running) { b.close?.(); c.width = c.height = 0; return; }
         set(b);
+        // 元の canvas はもう要らないので、すぐに大きさ 0 にして手放す。GC を待つと、焼いた直後は
+        // canvas と bitmap が両方残ってメモリが一時的に約2倍になる（Safari は GC 待ちの canvas も上限に数える）
+        c.width = c.height = 0;
       }, () => { });
     }
   }
@@ -1842,8 +1845,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
 
       // 水と石組み（焼いた絵）。石は水底に沈んでいるので、波紋と泡より下に描く。
       // 中に居るゾーンだけ、石に薄い白を重ねて明るくする（再装填中は焼き込み済みの絵）。
-      // もらえる間に中に居るのは、オンラインで入った瞬間の再装填がサーバから届くまでの
-      // 数フレームだけなので、そこは明るみの絵を別に重ねる
+      // もらえる間に中に居るのは、入ったフレームで再装填が始まるまでの一瞬だけ
+      // （springT は自機の手元の値）なので、そこは明るみの絵を別に重ねる
       const lit = here && ready;
       const water = ready ? art.get('ready') : art.get(here ? 'restHere' : 'rest');
       // 帯ごとに、画面に入っている部分だけを切り出して描く。塗る面積がそのまま重さになる
