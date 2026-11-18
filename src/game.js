@@ -1091,14 +1091,23 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   function frame(now) {
     if (!running) return;
     const t = now / 1000;
-    const dt = last ? Math.min(0.05, t - last) : 0;
+    // 盤面の時計（world.elapsed ＝ TIME と生存時間）を実時間に追いつかせる。
+    // 1回の step は 0.05秒で切る —— 詰まったぶんを dt に乗せると、1ティックで
+    // サメが体半分ぶん進んで壁や相手をすり抜ける（server/index.mjs の makeRoom と同じ理由）。
+    // 以前は切った残りを捨てていたので、fps が 20 を割ると盤面が実時間より遅れ、
+    // 低 fps の多摩川では実時間 12秒で TIME 0:02、自機の無敵も手元だけ長く残っていた。
+    // 切った残りは回数で追う。0.25秒（4fps）を超える穴はタブ復帰などなので捨てる
+    // （それ以上追うと、描画の重い端末で step が積み上がって余計に遅くなる）
+    const dt = last ? Math.min(0.25, t - last) : 0;
     last = t;
 
     // 独りだから止めていただけの場合、人が入ってきたら世界を戻す
     // （サーバ側も入室で tick を再開している）
     if (paused && world.humans() > 1) setPaused(false);
 
-    if (!paused) step(dt);
+    if (!paused) {
+      for (let left = dt; left > 1e-6; left -= 0.05) step(Math.min(left, 0.05));
+    }
     draw(t);
 
     // 送るのは自分の操作と現在座標。盤面は onNet が受け取る
