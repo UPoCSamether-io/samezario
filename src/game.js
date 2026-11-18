@@ -1162,65 +1162,213 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.restore();
   }
 
+  // 湧水の絵のうち、時間で変わらない部分（石組みの縁・苔・水のグラデーション）。
+  // ゾーンは試合中に動かないので初回に1回だけ作る（makeRunwayArt と同じやり方）。
+  //
+  // 石と苔は Path2D にまとめたうえで、さらに絵（ImageBitmap）に焼いておく。
+  // 実測（Chromium、GPU あり、PC 1280×720、ゾーンに寄った絵）で、石を Path2D のまま
+  // 毎フレーム塗ると fps が改修前の 4分の1 まで落ちた —— 丸1つではない複雑な Path は
+  // GPU の速い道（楕円・矩形）に乗らず、塗るたびに作り直しになる。泡を Path 1本に
+  // まとめたときも同じ理由で遅くなったので、泡と波紋は丸1つずつ塗る（丸は速い道に乗る）
+  let springArt = null;
+  const RIM_PAD = 60;     // 縁の石がゾーンの円からはみ出す分（径方向に最大 ±45px）＋影のずれ
+  const RIM_HI_SCALE = 0.5;   // 「中に居る」の明るみの絵の解像度。ぼけても困らないので半分
+
   /**
-   * 深大寺の湧水。縁の破線が「ここから中」の線で、泡は t だけで決まる（端末で絵が割れない）。
+   * ゾーン z のまわり（半径 z.r + RIM_PAD の正方形）を、ワールド座標のまま描ける絵に焼く。
+   * まず canvas を返し、ImageBitmap ができしだい差し替える（set に渡す）——
+   * canvas のままだと描くたびに GPU へ送り直されることがあり、ImageBitmap は1回で済む
+   */
+  function bakeSpring(z, px, draw, set) {
+    const m = z.r + RIM_PAD;
+    const c = document.createElement('canvas');
+    c.width = c.height = px;
+    const g = c.getContext('2d');
+    g.scale(px / (2 * m), px / (2 * m));
+    g.translate(m - z.x, m - z.y);
+    draw(g);
+    set(c);
+    if (typeof createImageBitmap === 'function') createImageBitmap(c).then(set, () => { });
+  }
+
+  function makeSpringArt() {
+    return gim.springs.map((z, i) => {
+      // 添字から作る種。乱数を持たないので、何度作っても同じ石組みになる
+      const rnd = (k, s) => frac(Math.sin(k * 12.9898 + i * 78.233 + s * 37.719) * 43758.5453);
+      // 石。寺の庭石くらいの大きめの丸石を、ゾーンの境（z.r）の上に隙間を少し空けて並べる。
+      // 引きの絵（zoom 0.21）でも画面上 6〜9px あり、インクの縁取りで「点々」ではなく
+      // 「縁」として読める大きさ。形は 7角の頂点を少しずつ揺らして丸めた多角形
+      const rocks = new Path2D(), tops = new Path2D(), moss = new Path2D();
+      const N = 30 + Math.floor(rnd(0, 1) * 6);           // 30〜35個
+      const step = TAU / N;
+      for (let k = 0; k < N; k++) {
+        const a = (k + 0.5 * (rnd(k, 2) - 0.5)) * step;
+        const len = z.r * step * (0.38 + 0.1 * rnd(k, 3));    // 円周方向の半径（隙間ぶん小さめ）
+        const dep = 24 + 16 * rnd(k, 4);                     // 径方向の半径
+        const rr = z.r + (rnd(k, 5) - 0.5) * 14;
+        const cx = z.x + Math.cos(a) * rr, cy = z.y + Math.sin(a) * rr;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        // 石の座標系（u = 径方向、v = 円周方向）の点をワールドへ
+        const P = (u, v) => [cx + ca * u - sa * v, cy + sa * u + ca * v];
+        const V = 7, pts = [];
+        for (let j = 0; j < V; j++) {
+          const th = (j / V) * TAU + rnd(k, 6) * 0.9;
+          const w = 0.82 + 0.3 * rnd(k * 7 + j, 7);
+          pts.push(P(Math.cos(th) * dep * w, Math.sin(th) * len * w));
+        }
+        // 辺の中点を通る二次曲線で角を丸める
+        const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+        const m0 = mid(pts[V - 1], pts[0]);
+        rocks.moveTo(m0[0], m0[1]);
+        for (let j = 0; j < V; j++) {
+          const p = pts[j], m = mid(p, pts[(j + 1) % V]);
+          rocks.quadraticCurveTo(p[0], p[1], m[0], m[1]);
+        }
+        rocks.closePath();
+        // 上面の照り。石の上（-y）寄りに小さな楕円を重ねて、平らな円盤に見えないようにする
+        const [hx, hy] = P(0, 0);
+        tops.moveTo(hx + len * 0.45, hy - dep * 0.25);
+        tops.ellipse(hx, hy - dep * 0.25, len * 0.45, Math.min(len, dep) * 0.32, 0, 0, TAU);
+        // 苔。石の内側（水に面した側）の根元に、緑の小さな塊を 1〜3個
+        const nm = 1 + Math.floor(rnd(k, 8) * 3);
+        for (let j = 0; j < nm; j++) {
+          const [mx, my] = P(-dep * (0.55 + 0.35 * rnd(k * 3 + j, 9)), (rnd(k * 5 + j, 10) - 0.5) * len * 1.6);
+          const mr = 7 + 9 * rnd(k * 11 + j, 11);
+          moss.moveTo(mx + mr, my);
+          moss.arc(mx, my, mr, 0, TAU);
+        }
+      }
+
+      // 縁の内側の水。もらえる間はミント寄りに明るく、再装填中は灰で暗く平らに（従来の色分け）。
+      // グラデーションはゾーン×2状態の 6本だけなので使い回す（以前は毎フレーム作っていた）。
+      // 水は丸1つなので、焼かずにそのまま塗るほうが速い
+      const grad = (stops) => {
+        const gr = ctx.createRadialGradient(z.x, z.y, z.r * 0.1, z.x, z.y, z.r);
+        for (const [o, c] of stops) gr.addColorStop(o, c);
+        return gr;
+      };
+      const art = {
+        box: [z.x - z.r - RIM_PAD, z.y - z.r - RIM_PAD, 2 * (z.r + RIM_PAD)],
+        ready: grad([[0, 'rgba(163,240,240,0.30)'], [0.75, 'rgba(163,240,240,0.16)'], [1, 'rgba(120,210,215,0.24)']]),
+        rest: grad([[0, 'rgba(110,120,124,0.30)'], [1, 'rgba(70,80,84,0.36)']]),
+        rim: null, hi: null,
+      };
+      // 石組み。影（右下へずらした暗い塗り）→ 石 → 照り → インクの縁 → 苔。
+      // 等倍で焼く（寄りの絵 zoom 1 前後でインクの縁がにじまない）
+      const rimPx = Math.ceil(2 * (z.r + RIM_PAD));
+      bakeSpring(z, rimPx, (g) => {
+        g.save();
+        g.translate(6, 9);
+        g.fillStyle = SPRING_SHADE;
+        g.fill(rocks);
+        g.restore();
+        g.fillStyle = SPRING_ROCK;
+        g.fill(rocks);
+        g.fillStyle = SPRING_TOP;
+        g.fill(tops);
+        g.strokeStyle = INK;
+        g.lineWidth = 5;     // 引きの絵（zoom 0.21）でも画面上 1px は残る太さ
+        g.lineJoin = 'round';
+        g.stroke(rocks);
+        g.fillStyle = SPRING_MOSS;
+        g.fill(moss);
+      }, (b) => { art.rim = b; });
+      // 自機がゾーンの中に居るとき、石の上に重ねる薄い白（石の形だけ）
+      bakeSpring(z, Math.ceil(rimPx * RIM_HI_SCALE), (g) => {
+        g.fillStyle = SPRING_HERE;
+        g.fill(rocks);
+      }, (b) => { art.hi = b; });
+      return art;
+    });
+  }
+
+  // 石と苔の色。here（自機がゾーンの中）は石に薄い白を重ねて「いま中に居る」を縁で言う
+  const SPRING_ROCK = '#8a8f8c', SPRING_HERE = hexA(PAPER, 0.32);
+  const SPRING_TOP = hexA(PAPER, 0.22), SPRING_MOSS = hexA('#6b9a3c', 0.8);
+  const SPRING_SHADE = hexA('#101f23', 0.3);
+
+  /**
+   * 深大寺の湧水。石組みの縁と苔で囲った湧き水で、縁の内側が「ここから中」。
    *
    * 湧水がくれるのはガード1個だけで、ゾーンには「今もらえる／再装填中」の2つの状態がある。
-   * 入っても何も起きない時間が最大 30秒あるので、色で言い分けないと故障に見える ——
-   * もらえるならミント、再装填中は灰にして泡も止める。
+   * 入っても何も起きない時間が最大 30秒あるので、言い分けないと故障に見える ——
+   * もらえる間は水が明るく、泡と波紋が湧き続ける。再装填中は水面を灰で暗く平らにし、
+   * 泡も波紋も止める（縁の石は両状態で同じ）。
+   *
+   * 演出の時刻は world.envT から出し、石の配置も泡の位相も添字から作る種で決める
+   * （乱数を持たない）ので、絵は時刻だけで決まる。
+   * 以前の破線の円は、issue C の「破線による範囲表示は原則なくす」でやめた
    */
-  function drawSprings(t) {
+  function drawSprings(t, view) {
     const ready = player.springT <= 0;
-    const tint = ready ? '163,240,240' : '150,150,150';
+    const env = world.envT;
+    if (!springArt) springArt = makeSpringArt();
     for (let i = 0; i < gim.springs.length; i++) {
       const z = gim.springs[i];
+      const art = springArt[i];
+      // 縁の石（径方向に最大 ±45px ほどはみ出す）まで含めて画面に無ければ描かない
+      const m = z.r + RIM_PAD;
+      if (z.x + m < view.x0 || z.x - m > view.x1 || z.y + m < view.y0 || z.y - m > view.y1) continue;
       const here = (player.x - z.x) ** 2 + (player.y - z.y) ** 2 < z.r * z.r;
-      const pulse = ready ? 0.5 + 0.5 * Math.sin(t * 1.6 + i * 2.1) : 0;
 
-      const g = ctx.createRadialGradient(z.x, z.y, z.r * 0.12, z.x, z.y, z.r);
-      g.addColorStop(0, `rgba(${tint},${((here ? 0.26 : 0.14) * (ready ? 1 : 0.5) + pulse * 0.05).toFixed(3)})`);
-      g.addColorStop(1, `rgba(${tint},0)`);
-      ctx.fillStyle = g;
+      ctx.fillStyle = ready ? art.ready : art.rest;
       ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.fill();
 
-      ctx.save();
-      ctx.strokeStyle = ready ? MINT : 'rgb(150,150,150)';
-      ctx.globalAlpha = (here ? 0.95 : 0.45) * (ready ? 1 : 0.55);
-      ctx.lineWidth = Math.max(2.5 / cam.zoom, here ? 5 : 3.5);
-      ctx.setLineDash([30, 22]);
-      ctx.lineDashOffset = -t * (ready ? 36 : 8);
-      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.stroke();
-      ctx.restore();
+      if (ready) {
+        // 波紋。中心付近から 3本の輪が広がり、縁の手前で消える。外へ行くほど薄く細く
+        ctx.strokeStyle = MINT;
+        const lw = Math.max(3, 2 / cam.zoom);
+        for (let k = 0; k < 3; k++) {
+          const q = frac(env * 0.25 + k / 3 + i * 0.29);    // 0=湧いた所、1=縁
+          ctx.globalAlpha = 0.55 * (1 - q) * Math.min(1, q * 6);
+          ctx.lineWidth = lw * (1.4 - 0.6 * q);
+          ctx.beginPath();
+          ctx.arc(z.x, z.y, z.r * 0.9 * q, 0, TAU);
+          ctx.stroke();
+        }
 
-      if (!ready) continue;      // 再装填中は泡を止める。「今は湧いていない」と読ませる
-
-      // もらえる間は、ゾーン全体から泡を上げ続ける。これが「いま入れば1個もらえる」の
-      // 唯一の合図で、サメが通り抜けた一瞬しか動きがないと、30秒経ったのかどうかが
-      // 入ってみるまで分からない。
-      // 数と大きさは直径 920px のゾーンから逆算している —— 9粒・半径3〜10pxだったころは
-      // 引きの絵では点にもならず、湧いているのに止まって見えていた。
-      // 位相も散らばりも添字から作る（乱数を持たない）ので、絵は t だけで決まる
-      ctx.fillStyle = MINT;
-      for (let k = 0; k < 34; k++) {
-        const seed = frac(Math.sin(k * 12.9898 + i * 78.233) * 43758.5453);
-        const ph = frac(t * 0.3 + seed);                 // 0=湧き出した所、1=抜けきる所
-        const a = k * 2.399 + i * 1.7;                   // 黄金角で回す。並ぶと噴水に見える
-        const rr = z.r * (0.12 + 0.8 * frac(seed * 7.13));
-        const x = Math.cos(a) * rr + Math.sin(t * 1.7 + k) * 9;
-        const y = Math.sin(a) * rr;
-        // 浮き先はその x でのゾーンの上端。まっすぐ上へ流すと縁を越えて散り、
-        // 破線で引いた「ここから中」がぼやける
-        const top = -Math.sqrt(Math.max(0, z.r * z.r - x * x));
-        // 上がるにつれ細り、出はじめと抜けぎわで透ける（両端が切れると点滅に見える）
-        ctx.globalAlpha = Math.min(1, ph * 5) * Math.min(1, (1 - ph) * 3.5) * 0.55;
-        // 引きの絵（zoom は最小 0.21 まで下がる）で消えないよう、画面上 4.5px を下限にする。
-        // 上限 14px は、太らせたぶんが縁からはみ出さないための頭打ち
-        const rad = (4 + 8 * frac(seed * 3.71)) * (1 - ph * 0.4);
-        ctx.beginPath();
-        ctx.arc(z.x + x, z.y + y + (top - y) * ph * 0.8, Math.max(rad, Math.min(14, 4.5 / cam.zoom)), 0, TAU);
-        ctx.fill();
+        // もらえる間は、ゾーン全体から泡を上げ続ける。これが「いま入れば1個もらえる」の
+        // 主な合図で、サメが通り抜けた一瞬しか動きがないと、30秒経ったのかどうかが
+        // 入ってみるまで分からない。
+        // 数と大きさは直径 920px のゾーンから逆算している —— 9粒・半径3〜10pxだったころは
+        // 引きの絵では点にもならず、湧いているのに止まって見えていた。
+        // 泡は丸1つずつ塗る（Path 1本にまとめると GPU の速い道から外れて、かえって遅い）
+        ctx.fillStyle = MINT;
+        const rmin = Math.min(14, 4.5 / cam.zoom);
+        for (let k = 0; k < 34; k++) {
+          const seed = frac(Math.sin(k * 12.9898 + i * 78.233) * 43758.5453);
+          const ph = frac(env * 0.3 + seed);               // 0=湧き出した所、1=抜けきる所
+          const a = k * 2.399 + i * 1.7;                   // 黄金角で回す。並ぶと噴水に見える
+          const rr = z.r * (0.12 + 0.8 * frac(seed * 7.13));
+          const x = Math.cos(a) * rr + Math.sin(env * 1.7 + k) * 9;
+          const y = Math.sin(a) * rr;
+          // 浮き先はその x でのゾーンの上端。まっすぐ上へ流すと縁を越えて散り、
+          // 石組みで囲った「ここから中」がぼやける
+          const top = -Math.sqrt(Math.max(0, z.r * z.r - x * x));
+          // 出はじめと抜けぎわで透ける（両端が切れると点滅に見える）
+          ctx.globalAlpha = Math.min(1, ph * 5) * Math.min(1, (1 - ph) * 3.5) * 0.55;
+          // 引きの絵（zoom は最小 0.21 まで下がる）で消えないよう、画面上 4.5px を下限にする。
+          // 上限 14px は、太らせたぶんが縁からはみ出さないための頭打ち
+          const rad = Math.max((4 + 8 * frac(seed * 3.71)) * (1 - ph * 0.4), rmin);
+          ctx.beginPath();
+          ctx.arc(z.x + x, z.y + y + (top - y) * ph * 0.8, rad, 0, TAU);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = 1;
+
+      // 石組み（焼いた絵）。中に居るゾーンだけ、石に薄い白を重ねて明るくする
+      // 画面に入っている部分だけを切り出して描く。GPU の無い端末（ソフトウェア描画）では
+      // 描く面積がそのまま重さになり、寄りの絵ではゾーンの大半が画面の外にある
+      const [bx0, by0, bs] = art.box;
+      const x0 = Math.max(bx0, view.x0), y0 = Math.max(by0, view.y0);
+      const x1 = Math.min(bx0 + bs, view.x1), y1 = Math.min(by0 + bs, view.y1);
+      if (x1 > x0 && y1 > y0) {
+        for (const img of here ? [art.rim, art.hi] : [art.rim]) {
+          const k = img.width / bs;
+          ctx.drawImage(img, (x0 - bx0) * k, (y0 - by0) * k, (x1 - x0) * k, (y1 - y0) * k, x0, y0, x1 - x0, y1 - y0);
+        }
+      }
     }
   }
 
@@ -1231,7 +1379,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.clip(outline);          // 流れも渦も湧水も水の中だけ。壁の外へはみ出させない
     if (gim.kind === 'current') drawCurrent(t, view);
     if (gim.kind === 'gust') drawGust(t, view);
-    if (gim.kind === 'spring') drawSprings(t);
+    if (gim.kind === 'spring') drawSprings(t, view);
     ctx.restore();
   }
 
