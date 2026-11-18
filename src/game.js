@@ -37,8 +37,9 @@ const WARN_SWEEPS = 3;
 const RIVER_COLORS = ['#5fb7ad', '#2f8a8f', '#18575f'];
 // 水色の不透明度（流速 0 → 最大）。深い帯ほど濃く塗って、下に敷いた川底の石を沈ませる
 const RIVER_ALPHA = [0.62, 0.8];
-// 流れていく落ち葉の色。若葉の緑と枯れ葉の黄土の2色（種類ごとに Path2D を1本）
-const LEAF_COLORS = ['#8fb35c', '#cfa24e'];
+// 流れていく落ち葉の色。若葉の緑と枯れ葉の黄土の間の1色。2色に分けると塗りが1回増え、
+// スマホ横の fps に響いた（描画命令は種類ごとに1回なので、色の数がそのまま回数になる）
+const LEAF_COLOR = '#b4ad55';
 // 漂流物の行の間隔(px)。急流ほど詰める（drawCurrent の drifts）。旧 streaks の 240 より
 // 詰めたのは、線より物のほうが小さく、同じ間隔だと餌に紛れて川面がまばらに見えるため
 const DRIFT_GAP = 150;
@@ -47,6 +48,13 @@ const DRIFT_GAP = 150;
 const KEIO_BRIDGE_U = 0.5;
 const KEIO_BRIDGE_W = 130;
 const KEIO_PIER_GAP = 420;
+// 川底の石を撒く升の大きさ(px)。升ごとに 1〜2個。水面のドット（60px 間隔の小さな四角）と
+// 見分けが付くよう、間隔も石の大きさも水のドットよりずっと大きく取る
+const STONE_CELL = 240;
+// 石の Path2D を取っておく塊の大きさ(px)。STONE_CELL の倍数
+const STONE_CHUNK = STONE_CELL * 6;
+// これより引いた絵では川底の石を敷かない（石が画面上 4px 前後の点になる）
+const STONE_MIN_ZOOM = 0.45;
 
 /** 小数部だけ取り出す。泡の散らばりを添字から作るのに使う（乱数を持つと端末ごとに絵が割れる） */
 const frac = (n) => n - Math.floor(n);
@@ -144,26 +152,6 @@ function dotTile() {
   return c;
 }
 
-// 多摩川の川底の石。水中のドットと同じ「タイル1枚を敷き詰める」やり方。
-// 水面のドット（60px 間隔の小さな四角）と見分けが付くよう、タイルを 128px と大きく取り、
-// 大きさも形も不揃いな丸い石を散らす。上側を少し明るくして丸みを出す。
-// 帯の水色の下に敷く（drawCurrent）ので、浅瀬では見え、急流の深みでは沈んで見える
-function stoneTile() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const g = c.getContext('2d');
-  // [x, y, 横半径, 縦半径, 傾き]
-  for (const [x, y, rx, ry, rot] of [[18, 22, 13, 9, 0.4], [70, 12, 8, 6, -0.3], [104, 40, 15, 10, 1.1],
-    [44, 58, 7, 5, 0.2], [14, 92, 10, 7, -0.8], [62, 100, 16, 11, 0.6], [104, 108, 6, 5, 0], [88, 74, 9, 6, -1.2],
-    [36, 122, 6, 4, 0.9]]) {
-    g.fillStyle = 'rgba(16,40,44,.34)';
-    g.beginPath(); g.ellipse(x, y, rx, ry, rot, 0, TAU); g.fill();
-    g.fillStyle = 'rgba(244,239,234,.12)';
-    g.beginPath(); g.ellipse(x - rx * 0.2, y - ry * 0.3, rx * 0.6, ry * 0.45, rot, 0, TAU); g.fill();
-  }
-  return c;
-}
-
 /**
  * attract: タイトル背面のデモ再生。操作を受け付けず、主役が死んでも湧き直す。
  * net: オンライン対戦（src/net.js）。盤面の正はサーバで、ここが持っているのは
@@ -193,8 +181,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   const gim = world.gimmick;
   const stripes = ctx.createPattern(stripeTile(), 'repeat');
   const dots = ctx.createPattern(dotTile(), 'repeat');
-  // 川底の石は多摩川（流れの帯を持つエリア）でしか使わない
-  const stones = gim?.kind === 'current' ? ctx.createPattern(stoneTile(), 'repeat') : null;
 
   const fx = [];
   const cam = { x: arena.home.x, y: arena.home.y, zoom: 1, shake: 0, quake: 0 };
@@ -680,14 +666,15 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
           // 落ち葉。細長い楕円をゆっくり回す（向きも回り方も添字で決まる）
           const rx = Math.max(10 + 7 * h3, leafMin), ry = rx * 0.42;
           const rot = h1 * TAU + t * (h2 - 0.5) * 1.6;
-          const p = h3 < 0.55 ? art.leafA : art.leafB;
+          const p = art.leaf;
           // ellipse は直前の点から線を引いてしまうので、楕円の始点へ先に飛んでおく
           p.moveTo(u + Math.cos(rot) * rx, v + Math.sin(rot) * rx);
           p.ellipse(u, v, rx, ry, rot, 0, TAU);
         } else {
-          // 泡。小さな丸の2〜3個の塊
+          // 泡。小さな丸の2個の塊
           const r = Math.max(3.2 + 2.4 * h3, foamMin);
-          const blobs = h2 > 0.4 ? 3 : 2;
+          // 引きの絵では塊の粒が潰れて見分けられないので1粒だけ積む（ellipse/arc の数を減らす）
+          const blobs = z < 0.5 ? 1 : 2;
           for (let k = 0; k < blobs; k++) {
             const bx = u + [0, r * 1.7, -r * 1.3][k], by = v + [0, -r * 0.8, r * 1.0][k];
             const br = r * [1, 0.7, 0.6][k];
@@ -702,7 +689,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // 漂流物と格子をずらして置く。水と一緒に流しながら、それぞれの拍子で立っては消える
     if (strength <= 0.7) return;
     const cg = gap * 1.3, cs = span * 0.8;
-    const capMin = 6 / z;
+    const capMin = 6 / z, capW = Math.max(3, 1.6 / z);
     n = 0;
     for (let row = Math.ceil((v0 - cg) / cg); row * cg <= v1 + cg && n < cap; row++) {
       const off = t * speed + row * cs * 0.61 + cs * 0.5;
@@ -715,11 +702,49 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         const R = Math.max((16 + 12 * h2) * (0.4 + 0.6 * s), capMin);
         const cu = off + i * cs + (h2 - 0.5) * cs * 0.5, cv = v + (h1 - 0.5) * cg * 0.4;
         // 下流側へふくらむ弧。中心を上流側へ R ずらし、±0.9rad だけ描く
-        art.caps.moveTo(cu - R + Math.cos(-0.9) * R, cv + Math.sin(-0.9) * R);
-        art.caps.arc(cu - R, cv, R, -0.9, 0.9);
+        // 線で引くと塗りとは別に stroke が1回要るので、太さ w の三日月形にして泡と同じ Path で塗る
+        art.foam.moveTo(cu - R + Math.cos(-0.9) * R, cv + Math.sin(-0.9) * R);
+        art.foam.arc(cu - R, cv, R, -0.9, 0.9);
+        art.foam.arc(cu - R, cv, R - capW, 0.9, -0.9, true);
+        art.foam.closePath();
         n++;
       }
     }
+  }
+
+  /**
+   * 川底の石。升（STONE_CELL）ごとに 1〜2個、位置・大きさ・向きは升の添字だけで決まり、
+   * 時間では動かない（川底なので流れない）。
+   *
+   * 以前はタイル1枚のパターンを画面いっぱいに塗っていたが、パターンの全面塗りは重く、
+   * スマホ横の fps が目に見えて落ちた。石のある所だけを塗る Path にし、さらに石は動かないので、
+   * STONE_CHUNK 四方の塊ごとに Path2D を初めて映ったときに1回だけ作って取っておく。
+   * 毎フレームは映っている塊を addPath で1本に束ねて1回塗るだけ（石を1個ずつ積み直すと、
+   * 引きの絵では1フレーム数百回の ellipse になり、描画の JS だけで数 ms 掛かっていた）
+   */
+  const stoneChunks = new Map();
+  function stoneChunk(kx, ky) {
+    const key = kx + ',' + ky;
+    let p = stoneChunks.get(key);
+    if (p) return p;
+    p = new Path2D();
+    const C = STONE_CELL, N = STONE_CHUNK / STONE_CELL;
+    for (let cy = ky * N; cy < (ky + 1) * N; cy++) {
+      for (let cx = kx * N; cx < (kx + 1) * N; cx++) {
+        const h0 = hash(cx, cy, 11);
+        const n = h0 < 0.55 ? 1 : 2;
+        for (let k = 0; k < n; k++) {
+          const h1 = hash(cx, cy, 12 + k * 3), h2 = hash(cx, cy, 13 + k * 3), h3 = hash(cx, cy, 14 + k * 3);
+          const rx = 8 + 18 * h3 * h3;               // 小石が多く、大きな石は少ない
+          const ry = rx * (0.55 + 0.3 * h1), rot = h2 * TAU;
+          const x = (cx + h1) * C, y = (cy + h2) * C;
+          p.moveTo(x + Math.cos(rot) * rx, y + Math.sin(rot) * rx);
+          p.ellipse(x, y, rx, ry, rot, 0, TAU);
+        }
+      }
+    }
+    stoneChunks.set(key, p);
+    return p;
   }
 
   let tint = null;     // 流れの帯の色。静的なので初回に1回だけ作る（drawCurrent 参照）
@@ -766,7 +791,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
    *
    * 重ね順は 川底の石 → 帯の水色 → 漂流物・白波 → 鉄橋の影。石を水色の下に敷くので、
    * 深い帯ほど水色が濃く（不透明に）なって石が沈んで見える。
-   * 描画命令はいちばん多くても 石1・水色1・葉2・泡1・白波1・鉄橋1 の 7回で、
+   * 描画命令はいちばん多くても 石1・水色1・葉1・泡と白波1・鉄橋1 の 5回で、
    * 帯の数にも、映っている物の数にもよらない。
    */
   function drawCurrent(t, view) {
@@ -779,9 +804,17 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     const vy0 = Math.max(view.y0, bb.y0), vy1 = Math.min(view.y1, bb.y1);
     if (vx0 >= vx1 || vy0 >= vy1) return;
 
-    // 川底の石。タイルはワールド原点に敷かれるので、矩形を view で切っても柄はずれない
-    ctx.fillStyle = stones;
-    ctx.fillRect(vx0, vy0, vx1 - vx0, vy1 - vy0);
+    // 川底の石。水色の下に敷くので、深い帯ほど沈んで見える。引きの絵（STONE_MIN_ZOOM 未満）では
+    // 石が数 px の点になって水のドットと見分けが付かないので、敷かない
+    if (cam.zoom >= STONE_MIN_ZOOM) {
+      const K = STONE_CHUNK, m = 30;               // m: 隣の塊の石が縁から張り出す分（石の半径の上限 26）
+      const bed = new Path2D();
+      for (let ky = Math.floor((vy0 - m) / K); ky * K < vy1 + m; ky++) {
+        for (let kx = Math.floor((vx0 - m) / K); kx * K < vx1 + m; kx++) bed.addPath(stoneChunk(kx, ky));
+      }
+      ctx.fillStyle = 'rgba(16,40,44,.4)';
+      ctx.fill(bed);
+    }
 
     // 帯の色。境目で切らず、流速を細かく引いた1本のグラデーションで溶かす ——
     // 帯ごとに矩形を敷くと、どの帯も自分の両端で透明に落ちて、境目に無着色の
@@ -811,8 +844,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
 
     // 漂流物と白波。全部の帯ぶんを種類ごとの Path2D に積んでから、種類ごとに1回だけ塗る。
     // 河川敷（流速 0）には何も置かない ＝ 止まった浅瀬
-    const art = { leafA: new Path2D(), leafB: new Path2D(), foam: new Path2D(), caps: new Path2D() };
-    let any = false, rough = false;
+    const art = { leaf: new Path2D(), foam: new Path2D() };
+    let any = false;
     for (let i = 0, y0 = bb.y0; i < bands.length; y0 = bands[i++].y) {
       const y1 = bands[i].y;
       const box = { x0: vx0, x1: vx1, y0: Math.max(vy0, y0), y1: Math.min(vy1, y1), b0: y0, b1: y1 };
@@ -822,22 +855,13 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       const strength = speed / maxSpeed;
       drifts(t, speed, strength, box, art);
       any = true;
-      if (strength > 0.7) rough = true;
     }
     if (any) {
       ctx.save();
       ctx.rotate(gim.def.dir);
-      ctx.fillStyle = LEAF_COLORS[0]; ctx.fill(art.leafA);
-      ctx.fillStyle = LEAF_COLORS[1]; ctx.fill(art.leafB);
+      ctx.fillStyle = LEAF_COLOR; ctx.fill(art.leaf);
       ctx.globalAlpha = 0.8;
-      ctx.fillStyle = PAPER; ctx.fill(art.foam);
-      if (rough) {
-        ctx.globalAlpha = 0.7;
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = PAPER;
-        ctx.lineWidth = Math.max(3, 1.6 / cam.zoom);
-        ctx.stroke(art.caps);
-      }
+      ctx.fillStyle = PAPER; ctx.fill(art.foam);   // 泡と白波
       ctx.restore();
     }
 
