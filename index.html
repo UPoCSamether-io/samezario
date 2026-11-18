@@ -599,6 +599,12 @@
       </div>
     </div>
 
+    <!-- キルフィード。自分が倒した相手だけを「○○を撮影終了！」で上中央に積む（最大3行・2.5秒で消える。
+         main.js の paintHud が足す）。PC ではボス板と同じ上中央なので、板が出ている間は
+         style.css が板の下へ下げる（そのため #hud-boss の後ろの兄弟に置く） -->
+    <div id="hud-feed" class="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none"
+         aria-live="polite"></div>
+
     <!-- HUD -->
     <div id="hud" class="absolute inset-0 pointer-events-none flex flex-col justify-between">
       <div class="flex justify-between items-start gap-4">
@@ -634,6 +640,10 @@
               <span class="font-mono font-bold text-xs md:text-sm lg:text-base xl:text-lg tracking-[0.25em] text-paper/80 bg-ink/75 px-2 py-0.5 md:py-1 rounded">SIZE</span>
               <span id="hud-mass" class="font-mono font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl text-yellow leading-none"
                     style="text-shadow:3px 3px 0 #2d2d2d">0</span>
+              <!-- コンボ。3連から出し、途切れたらフェードで畳む（main.js の paintHud）。
+                   地は紙色 —— 黄色だと跳ねた SIZE の黄色い数字と溶けて境目が読めない -->
+              <span id="hud-combo" class="font-mono font-bold text-sm md:text-base lg:text-lg xl:text-xl text-ink bg-paper ink-2 px-1.5 py-0.5 rounded leading-none whitespace-nowrap"
+                    aria-hidden="true">×<span id="hud-combo-n">3</span> COMBO</span>
             </div>
           </div>
           <!-- ミニマップ（SIZEの下に配置） -->

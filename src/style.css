@@ -730,6 +730,65 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
              max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
   }
 }
+/* ---- 食べる・倒すの手応え（#4）----
+   SIZE の跳ね。食べて増えた瞬間に一瞬大きくする（main.js の paintJuice が bump を付け直す）。
+   跳ねは数字の左下を支点にする —— 中央支点だと、桁の多い数字ほど左の「SIZE」に被る */
+/* 跳ねた数字は右のコンボ札に一瞬かぶるので、数字を上に重ねる（札が数字を隠すと増えた瞬間が読めない） */
+#hud-mass { display: inline-block; transform-origin: 0 100%; position: relative; z-index: 1; }
+#hud-mass.bump { animation: mass-bump .18s cubic-bezier(.2,.9,.3,1.3); }
+@keyframes mass-bump {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+/* コンボ。3連から出し、途切れたら 0.4秒で消える。数が増えた瞬間だけ小さく弾ませる */
+#hud-combo {
+  align-self: center;
+  opacity: 0;
+  transition: opacity .4s ease-out;
+}
+#hud-combo.on { opacity: 1; transition-duration: .08s; }
+#hud-combo.pop { animation: combo-pop .16s ease-out; }
+@keyframes combo-pop {
+  0%   { transform: scale(1.25) rotate(-4deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+/* キルフィード。最大3行で、1行は 2.5秒で消える（main.js の FEED_SEC と同じ長さ）。
+   幅は横画面スマホで左上の SIZE と右上の順位帯の間（約 300px）に収まるよう切る */
+#hud-feed { width: max-content; max-width: min(420px, 60vw); }
+/* ボス板（深大寺・上中央）が出ている間は、その下へ下げる */
+#hud-boss:not(.hidden) ~ #hud-feed { top: 6.5rem; }
+.feed-row {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0.25rem 0.75rem;
+  border: 2px solid var(--color-ink);
+  border-radius: 0.375rem;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  box-shadow: 3px 3px 0 var(--color-ink);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.6;
+  animation: feed-life 2.5s ease-out forwards;
+}
+.feed-row > .feed-name { color: var(--color-danger); margin-right: 0.15em; }
+@keyframes feed-life {
+  0%   { opacity: 0; transform: translateY(-8px) scale(1.1); }
+  8%   { opacity: 1; transform: translateY(0) scale(1); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* 動きを減らす設定では跳ねもフィードの出入りも止める。表示そのものは残す
+   （フィードは 2.5秒で main.js が外すので、フェードが無くても消える） */
+@media (prefers-reduced-motion: reduce) {
+  #hud-mass.bump, #hud-combo.pop { animation: none; }
+  #hud-combo { transition: none; }
+  .feed-row { animation: none; }
+}
 
 /* ミニマップ基本（スマホ・小型画面） */
 #mini {
@@ -1610,4 +1669,14 @@ rp {
      ほぼ同じ1文で、ゲージのラベルと [?] のヘルプに二重に載っている。
      短辺だけ隠す。#salvage-action に入るもう一方の獲得ボタンは <button> なので残る */
   #salvage-action p { display: none; }
+}
+
+/* 手応え（#4）の横画面スマホ。フィードは SIZE と順位帯の間に入るよう細く・小さく
+   （260px まで。300px だと右の一時停止ボタンに掛かった）。
+   ボス板はここでは左下へ逃げているので、ボス戦でもフィードは上に置いたまま */
+@media (max-height: 500px) {
+  #hud-feed { top: max(0.5rem, env(safe-area-inset-top)); max-width: min(260px, 40vw); gap: 0.2rem; }
+  #hud-boss:not(.hidden) ~ #hud-feed { top: max(0.5rem, env(safe-area-inset-top)); }
+  .feed-row { font-size: 13px; padding: 0.1rem 0.5rem; box-shadow: 2px 2px 0 var(--color-ink); }
+  #hud-combo { font-size: 11px; }
 }

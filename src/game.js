@@ -6,7 +6,7 @@
 import { BOT_NAMES } from './data.js';
 import { paintShark, paintSpriteShark } from './shark-art.js';
 import { makeSteer } from './steer.js';
-import { sfx } from './audio.js';
+import { sfx, EAT_GAP } from './audio.js';
 import { HAPTIC, buzz, hush } from './haptics.js';
 import { createWorld, radiusOf, dashBonusOf, clamp, rand, pick, TAU } from './sim.js';
 
@@ -28,6 +28,23 @@ const INTRO_SHORT_CH = 500;
 // 0.5秒だと薄くなった黄色が水色の海と混ざって、灰緑の四角に見える時間が長かった
 const YOU_FADE = 0.3;
 const YOU_RISE = 12;   // フェードしながら浮かせる高さ（画面 px）。「消えた」ではなく「離れていった」に見せる
+
+// 食べる・倒すの手応え（#4）。
+// 粒の同時数の上限。上限が無かったころは、ボス撃破（100粒）と死の連鎖が重なると
+// 数百粒が積もっていた。300 あれば一番派手な裏ボスの起き上がり（116粒）を2回重ねても入る
+const MAX_FX = 300;
+// 自分が倒した瞬間に絵を止める長さ(秒・実時間)。止めるのは描画とカメラと粒だけで、
+// 盤面（world）は回し続ける —— 盤面の時計を止めるとサーバとずれ、オフラインでも
+// TIME が実時間から遅れる。明けた瞬間に 50ms ぶん進んだ絵へ飛ぶのが「止まった」手応えになる
+const HITSTOP = 0.05;
+// 揺れの幅(px)。自分が倒した手応えは、自分が死んだとき（26）とその他の死（8）の間
+const SHAKE_KILL = 14;
+const SHAKE_DIE_ME = 26;
+const SHAKE_DIE_NEAR = 8;
+// 揺れの減衰。1/60 秒ごとに 0.88 倍（以前は step を呼ぶ回数で掛けていたので、
+// fps やサブステップの回数で揺れの長さが変わっていた）
+const SHAKE_DECAY = 0.88;
+const FX_DRAG = 0.93;   // 粒の減速。同じく 1/60 秒あたり
 
 const INK = '#2d2d2d';
 const PAPER = '#f4efea';
@@ -180,6 +197,14 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   const gravel = ctx.createPattern(gravelTile(), 'repeat');
 
   const fx = [];
+  // 手応え（#4）。hitstop は絵を止めている残り秒数（実時間）。
+  // combo は続けて食べた数、lastEat はその最後の時刻(ms)。数え方は audio.js の音の連鎖と同じ
+  // （EAT_GAP 以内に次を食べたら +1）。feed は前回の HUD から後に自分が倒した相手（{ name, ruby }）、
+  // myKills はその通算 —— オンラインでは player.kills がサーバから届かないので、こちらで数える。
+  // myName はサーバが名乗らせた名前（server の clean() を通った後）。死因の文字列はこの名前で来る
+  let hitstop = 0, combo = 0, lastEat = -Infinity, myKills = 0;
+  let feed = [];
+  let myName = name;
   // 位置と倍率は player を作った後の startIntro() で自機に合わせる。
   // 以前は arena.home から始めて追従で盤面を横切って飛んできていた
   const cam = { x: arena.home.x, y: arena.home.y, zoom: 1, shake: 0, quake: 0 };
@@ -372,6 +397,12 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       case 'snap':
         if (m.t === 'full') introOnWarp = true;
         gotBoard = true;
+        // 名簿に載った自分の名前。サーバは名前を整えて（制御文字を抜く・10文字で切る）から
+        // 死因に使うので、手元で付けた名前のままだと「自分が倒した」を取りこぼす
+        if (m.r) {
+          const me = m.r.find((r) => r[0] === player.nid);
+          if (me) myName = me[1];
+        }
         world.applySnapshot(m, player.nid);
         break;
       case 'down':      // 回線が切れた。盤面を止めずボット部屋として続ける
@@ -381,7 +412,13 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   }
   if (net) net.attach(onNet);   // hello 〜 ここ の間に届いた分もまとめて流れてくる
 
+  // 引きの絵（zoom は 0.34 まで下がる）では粒は点にしか見えないので、倍率に合わせて数を減らす。
+  // 上限 MAX_FX を超えるぶんは古い粒から捨てる —— 新しい粒（いま起きたこと）を捨てると、
+  // ボス撃破の粒が残っている間の撃破が何も弾けなくなる。fx は積んだ順なので先頭が一番古い
   function burst(x, y, color, n = 10, spread = 90) {
+    n = Math.min(MAX_FX, Math.ceil(n * clamp(cam.zoom, 0.4, 1)));
+    const over = fx.length + n - MAX_FX;
+    if (over > 0) fx.splice(0, over);
     for (let i = 0; i < n; i++) {
       const a = rand(0, TAU), sp = rand(30, spread);
       fx.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0, dur: rand(0.3, 0.7), r: rand(2, 6), color });
@@ -395,7 +432,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     dead = true;
     hush();             // 震えを持ち越さない。結果画面まで唸っていると事故に見える
     setTimeout(() => onEnd({
-      mass: Math.round(player.mass), kills: player.kills, time: world.elapsed, cause, win,
+      // オンラインでは player.kills が届かない（サーバのスナップショットに kills は無い）ので、
+      // 死因の名前で数えた myKills を使う。以前はオンラインのリザルトの撃破数が常に 0 だった
+      mass: Math.round(player.mass), kills: net ? myKills : player.kills, time: world.elapsed, cause, win,
       bossName: boss?.name ?? '', bossId: boss?.id ?? '',
       rank: 1 + sharks.filter((o) => o.alive && o !== player && o.mass > player.mass).length,
     // 撃破は餌が散る絵を見せてから抜ける
@@ -417,6 +456,35 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   }
 
   /**
+   * その点が画面に映っているか（縁から margin px の外まで含める）。spatial() の vol は
+   * 画面の縁でもまだ 0.9 あって「映っているか」の線引きには使えないので、画面座標で測る。
+   * cam を置く位置は draw() と同じ（attract だけ左三分の一）
+   */
+  function onScreen(x, y, margin = 40) {
+    const ax = attract ? 0.22 : 0.5;
+    const px = (x - cam.x) * cam.zoom + size.cw * ax;
+    const py = (y - cam.y) * cam.zoom + size.ch * 0.5;
+    return px > -margin && px < size.cw + margin && py > -margin && py < size.ch + margin;
+  }
+
+  /**
+   * 死因の文字列から「自分が倒したか」を決める。名前が一致するだけでは足りない ——
+   * 名前を空欄にすると全員が 'PLAYER' になり（server の clean()）、オフラインでも
+   * BOT_NAMES と同じ名前を付けられる。同じ名前のサメが他に居るときだけ、死んだ点が
+   * 自分の胴（または航跡）の近くかでも絞る。距離は互いの半径 + 80px（オンラインの座標は
+   * 予測でずれるので余裕をとる）。同名が居なければ名前だけで決める
+   */
+  const KILL_NEAR = 80;
+  function killedByMe(s, cause) {
+    const how = cause === `${myName} の胴体` ? 'body' : cause === `${myName} の泳いだ跡` ? 'wake' : null;
+    if (!how) return false;
+    if (!sharks.some((o) => o !== player && o.name === myName)) return true;
+    const pts = how === 'body' ? player.body : player.wake;
+    const reach = radiusOf(s.mass) + radiusOf(player.mass) + KILL_NEAR;
+    return pts.some((p) => (p.x - s.x) ** 2 + (p.y - s.y) ** 2 < reach * reach);
+  }
+
+  /**
    * sim が「何が起きたか」だけを積んでくるので、ここで絵と音と画面遷移にする。
    * 自分で回した結果でも、サーバの宣告を applySnapshot が翻訳した結果でも同じ道を通る
    * —— オンラインとオフラインで演出が食い違わないのはこのため。
@@ -429,14 +497,24 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         if (s && s !== player) break;
         const d2 = (e.x - player.x) ** 2 + (e.y - player.y) ** 2;
         if (!s && d2 >= 90000) break;
-        burst(e.x, e.y, e.hue, e.kind ? 8 : 3, 60);
         // 音は自分が食べたぶんだけ。オンラインでは「誰が食べたか」をサーバが送って
         // こない（applySnapshot は shark:null で積む）ので、口の届く距離で肩代わりする
         // 口の半径ちょうどでは半分取りこぼす。粒が消えた点はサーバが決めていて、
         // こちらの座標は予測なので、実測で 2倍の半径 + 30px ぶんズレていた
         // （自分の口元は 18〜27px、他人が食べた粒は 250px 先。間は広いので余裕をとる）
         const mouth = radiusOf(player.mass) * 2 + 30;
-        if (!attract && (s === player || d2 < mouth * mouth)) sfx.eat();
+        const mine = s === player || d2 < mouth * mouth;
+        // 自分が食べたぶんは一回り大きく弾けさせる。他人のぶんは控えめなまま
+        // （周りで他人が食べる粒まで派手だと、自分の手応えが埋もれる）
+        if (mine) burst(e.x, e.y, e.hue, e.kind ? 10 : 6, 90);
+        else burst(e.x, e.y, e.hue, e.kind ? 8 : 3, 60);
+        if (attract || !mine) break;
+        sfx.eat();
+        // コンボは音の連鎖と同じ判定。音は 70ms 以内の連打を間引くが、数は1粒ずつ数える
+        // （まとめて食べたぶんも数に乗るほうが手応えになる。音の高さは12段で頭打ち）
+        const now = performance.now();
+        combo = now - lastEat > EAT_GAP ? 1 : combo + 1;
+        lastEat = now;
         break;
       }
       case 'wall': burst(e.x, e.y, '#ba1a1a', 22, 220); break;
@@ -455,12 +533,29 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         if (s === player && !attract) sfx.skill();
         break;
       case 'die': {
-        cam.shake = s === player ? 26 : 8;
         burst(s.x, s.y, s.def.color, 26, 200);
-        if (attract) break;
-        if (s === player) { sfx.die(); endRun(e.cause); break; }
-        // 他人の最期も聞こえる。遠いほど小さく、画面の左右どちらで起きたかで振る
         const { vol, pan } = spatial(s.x, s.y);
+        if (s === player) {
+          cam.shake = Math.max(cam.shake, SHAKE_DIE_ME);
+          if (attract) break;
+          sfx.die(); endRun(e.cause);
+          break;
+        }
+        // 自分が倒したか。die イベントは倒した側を持っていない（sim.js は触らない約束）ので、
+        // 死因の文字列（sim.js の die(): 「名前 の胴体」「名前 の泳いだ跡」）で見分ける。
+        // オンラインでも死因はサーバの文字列がそのまま来る
+        const byMe = !attract && killedByMe(s, e.cause);
+        if (byMe) {
+          myKills++;
+          feed.push({ name: s.name });
+          hitstop = HITSTOP;
+          cam.shake = Math.max(cam.shake, SHAKE_KILL);
+        } else if (onScreen(s.x, s.y)) {
+          // 画面の外の死では揺らさない。以前は盤面のどこで誰が死んでも揺れていた
+          cam.shake = Math.max(cam.shake, SHAKE_DIE_NEAR * vol);
+        }
+        if (attract) break;
+        // 他人の最期も聞こえる。遠いほど小さく、画面の左右どちらで起きたかで振る
         if (vol > 0.03) sfx.die(vol * 0.7, pan);
         break;
       }
@@ -475,6 +570,13 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         burst(s.x, s.y, YELLOW, 40, 260);
         if (attract) break;
         sfx.die();
+        // 自分が倒したなら撃破と同じ手応え（止める・フィード）。深大寺はシングルなので
+        // by は手元の sim が持っている（死因の文字列で見分ける必要は無い）
+        if (e.by === player) {
+          // ボスの名前は data.js のルビ記法なので、HUD 側で rubify させる（利用者の名前は esc だけ）
+          feed.push({ name: s.def.name, ruby: true });
+          hitstop = HITSTOP;
+        }
         // 裏ボスが控えているなら、ここで撮り終わりにしない（sim.js の boss.revive）。
         // 報酬の餌を拾って太る静けさが 20秒あって、同じ境内で湧き直す
         if (!e.revive) endRun('', true, s.def);
@@ -507,7 +609,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   }
 
   let wasBoosting = false;
-  function step(dt) {
+  // frozen: ヒットストップ中。盤面は回すが、粒とカメラ（揺れ・追従・寄りの時計）は止める
+  function step(dt, frozen = false) {
     // 操舵。マウス操作時は毎フレーム今のカメラでワールド座標へ焼き直す
     // （ワールド座標で覚えるとカメラが進んだぶん狙点が置き去りになる）。
     // 中心に近すぎると向きが定まらないので、そのときは直進を保つ。
@@ -531,11 +634,13 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     const boosting = player.alive && player.boost && !player.winded && player.stam > 0;
     if (boosting !== wasBoosting && !attract) sfx.dash(boosting);
     wasBoosting = boosting;
+    if (frozen) return;
 
-    // エフェクト
+    // エフェクト。減速は dt から引く（回数で掛けるとサブステップの数で粒の飛ぶ距離が変わる）
+    const drag = FX_DRAG ** (dt * 60);
     for (let i = fx.length - 1; i >= 0; i--) {
       const p = fx[i];
-      p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.93; p.vy *= 0.93;
+      p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= drag; p.vy *= drag;
       if (p.t >= p.dur) fx.splice(i, 1);
     }
 
@@ -559,7 +664,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       cam.quake = Math.max(0, cam.quake - dt);
       cam.shake = Math.max(cam.shake, QUAKE_SHAKE * (cam.quake / QUAKE_DUR));
     }
-    cam.shake *= 0.88;
+    cam.shake *= SHAKE_DECAY ** (dt * 60);
+    if (cam.shake < 0.05) cam.shake = 0;   // 0 にしておくと draw() が乱数を引かずに済む
   }
 
   // ---------- rendering ----------
@@ -1318,6 +1424,16 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
     ctx.globalAlpha = 1;
 
+    // パーティクル。サメより先に描いて体の下に潜らせる —— 上に重ねると、食べている間じゅう
+    // 自機が粒でまだらに見えて、どれが自分か分かりにくかった
+    for (const p of fx) {
+      const k = 1 - p.t / p.dur;
+      ctx.globalAlpha = k;
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * k, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
     // サメ（小さい順に描いて大物を前面へ）。画面外は捨てる —
     // rope は1匹あたり節の数だけ drawImage するので、映らない分を描かないのが一番効く
     const alive = sharks.filter((s) => s.alive).sort((a, b) => a.mass - b.mass);
@@ -1331,14 +1447,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // いま自分に効いているギミック。サメの上に重ねないと自分のことだと分からない
     drawEnvFront(t);
 
-    // パーティクル
-    for (const p of fx) {
-      const k = 1 - p.t / p.dur;
-      ctx.globalAlpha = k;
-      ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * k, 0, TAU); ctx.fill();
-    }
-    ctx.globalAlpha = 1;
     // 「あなた」の目印。パーティクルにも埋もれないよう世界の絵のいちばん上に置く
     drawYouMarker();
     ctx.restore();
@@ -1485,10 +1593,15 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // （サーバ側も入室で tick を再開している）
     if (paused && world.humans() > 1) setPaused(false);
 
+    // ヒットストップ（自分が倒した瞬間）。倒した絵を描いたフレームの次から、実時間で
+    // HITSTOP 秒だけ描き直さない（キャンバスは最後の絵のまま残る）。盤面は step で回し続け、
+    // 粒とカメラだけ止める。秒数は frame の dt で減らすので、サブステップの回数に左右されない
+    const frozen = hitstop > 0 && !paused;
+    if (frozen) hitstop = Math.max(0, hitstop - dt);
     if (!paused) {
-      for (let left = dt; left > 1e-6; left -= 0.05) step(Math.min(left, 0.05));
+      for (let left = dt; left > 1e-6; left -= 0.05) step(Math.min(left, 0.05), frozen);
     }
-    draw(t);
+    if (!frozen) draw(t);
 
     // 送るのは自分の操作と現在座標。盤面は onNet が受け取る
     if (net) {
@@ -1539,14 +1652,19 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
           : null,
         // 裏ボスが湧くまでの残り秒数。0 なら HUD 側は何も出さない
         bossRevive: world.reviveT,
+        // 続けて食べた数。EAT_GAP 空いたら 0（HUD 側がフェードで畳む）
+        combo: performance.now() - lastEat > EAT_GAP ? 0 : combo,
+        // 前回の HUD から後に自分が倒した相手 { name, ruby }（HUD 側がキルフィードに積む）
+        feed,
       });
+      feed = [];
     }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
   // デバッグ用の覗き穴（コンソールから盤面を確認する）。裏で回る attract に奪わせない
-  if (!attract) window.__sz = { cam, sharks, player, food, W, arena };
+  if (!attract) window.__sz = { cam, sharks, player, food, W, arena, fx };
 
   return {
     stop() {
