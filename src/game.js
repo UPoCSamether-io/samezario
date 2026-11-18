@@ -73,6 +73,36 @@ const GUST_WARN = 2.5;
 const WARN_GAP = 8;
 const WARN_RATE = 14;
 
+// 多摩川の水の色。帯の順（河川敷＝浅瀬 → 流れ → 急流）に1色ずつ。帯の数と揃える。
+// 間は流速で補間する（drawCurrent）ので、帯の境目でも色の段は出ない
+const RIVER_COLORS = ['#5fb7ad', '#2f8a8f', '#18575f'];
+// 水色の不透明度（流速 0 → 最大）。深い帯ほど濃く塗って、下に敷いた川底の石を沈ませる
+const RIVER_ALPHA = [0.62, 0.8];
+// 流れていく落ち葉の色。くすんだ枯れ葉の1色。明るい黄緑にすると黄色い餌と同系色に見えて
+// 張り合うので、暗く彩度を落とす。2色に分けると塗りが1回増え、スマホ横の fps に響いた
+// （描画命令は種類ごとに1回なので、色の数がそのまま回数になる）
+const LEAF_COLOR = '#8c8a4e';
+// 落ち葉の画面上の長さ(px)。この幅で葉ごとにばらつかせる。餌（画面上 20px 前後）より
+// ひと回り小さくして、拾える物と見間違えないようにする
+const LEAF_PX = [10, 14];
+// 泡の塊の粒の並び（中心からのずれ・半径の倍率）。粒ごとに配列を作らないよう外に置く
+const FOAM_DX = [0, 1.7], FOAM_DY = [0, -0.8], FOAM_R = [1, 0.7];
+// 漂流物の行の間隔(px)。急流ほど詰める（drawCurrent の drifts）。旧 streaks の 240 より
+// 詰めたのは、線より物のほうが小さく、同じ間隔だと餌に紛れて川面がまばらに見えるため
+const DRIFT_GAP = 150;
+// 京王相模原線の鉄橋（京王多摩川〜京王よみうりランド）。外接矩形の u（左＝上流が 0）で、
+// 実際の位置ではなく、一本道の中ほど（要調整）。影の幅と橋脚の間隔は px
+const KEIO_BRIDGE_U = 0.5;
+const KEIO_BRIDGE_W = 130;
+const KEIO_PIER_GAP = 420;
+// 川底の石を撒く升の大きさ(px)。升ごとに 1〜2個。水面のドット（60px 間隔の小さな四角）と
+// 見分けが付くよう、間隔も石の大きさも水のドットよりずっと大きく取る
+const STONE_CELL = 240;
+// 石の Path2D を取っておく塊の大きさ(px)。STONE_CELL の倍数
+const STONE_CHUNK = STONE_CELL * 6;
+// これより引いた絵では川底の石を敷かない（石が画面上 4px 前後の点になる）
+const STONE_MIN_ZOOM = 0.45;
+
 /** 小数部だけ取り出す。泡の散らばりを添字から作るのに使う（乱数を持つと端末ごとに絵が割れる） */
 const frac = (n) => n - Math.floor(n);
 
@@ -82,6 +112,16 @@ const frac = (n) => n - Math.floor(n);
  */
 function hexA(hex, a) {
   return hex + Math.round(clamp(a, 0, 1) * 255).toString(16).padStart(2, '0');
+}
+
+/** #rrggbb どうしを k(0..1) で混ぜて #rrggbb で返す。多摩川の帯の水色の補間に使う */
+function mixHex(a, b, k) {
+  let out = '#';
+  for (let i = 1; i < 7; i += 2) {
+    const x = parseInt(a.slice(i, i + 2), 16), y = parseInt(b.slice(i, i + 2), 16);
+    out += Math.round(x + (y - x) * k).toString(16).padStart(2, '0');
+  }
+  return out;
 }
 
 /**
@@ -159,20 +199,6 @@ function dotTile() {
   return c;
 }
 
-// 河川敷の砂利。水中のドットと同じ「タイル1枚を敷き詰める」やり方だが、
-// 粒を不揃いに散らして、水面のドットと見分けが付くようにする
-function gravelTile() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 72;
-  const g = c.getContext('2d');
-  g.fillStyle = 'rgba(244,239,234,.13)';
-  for (const [x, y, r] of [[9, 13, 3.4], [31, 6, 2.2], [52, 20, 4], [19, 38, 2.8],
-    [62, 45, 2.4], [40, 57, 3.6], [6, 62, 2.6], [66, 68, 3]]) {
-    g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
-  }
-  return c;
-}
-
 /**
  * attract: タイトル背面のデモ再生。操作を受け付けず、主役が死んでも湧き直す。
  * net: オンライン対戦（src/net.js）。盤面の正はサーバで、ここが持っているのは
@@ -202,7 +228,6 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   const gim = world.gimmick;
   const stripes = ctx.createPattern(stripeTile(), 'repeat');
   const dots = ctx.createPattern(dotTile(), 'repeat');
-  const gravel = ctx.createPattern(gravelTile(), 'repeat');
 
   const fx = [];
   // 手応え（#4）。hitstop は絵を止めている残り秒数（実時間）。
@@ -780,81 +805,228 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   }
 
   /**
-   * 流れを矢羽根（>）の列で見せて、流れの速さで流す。向きは矢羽根そのものが指す。
-   * 1個ずつ stroke() すると引きの絵で数百回になるので、1本の Path にまとめて1回で描く。
+   * 格子の添字から 0..1 の値を作る。漂流物の種類・ずれ・回り方を決める種で、
+   * 乱数を持たない（frac と同じ考え方）—— 同じ添字なら、どの端末で何度描いても同じ物になる
    */
-  function chevrons(t, ang, speed, box, gap, span, style, lw, cap = 700) {
-    const { u0, u1, v0, v1 } = flowBox(ang, box);
-    const wing = Math.min(24, gap * 0.3);
-    const p = new Path2D();
-    let n = 0;
-    for (let v = Math.ceil(v0 / gap) * gap; v <= v1 && n < cap; v += gap) {
-      // 行ごとに位相をずらす。揃えると格子に見えて水に見えない
-      const drift = (t * speed + (v / gap) * span * 0.37) % span;
-      for (let u = Math.ceil((u0 - drift) / span) * span + drift; u <= u1 && n < cap; u += span) {
-        p.moveTo(u - wing, v - wing);
-        p.lineTo(u, v);
-        p.lineTo(u - wing, v + wing);
-        n++;
-      }
-    }
-    ctx.save();
-    ctx.rotate(ang);
-    ctx.lineCap = ctx.lineJoin = 'round';
-    ctx.strokeStyle = style;
-    ctx.lineWidth = lw;
-    ctx.stroke(p);
-    ctx.restore();
-  }
+  const hash = (i, row, k) => frac(Math.sin(i * 127.1 + row * 311.7 + k * 74.7) * 43758.5453);
 
   /**
-   * 流れの筋。矢羽根と同じく流れの座標系で格子ごと流すので、粒が1本ずつ
-   * 巻き戻ることがない（ワールドの軸に並べて巻き戻すと、戻る量が格子と噛み合わず
-   * 行に1本ぶんの穴が流れていく）。こちらも Path を1本にまとめて1回で描く。
+   * 1つの帯の漂流物（落ち葉・泡）と、急流なら白波を、流れの座標系の Path2D へ積む。
+   * 描くのは呼び側が全部の帯を積み終えてから、種類ごとに1回だけ。
    *
-   * cap は保険。いちばん引いた絵（zoom 0.34）の急流で 445 本、4K 幅でも 1218 本なので、
-   * 1800 なら切り捨てが見えることはない。1本の Path なので本数は stroke() の回数に響かない。
+   * 格子と流し方は旧 streaks と同じ —— flowBox で流れの座標系へ移し、行ごとの位相に
+   * t * speed を足すだけ。粒の位置は u = off + i * span で、添字 i は流れても変わらないので、
+   * 1つの物が途中で別の物に化けたり、1個ずつ巻き戻ったりしない。
+   * 速さは帯の流速そのもの（world px/s）なので、急流の葉は 110px/s で流れていく。
+   *
+   * 格子は流れの座標系の外接矩形に張るので、斜めにはみ出た角（帯の外）の升も回ってしまう。
+   * そこは世界座標へ戻して帯の矩形と比べ、Path に積まずに飛ばす（数えもしない）。
+   * cap は保険。いちばん引いた絵（zoom 0.34、1280 幅）で急流 1帯 350 個ほど、4K 幅でも
+   * 900 個ほどなので 1200 なら切り捨ては見えない。1本の Path なので個数は fill の回数に響かない。
    */
-  function streaks(t, ang, speed, box, gap, span, len, style, lw, alpha, cap = 1800) {
+  function drifts(t, speed, strength, box, art, cap = 1200) {
+    const ang = gim.def.dir;
     const { u0, u1, v0, v1 } = flowBox(ang, box);
-    const p = new Path2D();
+    const co = Math.cos(ang), si = Math.sin(ang);
+    const z = cam.zoom;
+    const gap = DRIFT_GAP - strength * 40;   // 流れに直交する行の間隔
+    const span = gap * 1.5;                  // 流れに沿った物の間隔
+    const pad = span;                        // ずらしたぶん、画面の縁で物が生え際を見せない
+    // 流れの座標 (u, v) の点が帯の矩形に入るか。左右（画面の縁）は pad だけ広げて生え際を隠し、
+    // 上下（帯の境目）は広げない —— 広げると隣の河川敷へ物がはみ出して「止まった浅瀬」が崩れる
+    // （box.b0/b1 が帯そのものの上下端、box.y0/y1 はそれを画面で切ったもの）
+    const top = Math.max(box.y0 - pad, box.b0), bottom = Math.min(box.y1 + pad, box.b1);
+    const near = (u, v) => {
+      const x = u * co - v * si, y = u * si + v * co;
+      return x > box.x0 - pad && x < box.x1 + pad && y > top && y < bottom;
+    };
+    // 引きの絵（スマホ横は zoom 0.22 まで下がる）で点にならないよう、画面上の大きさに下限を持つ
+    // （drawSprings の泡が 4.5 / cam.zoom を下限にしているのと同じ）
+    const foamMin = 1.6 / z;
     let n = 0;
-    for (let v = Math.ceil(v0 / gap) * gap; v <= v1 && n < cap; v += gap) {
+    for (let row = Math.ceil((v0 - gap) / gap); row * gap <= v1 + gap && n < cap; row++) {
       // 行ごとに位相をずらす。揃えると格子に見えて水に見えない
-      const drift = (t * speed + (v / gap) * span * 0.37) % span;
-      // 端は len/2 ぶん外から始める。画面の縁で粒が生え際を見せないため
-      for (let u = Math.ceil((u0 - len - drift) / span) * span + drift;
-        u <= u1 + len && n < cap; u += span) {
-        p.moveTo(u - len / 2, v);
-        p.lineTo(u + len / 2, v);
+      const off = t * speed + row * span * 0.37;
+      for (let i = Math.ceil((u0 - pad - off) / span); off + i * span <= u1 + pad && n < cap; i++) {
+        if (!near(off + i * span, row * gap)) continue;
+        const kind = hash(i, row, 0);
+        if (kind > 0.8) continue;            // 2割は空けておく。全部埋めると格子が透ける
+        const h1 = hash(i, row, 1), h2 = hash(i, row, 2), h3 = hash(i, row, 3);
+        const u = off + i * span + (h1 - 0.5) * span * 0.6;
+        const v = row * gap + (h2 - 0.5) * gap * 0.6 + Math.sin(t * 0.9 + h1 * TAU) * gap * 0.04;
+        n++;
+        if (kind < 0.42) {
+          // 引きの絵（川底の石を省く倍率より引いた絵）では葉を描かない。点になって餌と紛れる
+          if (z < STONE_MIN_ZOOM) continue;
+          // 落ち葉。大きさは画面上の px で決め（LEAF_PX）、向きは流れの向き ±30° に揃えて
+          // ゆっくり揺らす（向きも揺れ方も添字で決まる）。流れに乗っている物だと読めるように
+          const rx = (LEAF_PX[0] + (LEAF_PX[1] - LEAF_PX[0]) * h3) / 2 / z, ry = rx * 0.42;
+          const rot = (h1 - 0.5) * 0.7 + Math.sin(t * 0.8 + h2 * TAU) * 0.15;
+          const p = art.leaf;
+          // ellipse は直前の点から線を引いてしまうので、楕円の始点へ先に飛んでおく
+          p.moveTo(u + Math.cos(rot) * rx, v + Math.sin(rot) * rx);
+          p.ellipse(u, v, rx, ry, rot, 0, TAU);
+        } else {
+          // 泡。小さな丸の2個の塊
+          const r = Math.max(3.2 + 2.4 * h3, foamMin);
+          // 引きの絵では塊の粒が潰れて見分けられないので1粒だけ積む（ellipse/arc の数を減らす）
+          const blobs = z < 0.5 ? 1 : 2;
+          for (let k = 0; k < blobs; k++) {
+            const bx = u + FOAM_DX[k] * r, by = v + FOAM_DY[k] * r;
+            const br = r * FOAM_R[k];
+            art.foam.moveTo(bx + br, by);
+            art.foam.arc(bx, by, br, 0, TAU);
+          }
+        }
+      }
+    }
+
+    // 白波は急流（旧 streaks の白波と同じ strength > 0.7）だけ。流れに直交する短い弧を、
+    // 漂流物と格子をずらして置く。水と一緒に流しながら、それぞれの拍子で立っては消える
+    if (strength <= 0.7) return;
+    const cg = gap * 1.3, cs = span * 0.8;
+    const capMin = 6 / z, capW = Math.max(3, 1.6 / z);
+    n = 0;
+    for (let row = Math.ceil((v0 - cg) / cg); row * cg <= v1 + cg && n < cap; row++) {
+      const off = t * speed + row * cs * 0.61 + cs * 0.5;
+      const v = row * cg + cg * 0.5;
+      for (let i = Math.ceil((u0 - pad - off) / cs); off + i * cs <= u1 + pad && n < cap; i++) {
+        if (!near(off + i * cs, v)) continue;
+        const h1 = hash(i, row, 5), h2 = hash(i, row, 6);
+        const s = Math.sin(t * 2.2 + h1 * TAU);
+        if (s < 0.15) continue;              // 寝ている間は描かない（立つ・崩れるの繰り返し）
+        const R = Math.max((16 + 12 * h2) * (0.4 + 0.6 * s), capMin);
+        const cu = off + i * cs + (h2 - 0.5) * cs * 0.5, cv = v + (h1 - 0.5) * cg * 0.4;
+        // 下流側へふくらむ弧。中心を上流側へ R ずらし、±0.9rad だけ描く
+        // 線で引くと塗りとは別に stroke が1回要るので、太さ w の三日月形にして泡と同じ Path で塗る
+        art.foam.moveTo(cu - R + Math.cos(-0.9) * R, cv + Math.sin(-0.9) * R);
+        art.foam.arc(cu - R, cv, R, -0.9, 0.9);
+        art.foam.arc(cu - R, cv, R - capW, 0.9, -0.9, true);
+        art.foam.closePath();
         n++;
       }
     }
-    ctx.save();
-    ctx.rotate(ang);
-    ctx.lineCap = 'round';
-    ctx.globalAlpha = alpha;
-    ctx.strokeStyle = style;
-    ctx.lineWidth = lw;
-    ctx.stroke(p);
-    ctx.restore();
   }
 
-  let tint = null;   // 流れの帯の色。静的なので初回に1回だけ作る（drawCurrent 参照）
+  /**
+   * 川底の石。升（STONE_CELL）ごとに 1〜2個、位置・大きさ・向きは升の添字だけで決まり、
+   * 時間では動かない（川底なので流れない）。
+   *
+   * 以前はタイル1枚のパターンを画面いっぱいに塗っていたが、パターンの全面塗りは重く、
+   * スマホ横の fps が目に見えて落ちた。石のある所だけを塗る Path にし、さらに石は動かないので、
+   * STONE_CHUNK 四方の塊ごとに Path2D を初めて映ったときに1回だけ作って取っておく。
+   * 毎フレームは映っている塊を addPath で1本に束ねて1回塗るだけ（石を1個ずつ積み直すと、
+   * 引きの絵では1フレーム数百回の ellipse になり、描画の JS だけで数 ms 掛かっていた）
+   */
+  const stoneChunks = new Map();
+  let bed = null, bedKey = '';   // 映っている塊を束ねた Path と、その範囲（drawCurrent）
+  function stoneChunk(kx, ky) {
+    const key = kx + ',' + ky;
+    let p = stoneChunks.get(key);
+    if (p) return p;
+    p = new Path2D();
+    const C = STONE_CELL, N = STONE_CHUNK / STONE_CELL;
+    for (let cy = ky * N; cy < (ky + 1) * N; cy++) {
+      for (let cx = kx * N; cx < (kx + 1) * N; cx++) {
+        const h0 = hash(cx, cy, 11);
+        const n = h0 < 0.55 ? 1 : 2;
+        for (let k = 0; k < n; k++) {
+          const h1 = hash(cx, cy, 12 + k * 3), h2 = hash(cx, cy, 13 + k * 3), h3 = hash(cx, cy, 14 + k * 3);
+          const rx = 8 + 18 * h3 * h3;               // 小石が多く、大きな石は少ない
+          const ry = rx * (0.55 + 0.3 * h1), rot = h2 * TAU;
+          const x = (cx + h1) * C, y = (cy + h2) * C;
+          p.moveTo(x + Math.cos(rot) * rx, y + Math.sin(rot) * rx);
+          p.ellipse(x, y, rx, ry, rot, 0, TAU);
+        }
+      }
+    }
+    stoneChunks.set(key, p);
+    return p;
+  }
+
+  let tint = null;     // 流れの帯の色。静的なので初回に1回だけ作る（drawCurrent 参照）
+  let bridge = null;   // 京王線の鉄橋の影。これも静的なので初回に1回だけ作る
 
   /**
-   * 多摩川の上下3帯。上＝河川敷（凪）、中＝流れ、下＝急流。
-   * 帯の色も筋の密度・長さ・速さも sim.js の流速そのものから出すので、
+   * 京王相模原線の鉄橋の影。川を流れに直交して横切る暗い帯1本と、流れに沿って細長い橋脚。
+   * 外接矩形の u（KEIO_BRIDGE_U）を通る、流れに直交する直線の上に置く。
+   * 見えている範囲との当たりを取るため、外接の矩形も一緒に返す
+   */
+  function bridgeArt() {
+    if (bridge) return bridge;
+    const bb = arena.bb, ang = gim.def.dir;
+    const cx = bb.x0 + KEIO_BRIDGE_U * bb.w, cy = bb.y0 + bb.h / 2;
+    // 流れに直交する向き（の単位ベクトル）と、流れの向き
+    const nx = -Math.sin(ang), ny = Math.cos(ang), fx = Math.cos(ang), fy = Math.sin(ang);
+    // 上下の端まで届く長さ（外は clip が落とす）。流れがほぼ横向きでない限り ny は 1 に近いが、
+    // 縦に近い向きを data.js に書かれても無限に伸びないよう下限を入れる
+    const half = (bb.h / 2) / Math.max(Math.abs(ny), 0.2) + 200;
+    const w = KEIO_BRIDGE_W / 2;
+    const quad = (along0, along1, across) => {
+      const p = new Path2D();
+      const pts = [[along0, -across], [along1, -across], [along1, across], [along0, across]];
+      pts.forEach(([a, c], k) => {
+        const x = cx + nx * a + fx * c, y = cy + ny * a + fy * c;
+        if (k) p.lineTo(x, y); else p.moveTo(x, y);
+      });
+      p.closePath();
+      return p;
+    };
+    const shadow = quad(-half, half, w);
+    // 橋脚は流れに沿って細長い（水を切る形）。桁の影から上下へ少しだけ出して、一定の間隔で並べる。
+    // 桁と同じ Path に足して1回で塗る —— 向きの揃った四角どうしなので、重なりは濃くならず
+    // 和になる（橋脚は桁の縁から出た小さな出っ張りとして見える）
+    for (let a = -half + KEIO_PIER_GAP / 2; a < half; a += KEIO_PIER_GAP) {
+      shadow.addPath(quad(a - 16, a + 16, w + 12));
+    }
+    const ex = Math.abs(nx) * half + w + 40, ey = Math.abs(ny) * half + w + 40;
+    return (bridge = { shadow, x0: cx - ex, x1: cx + ex, y0: cy - ey, y1: cy + ey });
+  }
+
+  /**
+   * 多摩川の上下3帯。上＝河川敷（浅瀬・流れ無し）、中＝流れ、下＝急流。
+   * 帯の色も漂流物の数・速さも sim.js の流速そのものから出すので、
    * 絵と盤面が食い違うことはない。
+   *
+   * 重ね順は 川底の石 → 帯の水色 → 漂流物・白波 → 鉄橋の影。石を水色の下に敷くので、
+   * 深い帯ほど水色が濃く（不透明に）なって石が沈んで見える。
+   * 描画命令はいちばん多くても 石1・水色1・葉1・泡と白波1・鉄橋1 の 5回で、
+   * 帯の数にも、映っている物の数にもよらない。
    */
   function drawCurrent(t, view) {
     const bb = arena.bb;
     const bands = gim.bands;
     const maxSpeed = Math.max(...bands.map((b) => b.speed));
+    // 見えている範囲との重なり。エリアは 10536 × 5453 あるので、全面へ撒くと
+    // 引きの絵で毎フレーム数千個になる（漂流物も石も、ここより外へは置かない）
+    const vx0 = Math.max(view.x0, bb.x0), vx1 = Math.min(view.x1, bb.x1);
+    const vy0 = Math.max(view.y0, bb.y0), vy1 = Math.min(view.y1, bb.y1);
+    if (vx0 >= vx1 || vy0 >= vy1) return;
+
+    // 川底の石。水色の下に敷くので、深い帯ほど沈んで見える。引きの絵（STONE_MIN_ZOOM 未満）では
+    // 石が数 px の点になって水のドットと見分けが付かないので、敷かない
+    if (cam.zoom >= STONE_MIN_ZOOM) {
+      const K = STONE_CHUNK, m = 30;               // m: 隣の塊の石が縁から張り出す分（石の半径の上限 26）
+      const kx0 = Math.floor((vx0 - m) / K), kx1 = Math.floor((vx1 + m) / K);
+      const ky0 = Math.floor((vy0 - m) / K), ky1 = Math.floor((vy1 + m) / K);
+      // 映っている塊の範囲が前のフレームと同じなら、束ねた Path をそのまま使う。
+      // 塊は 1080px 四方なので、範囲が変わるのは泳いで塊の境をまたいだときだけ
+      const key = kx0 + ',' + ky0 + ',' + kx1 + ',' + ky1;
+      if (key !== bedKey) {
+        bed = new Path2D();
+        for (let ky = ky0; ky <= ky1; ky++) {
+          for (let kx = kx0; kx <= kx1; kx++) bed.addPath(stoneChunk(kx, ky));
+        }
+        bedKey = key;
+      }
+      ctx.fillStyle = 'rgba(16,40,44,.4)';
+      ctx.fill(bed);
+    }
 
     // 帯の色。境目で切らず、流速を細かく引いた1本のグラデーションで溶かす ——
     // 帯ごとに矩形を敷くと、どの帯も自分の両端で透明に落ちて、境目に無着色の
-    // 継ぎ目が出る。透明側は同じ色のアルファ0（hexA）にして、黒を混ぜない。
+    // 継ぎ目が出る。色は流速 0（浅瀬）→ 中 → 最大（急流）の3色を流速で補間し、
+    // 不透明度も流速とともに上げる（深いほど底が見えない）。
     //
     // 中身は時間に依存しない —— currentSpeedAt(y) は windAt(0, y, 0) と時刻を 0 に
     // 固定して呼ぶので、答えは帯の設定だけで決まる。毎フレーム作り直していたころは、
@@ -862,60 +1034,51 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // 初回に作る（＝カメラ変換の下で作る）のは前と同じ。グラデーションは塗る時点の
     // 変換で描かれるので、いつ作っても絵は変わらない
     if (!tint) {
+      // 帯の流速を色の節にする（多摩川なら 0 / 48 / 110 → 浅瀬・中・急流の色）
+      // RIVER_COLORS は帯と同じ数だけ並んでいる前提（帯 j と j+1 の間を補間する）
+      const knots = bands.map((b) => b.speed / maxSpeed);
+      if (RIVER_COLORS.length !== knots.length) console.warn('RIVER_COLORS の数が帯の数と合いません');
       tint = ctx.createLinearGradient(0, bb.y0, 0, bb.y1);
       for (let i = 0; i <= 24; i++) {
-        const sp = gim.currentSpeedAt(bb.y0 + (i / 24) * bb.h);
-        tint.addColorStop(i / 24, hexA(sp ? MINT : PAPER, 0.04 + (sp / maxSpeed) * 0.13));
+        const k = gim.currentSpeedAt(bb.y0 + (i / 24) * bb.h) / maxSpeed;
+        let j = 0;
+        while (j < knots.length - 2 && k > knots[j + 1]) j++;
+        const a = knots[j], b = knots[j + 1];
+        const col = mixHex(RIVER_COLORS[j], RIVER_COLORS[j + 1], b > a ? clamp((k - a) / (b - a), 0, 1) : 0);
+        tint.addColorStop(i / 24, hexA(col, RIVER_ALPHA[0] + (RIVER_ALPHA[1] - RIVER_ALPHA[0]) * k));
       }
     }
     ctx.fillStyle = tint;
-    ctx.fillRect(bb.x0, bb.y0, bb.w, bb.h);
+    ctx.fillRect(vx0, vy0, vx1 - vx0, vy1 - vy0);
 
+    // 漂流物と白波。全部の帯ぶんを種類ごとの Path2D に積んでから、種類ごとに1回だけ塗る。
+    // 河川敷（流速 0）には何も置かない ＝ 止まった浅瀬
+    const art = { leaf: new Path2D(), foam: new Path2D() };
+    let any = false;
     for (let i = 0, y0 = bb.y0; i < bands.length; y0 = bands[i++].y) {
       const y1 = bands[i].y;
-      // 見えている範囲との重なりだけを描く。エリアは 10536 × 5453 あるので、
-      // 全面へ撒くと引きの絵で毎フレーム数千本になる（矢羽根が view を見ていたのと同じ理由）
-      const box = {
-        x0: Math.max(view.x0, bb.x0), x1: Math.min(view.x1, bb.x1),
-        y0: Math.max(view.y0, y0), y1: Math.min(view.y1, y1),
-      };
-      if (box.x0 >= box.x1 || box.y0 >= box.y1) continue;
-
+      const box = { x0: vx0, x1: vx1, y0: Math.max(vy0, y0), y1: Math.min(vy1, y1), b0: y0, b1: y1 };
+      if (box.y0 >= box.y1) continue;
       const speed = gim.currentSpeedAt((y0 + y1) / 2);
+      if (!speed) continue;
       const strength = speed / maxSpeed;
+      drifts(t, speed, strength, box, art);
+      any = true;
+    }
+    if (any) {
+      ctx.save();
+      ctx.rotate(gim.def.dir);
+      ctx.fillStyle = LEAF_COLOR; ctx.fill(art.leaf);
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = PAPER; ctx.fill(art.foam);   // 泡と白波
+      ctx.restore();
+    }
 
-      if (speed) {
-        const gap = 240 - strength * 100;        // 流れに直交する行の間隔
-        const span = gap * 1.6;                  // 流れに沿った粒の間隔
-        const len = 36 + strength * 150;
-        const lw = Math.max(1.4 / cam.zoom, 1.8 + strength * 2.4);
-        streaks(t, gim.def.dir, speed, box, gap, span, len, PAPER, lw, 0.1 + strength * 0.38);
-        // 急流にだけ白波を重ねる。格子をずらしてあるので筋の上には乗らない
-        if (strength > 0.7) {
-          streaks(t, gim.def.dir, speed * 1.3, box, gap * 1.7, span * 0.75, len * 0.3,
-            PAPER, lw * 0.85, 0.1 + strength * 0.2);
-        }
-      } else {
-        // 河川敷は砂利を敷いて「水ではない」と分かるようにする。下端は溶かして
-        // 切り口を出さない。敷くのは見えている範囲だけ —— ここだけ view を見ずに
-        // bb 幅（多摩川で 10536px）へ毎フレーム7回パターンを塗っていた。すぐ上の筋が
-        // view を見ているのと同じ理由で、こちらも切る。速度0の帯を持つのは多摩川
-        // だけなので、この漏れも多摩川でしか出ない。
-        // パターンはワールド原点にタイル敷きされるので、矩形を縮めても柄はずれない
-        const fade = gim.def.blend * bb.h * 2;
-        const gx = box.x0, gw = box.x1 - box.x0;
-        ctx.save();
-        ctx.fillStyle = gravel;
-        const my0 = Math.max(box.y0, y0), my1 = Math.min(box.y1, y1 - fade);
-        if (my1 > my0) ctx.fillRect(gx, my0, gw, my1 - my0);
-        for (let k = 0; k < 6; k++) {
-          const fy = y1 - fade + (fade / 6) * k, fh = fade / 6 + 1;
-          if (fy + fh < box.y0 || fy > box.y1) continue;   // 画面の外の段は敷かない
-          ctx.globalAlpha = 1 - (k + 0.5) / 6;
-          ctx.fillRect(gx, fy, gw, fh);
-        }
-        ctx.restore();
-      }
+    // 京王線の鉄橋の影。水面に落ちた影なので漂流物の上に重ねる
+    const br = bridgeArt();
+    if (br.x1 > vx0 && br.x0 < vx1 && br.y1 > vy0 && br.y0 < vy1) {
+      ctx.fillStyle = 'rgba(16,31,35,.28)';
+      ctx.fill(br.shadow);
     }
   }
 
