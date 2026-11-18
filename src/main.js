@@ -1,4 +1,4 @@
-import { SHARKS, MAPS, TIPS } from './data.js';
+import { SHARKS, MAPS, tipFor } from './data.js';
 import { startGame } from './game.js';
 import { connect } from './net.js';
 import { centroidOfPath, insidePath } from './geo.js';
@@ -94,12 +94,15 @@ function show(name) {
       screens[cur]?.classList.remove('on');
       screens[name]?.classList.add('on');
       cur = name;
+      // リザルトの誤爆よけ（RETRY_KEY_GRACE）は、リザルトが実際に見えた瞬間から数える。
+      // showResult の頭で取ると、ここまでの CLAP + SHUT（300ms）を食われて実質 100ms しか効かない
+      if (name === 'result') resultAt = performance.now();
       syncSalvageDot();
       if (name === 'shark') renderSharks();
       if (name === 'dex') { renderDex(); if (pendingClaim) { openDex(pendingClaim, true); pendingClaim = null; } }
       if (name === 'salvage') renderSalvage();
       if (name === 'howto') goHowtoPage(0);   // 入り直したら1ページ目から
-      if (name === 'title') paintTitleShark();
+      if (name === 'title') { paintTitleShark(); paintQuickPlay(); }
       closeTitleMenu();   // 開いたまま出ていくと、戻ってきたときに乗ったままになる
       if (name === 'game') stopAttract(); else startAttract();
       // ゲームとリザルトはロケ地の曲、それ以外はメインテーマ
@@ -328,6 +331,48 @@ function paintTitleShark() {
   img.alt = plainText(selShark.name);
 }
 
+// ---------- 前回の設定ですぐ遊ぶ ----------
+// 2回目以降は、ロケ地選択とサメ選択を飛ばして前回と同じ撮影に入れる。
+// nav を4段にすると横画面（844x390）で潰れる（index.html の史料ボタンのコメント）ので、
+// 先頭の「ゲームスタート」を同じ高さのまま2つに割り、左を「すぐ遊ぶ」、右を「選ぶ」にする。
+// 右は従来の [data-go="map"] そのもの（初回の遊び方の寄り道と scripts/shots.mjs の toMap() が使う）。
+const quickBtn = $('#quick-play'), quickSub = $('#quick-play-sub');
+const startGo = $('#start-go'), startFull = $('#start-go-full'), startPick = $('#start-go-pick');
+
+/** 前回のロケ地とサメ。どちらかが今は選べない（未解放・初回で空）なら null */
+function lastPick() {
+  const m = MAPS.find((x) => x.id === save.map);
+  const d = SHARKS.find((x) => x.id === save.shark);
+  return m && d && isUnlocked(m) && isUnlockedShark(d) ? { m, d } : null;
+}
+
+// タイトルに入るたびに描き直す。解放状態は史料の獲得などで変わるので、
+// 条件を満たさなくなったら黙って1枚の「ゲームスタート」へ戻す
+function paintQuickPlay() {
+  const q = lastPick();
+  // 出し入れは hidden 属性で。.hidden クラスは style.css の .btn { display: block } に負ける
+  // （素の CSS はユーティリティの層より強い）が、preflight の [hidden] は !important で勝つ
+  quickBtn.hidden = !q;
+  startFull.hidden = !!q;
+  startPick.hidden = !q;
+  // 主役（塗り）はどちらか片方だけ。w-auto はカチンコの腕の傾きを細いボタン用にするため（style.css の .btn:hover）
+  startGo.classList.toggle('primary', !q);
+  startGo.classList.toggle('w-auto', !!q);
+  startGo.setAttribute('aria-label', q ? 'ロケ地とサメを選びなおす' : 'ゲームスタート');
+  if (!q) return;
+  quickSub.innerHTML = `${rubify(q.m.name)} ／ ${rubify(q.d.name)}`;
+  quickBtn.setAttribute('aria-label', `すぐ遊ぶ（${plainText(q.m.name)}／${plainText(q.d.name)}）`);
+}
+paintQuickPlay();   // 起動時は show() を通らずタイトルが表示されている
+
+quickBtn.onclick = () => {
+  const q = lastPick();
+  if (!q || shutting) return;   // play() も止めるが、選び直し（selectMap 等）の前に止めておく
+  selectMap(q.m);
+  selectShark(q.d);
+  play();   // play() が自分で show('game') を呼ぶので、ロケ地・サメ選択は経由しない
+};
+
 // ふりがなは常時表示。以前は「こどもモード」トグル（既定OFF）で出し分けていたが、
 // 既定が OFF だと読めない子には最初から読めず、設定を見つけて押せる子はそもそも
 // 読める、という順序の問題があった。rt は読める人の邪魔にならないサイズに抑える
@@ -511,6 +556,12 @@ const RUBY_DY = -42;
 const offsetIn = (m, cen, dy) => (insidePath(m.path, cen.x, cen.y + dy) ? dy : 0);
 // 条件は style.css の .map-label を消すブロックと一字一句そろえること
 const compactMap = matchMedia('(max-height: 500px)');
+// 解放済みエリアを続けて2回押したら、そのままサメ選択へ進む。dblclick は iOS Safari で
+// 当てにならないので pointerup の時刻で自前に判定する。350ms は OS のダブルクリック
+// 既定（Windows 500ms / iOS のダブルタップ 300ms 前後）の間で、1回押して迷ってから
+// もう一度押した人を誤って進めない短さ
+const DOUBLE_TAP_MS = 350;
+let lastTap = { m: null, t: -Infinity };
 
 function placeLocks() {
   $$('.map-lock').forEach((lk) => {
@@ -530,6 +581,24 @@ function renderMaps(keep = null) {
       'aria-label': `${plainText(m.name)}${open ? '' : '（未解放）'}`,
     });
     p.onclick = p.onfocus = () => selectMap(m);
+    p.onpointerup = (e) => {
+      if (e.button !== 0) return;   // 右クリック・中クリックは数えない
+      const now = performance.now();
+      // 未解放エリアの2回押しでは何もしない（解放パネルを勝手に開かない）
+      if (open && lastTap.m === m && now - lastTap.t < DOUBLE_TAP_MS) {
+        lastTap = { m: null, t: -Infinity };
+        show('shark');
+      } else lastTap = { m, t: now };
+    };
+    // キーボードでは、Tab で選んで Enter で次へ（主ボタンを押したのと同じ）
+    p.onkeydown = (e) => {
+      // 画面を離れても path にフォーカスが残る。リザルトの Enter（もう一度撮る）が
+      // ここに届いてサメ選択へ飛ばないよう、ロケ地選択が見えている間だけ受ける
+      if (cur !== 'map' || e.key !== 'Enter') return;
+      e.preventDefault();
+      selectMap(m);
+      goMapNext();
+    };
     areas.appendChild(p);
 
     const cen = centroidOfPath(m.path);
@@ -573,12 +642,33 @@ function selectMap(m) {
   $$('.map-area').forEach((n, i) => n.setAttribute('aria-checked', MAPS[i] === m));
   // 選択リングは別レイヤ。
   $('#map-ring').setAttribute('d', m.path);
-  $('#map-next').disabled = !open;
-  // 押せない理由をボタン自身に出す。ラベルが「サメ選択 →」のままだと袋小路に見える。
-  // 長い文言は折り返してボタンが伸び、ツールバーごと下の地図を押し下げていた
-  // （実測 667x375 で3行・56→76px・地図が 20px 縮んでずれる）。
-  // 短くしたうえで style.css 側で nowrap にし、行数を常に1に固定する
-  $('#map-next-label').innerHTML = open ? rubify('サメ｜選択《せんたく》 →') : rubify('まだ｜遊《あそ》べません');
+  // 主ボタン（情報パネルの下）。未解放でも押せないボタンにはせず、同じ場所を
+  // 「解放しに行く」入口に変える。「まだ遊べません」で止めると袋小路に見えていた。
+  // 文言は style.css で1行に固定し、細いパネルでは短い形（.short）に差し替わる
+  $('#map-next').disabled = !open && !m.spot;   // スポットの無い未解放エリアだけは本当に行き止まり
+  $('#map-next-label').innerHTML = open
+    ? `<span class="long">${rubify('このロケ｜地《ち》で｜撮影《さつえい》する →')}</span>`
+      + `<span class="short">${rubify('｜撮影《さつえい》する →')}</span>`
+    : `${icon('photo_camera', '!text-xl shrink-0')}`
+      + `<span class="long">${rubify('｜現地《げんち》で｜写真《しゃしん》を｜撮《と》って｜解放《かいほう》')}</span>`
+      + `<span class="short">${rubify('｜写真《しゃしん》で｜解放《かいほう》')}</span>`;
+  // 右上の文字リンクは解放済みのときだけ。未解放で「サメ選びへ」と書くと嘘になる
+  // 未解放のときは「いま遊べる場所」へ選び直す道を添える。主ボタンは解放（現地へ行く）
+  // なので、今すぐ遊びたい人がそこで行き止まらないように。置き場は2か所:
+  //   - 主ボタンのすぐ下（#map-alt）。横持ちでは本文の高さを食うので style.css が畳む
+  //   - 右上の文字リンク（#map-skip）。解放済みでは「サメ選びへ →」、未解放ではこれ。
+  //     ツールバーの空いている列なので、横持ちでも高さを食わない
+  const playable = open ? null : MAPS.find(isUnlocked);
+  const alt = $('#map-alt'), skip = $('#map-skip');
+  alt.hidden = !playable;
+  skip.style.visibility = open || playable ? '' : 'hidden';
+  if (playable) {
+    alt.innerHTML = skip.innerHTML = rubify(`いま｜遊《あそ》べるのは ${playable.name} →`);
+    alt.onclick = skip.onclick = () => selectMap(playable);
+  } else {
+    skip.innerHTML = rubify('サメ｜選《えら》びへ →');
+    skip.onclick = () => { if (isUnlocked(selMap)) show('shark'); };
+  }
   // 並びは重要な順。パネルは横持ちで本文 197px しか映らず（実測 844x390）、下に置いたものは
   // 読まれない。従来の順（blurb → HISTORY）だと史実が丸ごと折り返しの下に沈んでいた。
   // 史実とロック解除の導線がこの画面の主役、blurb は雰囲気づけなので最後に回す
@@ -593,7 +683,7 @@ function selectMap(m) {
       </div>
     </div>
     <h3 id="map-title" class="font-display font-extrabold text-2xl mb-1 leading-tight">${rubify(m.name)}</h3>
-    <div class="mb-4 flex items-center gap-1.5 flex-wrap">
+    <div id="map-badges" class="mb-4 flex items-center gap-1.5 flex-wrap">
       <span id="map-badge" class="inline-block text-[11px] font-bold px-2 py-0.5 rounded ink-2 ${open ? 'bg-yellow text-ink' : 'bg-paper/20 text-paper'}">
         ${open ? rubify('｜解放済《かいほうず》み') : rubify('｜未解放《みかいほう》')}
       </span>
@@ -641,7 +731,8 @@ function spotCard(m) {
   const head = open
     ? (done ? rubify('｜撮影《さつえい》ずみのスポット') : rubify('｜現地《げんち》スポット（ボーナス）'))
     : rubify('｜現地写真《げんちしゃしん》で｜解放《かいほう》');
-  const label = done ? rubify('もう｜一度《いちど》｜撮《と》る') : open ? rubify(`｜写真《しゃしん》を｜撮《と》る +${s.points}pt`) : rubify('｜写真《しゃしん》を｜撮《と》って｜解放《かいほう》');
+  // 未解放のときのボタンは出さない（主ボタン #map-next が解放の入口を兼ねる）
+  const label = done ? rubify('もう｜一度《いちど》｜撮《と》る') : rubify(`｜写真《しゃしん》を｜撮《と》る +${s.points}pt`);
   return `
     <div class="mt-4 bg-paper/10 ink-2 border-paper/30 rounded p-3">
       <div class="font-display font-bold text-sm mb-1.5 flex items-center gap-1.5">
@@ -656,17 +747,27 @@ function spotCard(m) {
       <div class="mt-2 font-mono text-[10px] text-paper/55">
         ${rubify(`｜一致度《いっちど》 ${rec.score}% ・ ${rec.shared ? 'シェア｜済《ず》み' : 'シェア｜未《み》'}`)}
       </div>` : ''}
+      ${open ? `
       <button data-unlock="${m.id}"
-              class="mt-3 w-full bg-yellow text-ink ink-2 rounded hard-sm px-2.5 py-2 font-display font-extrabold text-[13px] sm:text-sm
+              class="mt-3 w-full bg-transparent text-yellow border-2 border-yellow rounded px-2.5 py-1.5 font-display font-extrabold text-[13px] sm:text-sm
                      flex items-center justify-center gap-1.5 transition-transform hover:-translate-y-0.5 active:translate-y-0.5 whitespace-nowrap">
         ${icon('photo_camera', '!text-lg shrink-0')}<span class="whitespace-nowrap">${label}</span>
-      </button>
+      </button>` : ''}
       <p class="mt-1.5 font-mono text-[10px] text-paper/45">${rubify(`｜現地《げんち》（｜半径《はんけい》${s.radius}m）で｜撮影《さつえい》してください`)}</p>
     </div>`;
 }
 
-$('#map-next').onclick = () => { if (isUnlocked(selMap)) show('shark'); };
-renderMaps();
+// 未解放では主ボタンが解放の入口になる（spotCard の中のボタンは解放済みのボーナス撮影だけ。
+// 同じ働きの黄色いボタンが2つ並ばないように、未解放のときはパネル内に出さない。
+// 解放済みのボーナス撮影も枠だけにして、塗りの黄色は「進む」の主ボタン1つに絞る）
+function goMapNext() {
+  if (isUnlocked(selMap)) show('shark');
+  else openUnlock(selMap);
+}
+$('#map-next').onclick = goMapNext;
+// 起動時は前回のロケ地を選んだ状態から始める（selShark が save.shark から戻るのと同じ）。
+// 解放状態は史料の獲得などで変わるので、閉じていたら黙って既定の選び方へ落とす
+renderMaps(MAPS.find((m) => m.id === save.map && isUnlocked(m)));
 
 // ---------- エリア解放（現地写真の照合） ----------
 // 撮影 → 現在地 → 照合 の一本道は verify.js の runUnlock が持つ。ここが受け持つのは
@@ -942,69 +1043,98 @@ const STAT_KEYS = [
 
 let mainPreview = null;
 function renderSharks() {
+  const list = $('#shark-list');
   if (!mainPreview) {
     mainPreview = mountPreview($('#preview'), selShark);
-    const list = $('#shark-list');
-    list.innerHTML = '';
-    // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ戻す。
-    // ここで作るのは器だけで、中身（名前・施錠状態）は下の paintLocks() が入れる
-    for (let copy = 0; copy < DIAL_COPIES; copy++) {
-      SHARKS.forEach((d, i) => {
-        const b = document.createElement('button');
-        b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
-          'transition-transform hover:-translate-x-1 active:translate-y-0.5';
-        b.dataset.i = i;
-        b.dataset.copy = copy;
-        b.onclick = () => selectShark(d);
-        list.appendChild(b);
-      });
-    }
     mountDial(list);
   }
-  paintLocks();
+  // 1面の枚数は解放数で変わる（解放済み全部 ＋ 未解放があれば「あと N 種類」の1枠）。
+  // 史料の獲得で解放状態が変わるので、塗り直しではなく開くたびに面ごと作り直す
+  // （以前は器をキャッシュして中身だけ塗り直していたが、枚数が変わるとそれができない）。
+  // 面を3つ並べるのは、ダイヤルを一周させるため（端まで来たら中央の面へ戻す）。
+  // ただし1面が DIAL_MIN 枚以下（解放1体＋まとめ枠）では回さず、中央の面だけにする。
+  // 2枚の面を3つ並べると、選択中の上下どちらにも「あと N 種類」が来て2枠に見え、
+  // 上の枠は一覧の上端で半分切れていた（実測 844x390）
+  const open = SHARKS.filter(isUnlockedShark);
+  const rest = SHARKS.length - open.length;
+  const flat = open.length + (rest ? 1 : 0) <= DIAL_MIN;
+  list.classList.toggle('dial-flat', flat);
+  list.innerHTML = '';
+  for (let copy = flat ? 1 : 0; copy < (flat ? 2 : DIAL_COPIES); copy++) {
+    for (const d of open) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
+        'transition-transform hover:-translate-x-1 active:translate-y-0.5';
+      b.dataset.i = SHARKS.indexOf(d);   // 添字は SHARKS の通し番号。面の中の位置ではない
+      b.dataset.copy = copy;
+      b.innerHTML = tileInner(d);
+      b.onclick = () => selectShark(d);
+      list.appendChild(b);
+    }
+    if (rest) list.appendChild(moreTile(rest, copy));
+  }
   selectShark(selShark);
   // ダイヤルでは選択中が中央に居ないと辻褄が合わないので、開くたびに寄せ直す
-  if (isDial()) centerTile($('#shark-list'), SHARKS.indexOf(selShark), 'auto');
+  // 回さない一覧（.dial-flat）は2枚まとめて縦の真ん中に置くので、寄せない
+  if (isDial() && !flat) centerTile(list, SHARKS.indexOf(selShark), 'auto');
+  else if (flat) list.scrollTop = 0;
 }
 
-/**
- * タイル1枚の中身。ロック中は図鑑のカードと同じで、名前も英字も肩書きも出さない。
- * モチーフのアイコンと色はそれ自体が正体を指す（terrain＝土偶）ので、鍵と地の色へ寄せる。
- * 見えるのは「まだ居ないサメが1枠ある」ことだけ。
- */
-const tileInner = (d, locked) => `
+/** 解放済みのサメのタイル1枚の中身 */
+const tileInner = (d) => `
   <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper"
-        style="background:${locked ? 'var(--color-ink)' : d.color}">
-    ${icon(locked ? 'lock' : ICON[d.id], '!text-[22px]')}
+        style="background:${d.color}">
+    ${icon(ICON[d.id], '!text-[22px]')}
   </span>
   <span class="min-w-0">
-    <span class="tile-name block font-display font-extrabold text-base leading-tight">${
-      locked ? MASK : rubify(d.name)}</span>
-    <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${
-      locked ? MASK : `${esc(d.en)} · ${rubify(d.tag)}`}</span>
+    <span class="tile-name block font-display font-extrabold text-base leading-tight">${rubify(d.name)}</span>
+    <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${rubify(d.tag)}</span>
   </span>`;
 
-// タイルの生成はキャッシュされるが解放状態は史料の獲得で変わるので、表示のたびに
-// 塗り直す（3面ぶん・data-i で当てる）。伏せているのは見た目ではなく中身なので、
-// 施錠状態だけでなく innerHTML ごと入れ替える——そうしないと、獲得した直後に
-// サメ選択を開いても伏せ字のままになる
-function paintLocks() {
-  $$('.shark-tile').forEach((n) => {
-    const d = SHARKS[+n.dataset.i];
-    const locked = !isUnlockedShark(d);
-    n.classList.toggle('shark-locked', locked);
-    n.disabled = locked;
-    n.toggleAttribute('aria-disabled', locked);
-    n.innerHTML = tileInner(d, locked);
-    // 名前を伏せたぶん、押せない理由は解放条件で言う（図鑑のカードと同じ文面）
-    if (locked) n.setAttribute('aria-label', plainText(unlockCopy(d)));
-    else n.removeAttribute('aria-label');
-  });
+const MORE_HINT_MS = 2200;   // 「あと N 種類」を押したとき一文を見せておく長さ
+// 解放の道すじ。図鑑の吹き出し（unlockCopy）は幕ごとの文面なので、まとめた枠では総称で言う
+const MORE_HINT = '｜史料《しりょう》を｜復元《ふくげん》すると｜増《ふ》える';
+
+/**
+ * 未解放のサメをまとめた1枠「あと N 種類」。図鑑のカードと同じで、名前も英字も
+ * 肩書きも出さない。モチーフのアイコンと色はそれ自体が正体を指す（terrain＝土偶）ので、
+ * 鍵と地の色だけにする。見えるのは「まだ居ないサメが N 種類ある」ことだけ。
+ * 1体ずつ「????」を並べていた頃は、それが一覧を埋めて選べるサメが押し出されていた。
+ * 選べないので button にはせず、data-i も持たせない（ダイヤルの中央に来ても
+ * mountDial は選び直さない）。どうすれば増えるかは中の一文と aria-label で言う
+ */
+function moreTile(n, copy) {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'shark-tile shark-more text-left bg-paper ink-3 rounded-lg px-3 py-2.5 flex items-center gap-3';
+  el.dataset.copy = copy;
+  // 押しても画面は移さない（サメ選択から抜けると名前や選択を見失う）。
+  // 代わりに中の一文を一瞬光らせる。横画面ではこの一文を畳んでいるので、
+  // 光らせている間だけ「あと N 種類」と入れ替えて見せる（style.css の .hinting）
+  el.onclick = () => {
+    el.classList.remove('hinting');
+    void el.offsetWidth;   // 連打でもアニメーションを最初からやり直す
+    el.classList.add('hinting');
+    clearTimeout(el.hintTimer);
+    el.hintTimer = setTimeout(() => el.classList.remove('hinting'), MORE_HINT_MS);
+  };
+  el.setAttribute('aria-label', plainText(`まだ｜見《み》つかっていないサメが あと${n}｜種類《しゅるい》。${MORE_HINT}`));
+  el.innerHTML = `
+    <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper"
+          style="background:var(--color-ink)">${icon('lock', '!text-[22px]')}</span>
+    <span class="min-w-0">
+      <span class="tile-name block font-display font-extrabold text-base leading-tight">あと${n}${rubify('｜種類《しゅるい》')}</span>
+      <span class="tile-sub block text-[11px] leading-snug text-ink/60">${rubify(MORE_HINT)}</span>
+    </span>`;
+  return el;
 }
 
 // スマホ横画面のサメ選択はダイヤル。中央で止まったサメがそのまま選ばれる。
 const isDial = () => matchMedia('(max-height: 500px)').matches;
 const DIAL_COPIES = 3;   // 一周させるための面の数。中央の面を基準にする
+// 1面がこの枚数以下なら回さない。2枚の面を並べると、選択中の上下に同じ枠が来る
+const DIAL_MIN = 2;
 
 // スキル札のタップで効果説明を開閉する。
 document.addEventListener('click', (e) => {
@@ -1029,7 +1159,8 @@ document.addEventListener('click', (e) => {
 
 /** 中央の面の i 番目を、ダイヤルの中央へ持ってくる */
 function centerTile(list, i, behavior = 'smooth') {
-  const el = list.children[SHARKS.length + i];
+  // 1面の枚数は解放数で変わるので、位置ではなく「中央の面の data-i」で引く
+  const el = list.querySelector(`.shark-tile[data-copy="1"][data-i="${i}"]`);
   if (el) el.scrollIntoView({ block: 'center', behavior });
 }
 
@@ -1048,7 +1179,13 @@ function centeredTile(list) {
 
 /** 端まで来たら中央の面へ黙って引き戻す。 */
 function recenter(list) {
-  const copy = list.scrollHeight / DIAL_COPIES;
+  // 1面の長さは、隣り合う面の先頭どうしの距離で測る。scrollHeight / 3 だと
+  // 面の間の gap の端数ぶんずれ、1面が2枚しかないときに一周が目に見えて飛ぶ
+  const a = list.querySelector('.shark-tile[data-copy="0"]');
+  const b = list.querySelector('.shark-tile[data-copy="1"]');
+  if (!a || !b) return;
+  const copy = b.offsetTop - a.offsetTop;
+  if (copy <= 0) return;
   const t = list.scrollTop;
   const to = t < copy * 0.5 ? t + copy : t >= copy * 1.5 ? t - copy : null;
   if (to === null) return;
@@ -1060,12 +1197,26 @@ function recenter(list) {
 
 function mountDial(list) {
   let idle;
+  let lastTop = list.scrollTop, dir = 1;   // 最後に回した向き（下へ = 1）
   list.addEventListener('scroll', () => {
     if (!isDial()) return;
+    // 回さない一覧（.dial-flat）では選び直しも引き戻しもしない
+    if (list.classList.contains('dial-flat')) return;
+    if (list.scrollTop !== lastTop) dir = Math.sign(list.scrollTop - lastTop);
+    lastTop = list.scrollTop;
     clearTimeout(idle);
     idle = setTimeout(() => {
       const el = centeredTile(list);
       if (!el) return;
+      // 「あと N 種類」の枠は選べないので、そこで止まると「中央＝選択」が崩れる。
+      // 回していた向きの隣のサメへ送る（送った先で次の scroll が選び直す）。
+      // 戻すのではなく送るのは、この枠が面の継ぎ目に居るため —— 戻すと一周できなくなる
+      if (el.dataset.i === undefined) {
+        const next = dir > 0 ? el.nextElementSibling : el.previousElementSibling;
+        if (next?.dataset.i !== undefined) next.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        else centerTile(list, SHARKS.indexOf(selShark));
+        return;
+      }
       const d = SHARKS[+el.dataset.i];
       if (d && d !== selShark) selectShark(d);
       recenter(list);
@@ -1080,7 +1231,7 @@ function selectShark(d) {
   selShark = d;
   if (mainPreview) mainPreview.def = d;
   // 面を3つ持っているので、位置ではなく data-i で当てる
-  $$('.shark-tile').forEach((n) => {
+  $$('.shark-tile[data-i]').forEach((n) => {
     const on = SHARKS[+n.dataset.i] === d;
     n.style.background = on ? '#f3b553' : '';
     n.style.boxShadow = on ? '6px 6px 0 0 #2d2d2d' : '';
@@ -1127,7 +1278,26 @@ const nameInput = $('#player-name');
 nameInput.value = save.name;
 const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10) || 'PLAYER';
 
-$('#start-btn').onclick = () => play();
+const startBtn = $('#start-btn');
+startBtn.onclick = () => play();
+
+// サメ選択では Enter でも撮影を始める（ACTION! の ENTER の札と対）。
+// - 日本語入力の変換を確定する Enter では始めない。名前を確定した瞬間にゲームが
+//   始まってしまう。確定中は isComposing、古い Safari は keyCode 229 で来る
+// - フォーカスが他のボタン（「← ロケ地」など）にあるときは、そのボタンの click に任せる。
+//   ACTION! 自身に乗っているときも同じ（既定の click で play() が呼ばれる）
+// 二重起動は play() の starting / shutting が止める
+addEventListener('keydown', (e) => {
+  if (cur !== 'shark' || e.key !== 'Enter') return;
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat) return;
+  const on = e.target.closest?.('button, a, select, textarea, input');
+  if (on && on !== nameInput) return;
+  e.preventDefault();
+  if (startBtn.disabled || starting || shutting) return;
+  clap(startBtn);   // クリックしたときと同じく、カチンコを鳴らしてから入る
+  play();
+});
 
 // ---------- 図鑑 ----------
 // カードは7枚・全ポートレート起動時プリロード済みで、開くのも手動遷移のみ。
@@ -1280,6 +1450,9 @@ const hudBoss = $('#hud-boss'), hudBossName = $('#hud-boss-name');
 const hudBossHp = $('#hud-boss-hp'), hudBossPips = $('#hud-boss-pips');
 // 裏ボスの復活待ち。ボスが居ない20秒だけ、セルの列と入れ替わりで出る
 const hudBossWait = $('#hud-boss-wait'), hudBossWaitBar = $('#hud-boss-wait-bar');
+// 手応え（#4）: コンボ（SIZE の横）とキルフィード（上中央）
+const hudCombo = $('#hud-combo'), hudComboN = $('#hud-combo-n');
+const hudFeed = $('#hud-feed');
 
 let net = null;
 let myName = 'YOU';   // リーダーボードに自分の行を足すときに使う
@@ -1287,10 +1460,12 @@ const dropNet = () => { net?.close(); net = null; };
 
 let starting = false;
 async function play() {
-  if (starting) return;
+  // shutting: 画面の切り替え中（帯が閉じている間）の2打目。#retry の連打・リザルトのキー・
+  // 「すぐ遊ぶ」の3経路とも、ここで二重に startGame しないよう止める
+  if (starting || shutting) return;
   starting = true;
   try {
-    save.shark = selShark.id; save.name = playerName(); persist();
+    save.shark = selShark.id; save.name = playerName(); save.map = selMap.id; persist();
     dropNet();
     $('#start-btn').disabled = true;
     // ボスステージ（深大寺）はシングルプレイ。部屋に入ると他人とボットが混ざって
@@ -1303,6 +1478,7 @@ async function play() {
     show('game');
     pausePanel.style.display = 'none';
     vignette.style.setProperty('--warn', '0');
+    resetJuice();
     hudScene.textContent = plainText(selMap.name);
     $('#hud-skill-icon').textContent = ICON[selShark.id] || 'help';
     $('#hud-skill-name').innerHTML = rubify(selShark.skill.name);
@@ -1318,29 +1494,56 @@ async function play() {
   }
 }
 
+// 順位表の「位」。HUD は 0.08秒ごとに書き直すので、ルビの HTML は一度だけ作っておく
+const RANK_RUBY = rubify('｜位《い》');
 function paintHud(h) {
   if (h.paused !== undefined) {
     pausePanel.style.display = h.paused ? 'grid' : 'none';
     if (Object.keys(h).length === 1) return;
   }
   hudMass.textContent = h.mass.toLocaleString();
+  paintJuice(h);
   if (h.time !== undefined) hudTime.textContent = fmtTime(h.time);
   if (h.edge !== undefined) vignette.style.setProperty('--warn', h.edge.toFixed(2));
-  const isPlayerLead = h.rank === 1 || (h.board && h.board[0] && h.board[0].me);
+  // h.rank・h.board の順位はボスを除いたサメだけで数えてある（game.js）。ボスの行は番号の無い「BOSS」札
+  const isPlayerLead = h.rank === 1;
   hudBoardCard.classList.toggle('is-lead', !!isPlayerLead);
+  // 自分が1位で2位のサメが居ない（深大寺でボスと自分だけ等）。スリム帯は2位の代わりにボスの行を出す
+  hudBoardCard.classList.toggle('solo', !!isPlayerLead && h.board.filter((b) => !b.boss).length < 2);
+  // 「あと N で X 位」。N はひとつ上を抜くのに要る質量 − 自分の質量 + 1。
+  // 1位なら出さない（王冠で分かる）。横画面のスリム帯では短い「+N→X位」を重さの代わりに出す
+  const gap = h.next ? h.next.mass - h.mass + 1 : 0;
   const row = (b, rank, extra = '') => {
     const isLead = rank === 1;
     const isSecond = rank === 2;
     const isMe = !!b.me;
+    const short = isMe && gap > 0
+      ? `<span class="board-next-short font-mono shrink-0">+${gap.toLocaleString()}→${h.next.rank}${RANK_RUBY}</span>` : '';
     return `
-    <li class="board-row ${isLead ? 'board-lead' : ''} ${isSecond ? 'board-second' : ''} ${isMe ? 'board-me' : ''} flex justify-between items-center gap-2 px-1.5 py-0.5 ${extra} ${isMe ? 'bg-yellow text-ink font-bold ink-2 -rotate-1 hard-sm relative z-10' : ''}">
+    <li class="board-row ${isLead ? 'board-lead' : ''} ${isSecond ? 'board-second' : ''} ${isMe ? 'board-me' : ''} ${short ? 'has-next' : ''} flex justify-between items-center gap-2 px-1.5 py-0.5 ${extra} ${isMe ? 'bg-yellow text-ink font-bold ink-2 -rotate-1 hard-sm relative z-10' : ''}">
       <span class="font-bold truncate">${rank}. ${b.human && !isMe ? '◆ ' : ''}${esc(b.name)}</span>
-      <span class="font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
+      ${short}<span class="board-mass font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
     </li>`;
   };
-  hudBoard.innerHTML = h.board.map((b, i) => row(b, i + 1)).join('')
-    + (h.board.some((b) => b.me) ? ''
-      : row({ name: myName, mass: h.mass, me: true, human: true }, h.rank, 'mt-1.5 border-t-2 border-ink/25 pt-1'));
+  const bossRow = (b) => `
+    <li class="board-row board-boss flex justify-between items-center gap-2 px-1.5 py-0.5">
+      <span class="font-bold truncate"><span class="board-boss-tag font-mono">BOSS</span> ${esc(b.name)}</span>
+      <span class="board-mass font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
+    </li>`;
+  // 上位3人＋自分（#5）。4・5位は順位表をタップして広げたときだけ出す（.board-extra）。
+  // 自分が4・5位なら、その行は畳んだままでも出す
+  const meIn = h.board.some((b) => b.me);
+  const next = gap > 0
+    ? `<li class="board-next">あと <b class="font-mono">${gap.toLocaleString()}</b> で ${h.next.rank}${RANK_RUBY}</li>` : '';
+  let sharkNo = 0;
+  hudBoard.innerHTML = h.board.map((b) => {
+    if (b.boss) return bossRow(b);
+    const i = sharkNo++;
+    if (b.me) return row(b, i + 1, i >= 3 ? 'board-sep' : '') + next;
+    return row(b, i + 1, i >= 3 ? 'board-extra' : '');
+  }).join('')
+    + (meIn ? ''
+      : row({ name: myName, mass: h.mass, me: true, human: true }, h.rank, 'board-sep') + next);
   hudCd.style.opacity = h.cd > 0 ? '1' : '0';
   hudCd.textContent = Math.ceil(h.cd);
   hudReel.style.animation = h.boosting ? 'spin .35s linear infinite' : 'spin 4s linear infinite';
@@ -1359,6 +1562,74 @@ function paintHud(h) {
   hudSpring.classList.toggle('hidden', !refilling);
   if (refilling) hudSpringT.textContent = Math.ceil(h.springT);
   paintBossBar(h.boss, h.bossRevive);
+}
+
+// ---- 食べる・倒すの手応え（#4）----
+// SIZE の跳ねの間隔(ms)。HUD は 0.08秒ごとに来るので、毎回付け直すと跳ねきる前に
+// 次が始まって震えにしか見えない。跳ね（style.css の mass-bump 0.18秒）が見える間は空ける
+const BUMP_GAP = 150;
+const COMBO_MIN = 3;      // コンボは3連から出す。2連は普通に泳いでいても起きる
+const FEED_MAX = 3;       // キルフィードは最大3行。溢れたら古い行から消す
+const FEED_SEC = 2500;    // 1行が消えるまで(ms)。style.css の feed-life と同じ長さ
+// 跳ねの伸び分を数字の右に空けておく割合。左下支点で 1.22倍 なので、余白 p は
+// p ≥ 0.22 × (幅 + p) → p ≥ 0.282 × 幅。1文字 ≒ 1ch として桁数に掛ける（少し多めに）
+const BUMP_ROOM = 0.29;
+let lastMass = 0, lastBump = 0, massLen = 0;
+
+/** 跳ね・フィードを1回のプレイごとに白紙へ戻す（前のプレイの続きで跳ねないように） */
+function resetJuice() {
+  lastMass = 0; lastBump = 0; massLen = 0;
+  hudCombo.classList.remove('on');
+  hudFeed.replaceChildren();
+}
+
+/** クラスを外して付け直し、CSS アニメーションを頭から流し直す（clap() と同じ手口） */
+function replay(el, cls) {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+
+function paintJuice(h) {
+  // SIZE の跳ね。増えたときだけ（死んで減ったときや開始直後の 0 からは跳ねない）。
+  // 跳ねた数字が右のコンボ札（の「×」）を隠さないよう、伸びる分の余白を桁数に合わせて持つ
+  const len = hudMass.textContent.length;
+  if (len !== massLen) {
+    massLen = len;
+    hudMass.style.paddingRight = `${(len * BUMP_ROOM).toFixed(2)}ch`;
+  }
+  const now = performance.now();
+  if (lastMass && h.mass > lastMass && now - lastBump >= BUMP_GAP) {
+    replay(hudMass, 'bump');
+    lastBump = now;
+  }
+  lastMass = h.mass;
+
+  // コンボ。途切れたら数字はそのまま残してフェードだけさせる（消えながら 0 に変わると読めない）
+  const combo = h.combo ?? 0;
+  if (combo >= COMBO_MIN) {
+    if (hudComboN.textContent !== String(combo)) {
+      hudComboN.textContent = combo;
+      replay(hudCombo, 'pop');
+    }
+    if (!hudCombo.classList.contains('on')) hudCombo.classList.add('on');
+  } else {
+    hudCombo.classList.remove('on');
+  }
+
+  // キルフィード。名前はオンラインでは利用者が付けるので必ず esc を通す
+  // （rubify にそのまま渡すと、名前に ｜《》 があればルビに化ける）。
+  // ruby が立っているのは data.js のボスの名前だけ
+  for (const victim of h.feed ?? []) {
+    const row = document.createElement('div');
+    row.className = 'feed-row';
+    const nm = victim.ruby ? rubify(victim.name) : esc(victim.name);
+    // ルビは1語にまとめる。2語に分けると「撮影 終了」の間にルビの幅ぶんの隙間が空いた
+    row.innerHTML = `<span class="feed-name">${nm}</span>${rubify('を｜撮影終了《さつえいしゅうりょう》！')}`;
+    hudFeed.append(row);
+    while (hudFeed.children.length > FEED_MAX) hudFeed.firstElementChild.remove();
+    setTimeout(() => row.remove(), FEED_SEC);
+  }
 }
 
 // ボスの残り耐久。セルの本数は data.js の hp がそのまま出るので、
@@ -1403,6 +1674,35 @@ function paintBossBar(b, wait = 0) {
 $('#resume').onclick = () => ctl?.resume();
 $('#quit').onclick = () => { dropNet(); show('title'); };
 $('#retry').onclick = () => play();
+
+// リザルトでは Space / Enter が「もう一度撮る」。死んでから次の撮影までをキー1つにする。
+// Space はゲーム中のダッシュ（game.js の onKey）でもあるので、誤爆よけを2つ重ねる:
+//   - オートリピート（e.repeat）は捨てる。押したまま死んでも、押し直すまで始まらない
+//   - リザルトが見えてから RETRY_KEY_GRACE ms の間の入力も捨てる。死ぬ間際に連打していた分が
+//     リザルトに漏れて、結果を見る前に次が始まるのを防ぐ
+// Enter は、Tab で他のボタン（「ロケ地を変える」など）に乗っているとそのボタンの click と
+// 二重に走るので、フォーカスが #retry 以外の操作部品にあるときは何もしない。
+const RETRY_KEY_GRACE = 400;
+let resultAt = -Infinity;   // リザルトが見えた時刻（performance.now）。show() が書く
+const retryBtn = $('#retry');
+const isRetryKey = (e) => e.key === ' ' || e.key === 'Enter';
+addEventListener('keydown', (e) => {
+  if (cur !== 'result' || !isRetryKey(e)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;   // ショートカット（Alt+Enter 等）は横取りしない
+  const on = e.target.closest?.('button, input, a, select, textarea');
+  if (on && on !== retryBtn) return;
+  // #retry にフォーカスがあるときも自前で処理する。ボタン既定の click（Enter は keydown、
+  // Space は keyup で出る）に任せると、上の誤爆よけを素通りしてしまう
+  e.preventDefault();   // ページのスクロールも止める
+  // shutting: 押してから画面が切り替わるまでの間の2打目で play() を二重に呼ばない
+  if (e.repeat || shutting || performance.now() - resultAt < RETRY_KEY_GRACE) return;
+  clap(retryBtn);   // クリックしたときと同じく、カチンコを鳴らしてから入る
+  play();
+});
+// フォーカスのある #retry で Space を離したときの既定の click も止める（上の keydown と対）
+addEventListener('keyup', (e) => {
+  if (cur === 'result' && e.key === ' ' && e.target === retryBtn) e.preventDefault();
+});
 
 const hudBoardCard = $('#hud-board-card');
 hudBoardCard.addEventListener('click', (e) => {
@@ -1501,5 +1801,6 @@ function showResult(r) {
        ${rubify(`｜第《だい》${done.era}｜幕《まく》`)}${rubify('の｜史料《しりょう》がすべて｜読《よ》めるようになった！')}`);
   }
   $('#res-level').innerHTML = lines.join('<br>');
-  $('#res-tip').innerHTML = rubify(TIPS[(Math.random() * TIPS.length) | 0]);
+  // 遊んだロケ地の話だけを出す（data.js の TIPS 冒頭の注記）
+  $('#res-tip').innerHTML = rubify(tipFor(selMap.id));
 }

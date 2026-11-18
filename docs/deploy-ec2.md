@@ -119,6 +119,22 @@ ssh -i ~/.ssh/samezario.pem ec2-user@<IP> 'sudo bash /opt/samezario/scripts/ec2-
 ssh ... 'systemctl status samezario caddy; journalctl -u samezario -n 50'
 ```
 
+## サーバの上限（環境変数）
+
+会場で QR から一斉に入られても箱が落ちないための上限。どれも `attach()` の時点で読む。
+変えるときは systemd ユニット（`scripts/ec2-deploy.sh` が生成）に `Environment=` を足す。
+
+| 環境変数 | 既定 | 意味 |
+| --- | --- | --- |
+| `WS_MAX_ROOMS` | 8 | 総部屋数（1部屋最大14人＝112人）。同じマップに空きが無く、部屋も増やせない人には `{t:'busy'}` を送って 1013 で閉じる。クライアントは黙ってソロに落ちる。0 で無制限 |
+| `WS_MAX_PER_IP` | 0（無制限） | IP ごとの同時接続数。超えると upgrade を 429 で断る。**会場の Wi-Fi は全員が同じ IP（NAT）になる**ので既定は無効。有効にするなら会場の人数より十分大きく（例: 64） |
+| `TRUST_PROXY` | 0 | 1 なら IP を `X-Forwarded-For` の先頭から取る。Caddy の後ろで `WS_MAX_PER_IP` を使うなら **1 が必須**（でないと全員 127.0.0.1 に見えて一括で数えられる）。直結で 1 にすると偽装ですり抜けられる |
+| `WS_MAX_PAYLOAD` | 4096 | 1メッセージの最大バイト数。超えると 1009 で閉じる（クライアントの最大は join の 200 バイト未満） |
+| `WS_IN_RATE` / `WS_IN_BURST` | 40 / 80 | 1接続の受信のトークンバケツ（毎秒の補充 / 溜められる数）。溢れた分は読まずに捨てる。クライアントは 20Hz |
+| `WS_IN_KILL` | 400 | 1秒にこれを超えて送ってくる線は切る |
+| `WS_DEAD_MS` | 30000 | これだけ黙った線は切る（README「オンライン対戦」） |
+| `WS_DEFLATE` | off | `on` で permessage-deflate（CPU を食うので既定は切る） |
+
 ## ドメインについて
 
 `nip.io` は「IPを含むホスト名をそのIPに返す」だけの公開DNS。ドメインを買わずに

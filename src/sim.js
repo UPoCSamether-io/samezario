@@ -58,6 +58,22 @@ const segsFor = (len) => clamp(Math.round(len / SEG_PX), SEGS_MIN, SEGS_MAX);
 const HEAD_SAFE = 4 / 18;
 const hitFromOf = (n) => Math.max(1, Math.round(n * HEAD_SAFE));
 const FOOD_PER_AREA = 14000;   // 餌1個あたりの面積(px²)
+// 人のサメを湧かせるとき、壁から最低これだけ離す(px)。
+// 初期の素の速さ 172px/s × 湧き直後の無敵 3秒 ≒ 516px より少し内側 —— 何も操作せず
+// 湧いた向きのまま泳いでも、無敵のうちに壁へ届きにくい距離。これ以上取ると
+// 多摩川の河川敷（通路の中央値 768px の細い帯）で候補が尽きる（docs/final/specs/03a.md）
+const SPAWN_CLEAR = 450;
+// 湧き位置の候補を何点まで引くか。多摩川で「凪 かつ 壁から 400px 以上」の点は
+// 内側の 6.7% しか無いが、240 回引けば1点も当たらない確率は 1e-7 未満
+const SPAWN_TRIES = 240;
+// 湧いた向きの前方に要る横の余白(px)。openHeading は、壁からこれ以上離れたまま
+// 進める距離がいちばん長い向きを選ぶ。幅が要るのは、飛行場の気流が開始直後
+// （envT 0〜2.6秒）に吹いていて体を横へ流すから（外壁死した回の実測で 130〜160px）。
+// 各マップ 2000 回・操作なしで 8秒以内に死んだ回数（4マップ計）:
+//   0px（細い光線）1078 / 100px 193 / 150px 6 / 200px 1 / 250px 0。
+// 200px でも飛行場で 4秒以内の死が 8000 回に 1 回残ったので 250px。
+// SPAWN_CLEAR 450 から引いて、湧いた点から最初の1歩に 200px が残る
+const SPAWN_SIDE = 250;
 
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export const rand = (a, b) => a + Math.random() * (b - a);
@@ -167,6 +183,55 @@ export function makeArena(map) {
     return null;
   };
 
+  /**
+   * 人のサメの湧き位置。spot() を何点か引いて、いちばん安全な点を返す。
+   * 採点は「壁までの距離（SPAWN_CLEAR で頭打ち）＋ calm(x, y) が真なら SPAWN_CLEAR」。
+   * calm はギミックの効かない場所の判定（多摩川の河川敷）で、arena はギミックを知らないので
+   * 呼び側が渡す。打ち切りがあるので必ず返る（候補はすべて spot() の内側の点）。
+   *
+   * 湧くときに1回だけ呼ぶ。edgeDist は頂点 26〜64 個の総当たりで、240 回でも 1ms 未満
+   */
+  const safeSpot = (calm) => {
+    const full = calm ? SPAWN_CLEAR * 2 : SPAWN_CLEAR;
+    let best = null, bestScore = -1;
+    for (let i = 0; i < SPAWN_TRIES; i++) {
+      const p = spot();
+      const sc = Math.min(edgeDist(p.x, p.y), SPAWN_CLEAR) + (calm && calm(p.x, p.y) ? SPAWN_CLEAR : 0);
+      if (sc > bestScore) { best = p; bestScore = sc; }
+      if (sc >= full) break;   // 満点の点が出たらそれ以上引いても良くならない
+    }
+    return best;
+  };
+
+  /**
+   * (x, y) から、いちばん遠くまで「壁から SPAWN_SIDE 以上離れたまま」進める向き。
+   * 16方向それぞれへ、壁までの距離ぶんずつ進む（sphere tracing）。1歩は
+   * 「いまの点の壁までの距離 − SPAWN_SIDE」なので、細い出っ張りを飛び越えることがない ——
+   * 一定刻みで inside() を撃つ形だと、60px 刻みで多摩川の細い岸を飛び越えて
+   * 「1200px 開いている」と答え、675px 先の壁へ向けていた（実測）。
+   * SPAWN_SIDE の幅を持たせるのは、気流が体を横へ押すから（飛行場の気流は
+   * 開始 2.6秒で 130〜160px 横へ流していた）。並んだら先に見た向き —— 見始めの向きを
+   * 乱数でずらしてあるので、広場の真ん中で湧いても毎回同じ向きにはならない
+   */
+  const openHeading = (x, y) => {
+    const N = 16, MAX = 1200;
+    const a0 = rand(0, TAU);
+    let bestA = a0, bestD = -1;
+    for (let k = 0; k < N; k++) {
+      const a = a0 + (k * TAU) / N;
+      const cx = Math.cos(a), sy = Math.sin(a);
+      let d = 0;
+      while (d < MAX) {
+        const room = edgeDist(x + cx * d, y + sy * d) - SPAWN_SIDE;
+        if (room < 8) break;   // 壁から SPAWN_SIDE の線に着いた（8px 未満は刻んでも進まない）
+        d += room;
+      }
+      d = Math.min(d, MAX);
+      if (d > bestD) { bestD = d; bestA = a; }
+    }
+    return bestA % TAU;
+  };
+
   /** 多角形の全辺への最短距離(px) */
   const edgeDist = (x, y) => {
     let minD = Infinity;
@@ -183,7 +248,7 @@ export function makeArena(map) {
     return minD;
   };
 
-  return { inside, bb, home, spot, escape, edgeDist, poly: { xs, ys, n } };
+  return { inside, bb, home, spot, safeSpot, openHeading, escape, edgeDist, poly: { xs, ys, n } };
 }
 
 // ---------- 環境ギミック（#83） ----------
@@ -456,14 +521,34 @@ export function createWorld({ map, authority = true, diffs = false }) {
   }
 
   // ---------- サメ ----------
-  function makeShark(d, isBot, name, nid) {
-    let x, y, tries = 0;
-    do {
-      ({ x, y } = arena.spot());
-      tries++;
-    } while (isBot && sharks[0] && Math.hypot(x - sharks[0].x, y - sharks[0].y) < 900 && tries < 30);
+  // 多摩川の河川敷＝流れの無い帯。流れは向きと関係なく体を押すので、無敵の3秒間
+  // 壁へ押し付けられたまま過ぎ、切れた最初のティックで死ぬ事故の出どころだった。
+  // 帯（data.js の bands）は y だけで決まり時刻に依らないので、t は 0 で引いてよい。
+  // 気流（飛行場）・湧水は避けない —— 気流は周期で止み、湧水は害が無い
+  const calmAt = gimmick?.kind === 'current'
+    ? (x, y) => gimmick.windAt(x, y, 0) === NO_WIND
+    : null;
 
-    const angle = rand(0, TAU);
+  /**
+   * safe: 人のサメの湧き方にするか。壁から SPAWN_CLEAR 離れた（多摩川は河川敷の）点に、
+   * いちばん開けた向きで湧かせる。ランダムな点と向きのままだと壁際に壁を向いて湧き、
+   * 無敵が切れた直後に「外壁」で死んでいた（多摩川で操作なし 12秒以内の外壁死 79%）。
+   * ボット・ボス・applySnapshot の仮置きは false のまま —— ボットの分布を変えると
+   * 難易度が変わるし、仮置きはどうせサーバの位置へワープする。
+   * 乱数は Math.random のままでよい。湧き位置はサーバだけが決めて full で配る
+   */
+  function makeShark(d, isBot, name, nid, safe = false) {
+    let x, y, angle, tries = 0;
+    if (safe) {
+      ({ x, y } = arena.safeSpot(calmAt));
+      angle = arena.openHeading(x, y);
+    } else {
+      do {
+        ({ x, y } = arena.spot());
+        tries++;
+      } while (isBot && sharks[0] && Math.hypot(x - sharks[0].x, y - sharks[0].y) < 900 && tries < 30);
+      angle = rand(0, TAU);
+    }
     rosterDirty = true;
     const s = {
       def: d, name, isBot,
@@ -508,7 +593,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
       if (worst >= 0) { sharks.splice(worst, 1); rosterDirty = true; }
     }
     const def = SHARKS.find((s) => s.id === sharkId) || SHARKS[0];
-    const s = makeShark(def, isBot, name, nid);
+    const s = makeShark(def, isBot, name, nid, !isBot);
     sharks.push(s);
     return s;
   };
@@ -1265,6 +1350,13 @@ export function createWorld({ map, authority = true, diffs = false }) {
         s.skill = flags & 4 ? 0.25 : 0;
         s.guard = flags & 8 ? 0.25 : 0;
         s.iframe = flags & 16 ? 0.25 : 0;
+      } else if (!(flags & 16)) {
+        // 自機の無敵も、切れたかどうかはサーバに従う。無敵は「自分の操作」ではなく
+        // サーバが決める効果で、下の slow / rapid と同じ理屈。手元だけで数えていると、
+        // fps が落ちて手元の時計が遅れたぶん点滅と壁の押し戻しが残り、
+        // サーバではもう切れていて「無敵中なのに外壁で死んだ」に見えた。
+        // 縮めるだけで延ばさない（サーバが無敵なのに手元が 0、は起きない）
+        s.iframe = 0;
       }
       // スロー / 急流は自分にも当てる。他のフラグと違って「自分の操作」ではなく
       // サーバが決めた効果なので、除け者にすると当てられた本人の予測だけが全速のままになる。

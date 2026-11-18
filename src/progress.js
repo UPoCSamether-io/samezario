@@ -7,7 +7,7 @@
 // 判定をサーバへ移したら replace() にサーバの返したスナップショットを渡せばよく、
 // 呼び出し側は変わらない。
 //
-// shark / name / best / seenHowto は進捗ではなく「前回の選択」や既読の印なので、
+// shark / name / map / best / seenHowto は進捗ではなく「前回の選択」や既読の印なので、
 // main.js が直接書いて persist() する（従来どおり）。混ぜないよう、この2系統だけは意識して分けてある。
 
 import { SHARKS, MAPS } from './data.js';
@@ -25,6 +25,7 @@ const createDefaults = () => ({
   best: 0,
   shark: SHARKS[0].id,
   name: '',
+  map: '',        // 前回遊んだロケ地の id。タイトルの「すぐ遊ぶ」が使う。空なら一度も遊んでいない
   points: 0,
   spots: {},
   seenHowto: false,   // 遊び方を一度でも閉じたか。初回だけ自動で挟むための印

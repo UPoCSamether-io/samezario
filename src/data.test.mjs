@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { SHARKS, MAPS } from './data.js';
+import { SHARKS, MAPS, TIPS, tipFor } from './data.js';
 import { salvageView, STAGE_RATIO } from './salvage.js';
 
 test('全サメが era を持ち、1..6 が重複なく揃っている', () => {
@@ -131,4 +131,24 @@ test('ボスの aspect は実測値の範囲に収まっている', () => {
     assert.equal(typeof d.aspect, 'number', `${d.id} に aspect がない`);
     assert.ok(d.aspect > 1 && d.aspect < 3, `${d.id} の aspect が範囲外: ${d.aspect}`);
   }
+});
+
+test('TIPS はすべて実在するロケ地に紐づき、どのロケ地にも1つ以上ある', () => {
+  const ids = new Set(MAPS.map((m) => m.id));
+  for (const t of TIPS) {
+    assert.ok(ids.has(t.map), `TIPS の map が不明: ${t.map}`);
+    assert.equal(typeof t.text, 'string');
+  }
+  for (const m of MAPS) assert.ok(TIPS.some((t) => t.map === m.id), `${m.id} の TIPS がない`);
+});
+
+test('tipFor は遊んだロケ地の TIPS だけを返す', () => {
+  for (const m of MAPS) {
+    const own = TIPS.filter((t) => t.map === m.id).map((t) => t.text);
+    for (const r of [0, 0.5, 0.999999]) assert.ok(own.includes(tipFor(m.id, r)), `${m.id} / ${r}`);
+  }
+  // 調布駅で深大寺そばの話が出ていた不具合の再発防止
+  assert.ok(!tipFor('chofu', 0.3).includes('｜深大寺《じんだいじ》'));
+  // 未知のロケ地は全体から選ぶ（枠を空にしない）
+  assert.ok(TIPS.some((t) => t.text === tipFor('nowhere', 0)));
 });

@@ -535,7 +535,7 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    DOM 順のまま畳むと一覧が最下段に来て、「一覧をタップ → 上へスクロールして
    プレビューを確認 → また下へ」の往復が毎回発生する。
    タップ対象(一覧)をその結果(プレビュー)の直下に置いて往復を消す。
-   決定ボタンはスクロール領域の外のツールバーに居るので、ここでは触らない。
+   決定ボタン（ACTION!）は名前欄の直後、いちばん最後に置く。
 
    `>` (子結合子) は使えない。display: contents は箱の生成を消すだけで
    DOM ツリーは変えないので、この4要素は grid item にはなっても
@@ -556,10 +556,12 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #shark-cols #preview-tag  { order: 2; }   /* 立ち絵の説明なので直下に置く */
   #shark-cols #shark-list   { order: 3; overflow: visible; }
   #shark-cols #stats        { order: 4; }
-  #shark-cols .name-pane    { order: 5; }   /* 一度入れたら変えないので最後 */
+  #shark-cols .name-pane    { order: 5; }   /* 名前 → ACTION! を一本の流れにする */
+  #shark-cols #start-btn    { order: 6; }
 }
 
-/* サメ選択の一覧は、ダイヤルを一周させるために同じ5体を3面ぶん持っている。
+/* サメ選択の一覧は、ダイヤルを一周させるために同じ面（解放済みのサメ ＋「あと N 種類」）を
+   3面ぶん持っている（1面が2枚以下のときは中央の1面だけ。main.js の DIAL_MIN）。
    ダイヤルでない環境では複製が並んで見えるので、中央の面だけ出す。
    このブロックが下のダイヤル側より前に居るのは意図的 —
    特異度が同じなので、順序が入れ替わると隠す側が勝って一周できなくなる */
@@ -695,6 +697,17 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   }
   /* 中央から外れた候補は少し引っ込める。ダイヤルらしさは選択中との差で出す */
   #shark-list .shark-tile:not(.is-sel) { opacity: .55; transform: scale(.92); }
+  /* 回さない一覧（解放1体＋まとめ枠。main.js の DIAL_MIN）。ダイヤルの中央寄せをやめ、
+     2枚まとめて縦の真ん中に置く。選択中を中央にすると下の枠が一覧の下端で文字の途中から
+     切れ、壊れて見えた（実測 844x390、一覧の高さ 117px に対し 2枚で約 98px なら収まる） */
+  #shark-list.dial-flat { overflow: hidden; justify-content: center; scroll-snap-type: none; }
+
+  /* ---- サメ選択の ACTION! ----
+     右カラム（約 270px）に 一覧 → NAME → ACTION! を縦に積む。ACTION! は腕の 13px を
+     含めて約 50px に抑え、一覧（ダイヤル）に高さを残す。
+     上を下より 3px 厚くするのは、ふりがなが帯の罫に触れないため（#map-next と同じ） */
+  #start-btn.go > div:last-child { padding: calc(0.2rem + 3px) 0.75rem 0.2rem; font-size: 1rem; line-height: 1.5; }
+  #shark-bar { padding-block: 0.15rem; }
 }
 
 /* ---- ゲーム HUD ----
@@ -716,6 +729,65 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
     padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right))
              max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
   }
+}
+/* ---- 食べる・倒すの手応え（#4）----
+   SIZE の跳ね。食べて増えた瞬間に一瞬大きくする（main.js の paintJuice が bump を付け直す）。
+   跳ねは数字の左下を支点にする —— 中央支点だと、桁の多い数字ほど左の「SIZE」に被る */
+/* 跳ねた数字は右のコンボ札に一瞬かぶるので、数字を上に重ねる（札が数字を隠すと増えた瞬間が読めない） */
+#hud-mass { display: inline-block; transform-origin: 0 100%; position: relative; z-index: 1; }
+#hud-mass.bump { animation: mass-bump .18s cubic-bezier(.2,.9,.3,1.3); }
+@keyframes mass-bump {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+/* コンボ。3連から出し、途切れたら 0.4秒で消える。数が増えた瞬間だけ小さく弾ませる */
+#hud-combo {
+  align-self: center;
+  opacity: 0;
+  transition: opacity .4s ease-out;
+}
+#hud-combo.on { opacity: 1; transition-duration: .08s; }
+#hud-combo.pop { animation: combo-pop .16s ease-out; }
+@keyframes combo-pop {
+  0%   { transform: scale(1.25) rotate(-4deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+/* キルフィード。最大3行で、1行は 2.5秒で消える（main.js の FEED_SEC と同じ長さ）。
+   幅は横画面スマホで左上の SIZE と右上の順位帯の間（約 300px）に収まるよう切る */
+#hud-feed { width: max-content; max-width: min(420px, 60vw); }
+/* ボス板（深大寺・上中央）が出ている間は、その下へ下げる */
+#hud-boss:not(.hidden) ~ #hud-feed { top: 6.5rem; }
+.feed-row {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0.25rem 0.75rem;
+  border: 2px solid var(--color-ink);
+  border-radius: 0.375rem;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  box-shadow: 3px 3px 0 var(--color-ink);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.6;
+  animation: feed-life 2.5s ease-out forwards;
+}
+.feed-row > .feed-name { color: var(--color-danger); margin-right: 0.15em; }
+@keyframes feed-life {
+  0%   { opacity: 0; transform: translateY(-8px) scale(1.1); }
+  8%   { opacity: 1; transform: translateY(0) scale(1); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* 動きを減らす設定では跳ねもフィードの出入りも止める。表示そのものは残す
+   （フィードは 2.5秒で main.js が外すので、フェードが無くても消える） */
+@media (prefers-reduced-motion: reduce) {
+  #hud-mass.bump, #hud-combo.pop { animation: none; }
+  #hud-combo { transition: none; }
+  .feed-row { animation: none; }
 }
 
 /* ミニマップ基本（スマホ・小型画面） */
@@ -779,6 +851,34 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #hud-actions > *:active { opacity: 1; }
 }
 
+/* 順位表（#5）: 上位3人＋自分。4・5位はタップで広げたときだけ出す。
+   自分の行のすぐ下に「あと N で X 位」を小さく添える（スリム帯では「+N→X位」に縮める） */
+#hud-board-card:not(.expanded) #hud-board > li.board-extra { display: none; }
+#hud-board > li.board-sep { margin-top: 0.375rem; }
+#hud-board .board-next-short { display: none; }
+#hud-board > li.board-next {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 0.2em;
+  padding: 0.15rem 0.375rem 0;
+  font-size: 0.85em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* N の数字は一段大きく、黄の下線で「ここを見る」を示す */
+#hud-board > li.board-next > b {
+  font-size: 1.15em;
+  text-decoration: underline 3px var(--color-yellow);
+  text-underline-offset: 2px;
+}
+/* ボスの行は番号を付けず、ボスの耐久ゲージと同じ赤の「BOSS」札を前に置く（サメの順位には数えない） */
+#hud-board .board-boss-tag {
+  color: var(--color-danger);
+  font-size: 0.8em;
+  letter-spacing: 0.15em;
+}
+
 /* 横持ちスマホ特有の調整（高さ500px以下） */
 @media (max-height: 500px) {
   #hud-top-left { gap: 0.25rem; }
@@ -826,12 +926,28 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
     margin: 0;
     border: none;
   }
+  /* 「あと N」（#5）: 帯では自分の重さ（左の SIZE と同じ数字）の代わりに「+N→X位」を出す。
+     ふりがなが帯の高さを押し広げないよう、rt は字の上にはみ出させる */
+  #hud-board-card:not(.expanded) #hud-board > li.has-next .board-next-short { display: inline; }
+  #hud-board-card:not(.expanded) #hud-board > li.has-next .board-mass { display: none; }
+  /* 「+N→X位」のぶん自分の欄を広く取り、名前が「Y…」まで潰れないようにする */
+  #hud-board-card:not(.expanded) #hud-board > li.has-next { flex-grow: 1.5; }
+  /* 1位の重さも帯では消して、名前に幅を回す（4桁になると名前が「Fin…」まで潰れていた） */
+  #hud-board-card:not(.expanded) #hud-board > li.board-lead:not(.board-me) .board-mass { display: none; }
+  #hud-board .board-next-short rt { line-height: 1; }
+  #hud-board > li.board-sep { margin-top: 0; }
+
   /* 通常時（自分が1位でない時）: 1位と自分を表示 */
   #hud-board > li:not(.board-lead):not(.board-me) { display: none; }
 
   /* 自分が1位の時: 1位（自分）と 2位 を表示 */
   #hud-board-card.is-lead #hud-board > li:not(.board-lead):not(.board-second) { display: none; }
   #hud-board-card.is-lead #hud-board > li.board-second { display: flex; }
+
+  /* 自分しかサメが居ない時: 2位の代わりにボスの行を出す（帯が自分1人で伸びないように） */
+  #hud-board-card.is-lead.solo #hud-board > li.board-boss { display: flex; }
+  #hud-board-card:not(.expanded) #hud-board .board-boss-tag { color: #ff9182; }
+  #hud-board-card:not(.expanded) #hud-board > li.board-boss .board-mass { display: none; }
 
   #hud-board > li.board-lead:not(.board-me) { color: var(--color-mint); }
   #hud-board > li.board-second:not(.board-me) { color: var(--color-mint); }
@@ -926,9 +1042,130 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   html.unlocking #rotate-hint { display: none; }
 }
 
-/* ロケ地のツールバー。ボタンの文言は解放状況で入れ替わるので、折り返すと
-   ボタンが伸びてツールバーごと地図を押し下げる。行数を1に固定して高さを保つ */
-#map-next-label { white-space: nowrap; }
+/* ================= 画面のボタン規則 =================
+   どの画面でも「次に押すもの」が一目で分かるように、形で役割を分ける。
+     進む   .btn.primary.go  大きい・黄色の塗り・右下（パネルや一覧の下＝視線の終点）
+     戻る   .btn.back        小さい・白・左上。文言は「← 戻る」程度に短く
+     寄り道 .btn.sub         小さい・白（リザルトの「ロケ地を変える」など）
+     見出し .screen-title    枠も影もない文字だけ。ボタンと同じ「黄色い箱」にすると
+                             押せそうに見えて、本物のボタンと取り合いになっていた
+   中身の寸法はユーティリティではなくここで決める。サメ選択（#2b）でも同じクラスを
+   付けるだけで、同じ大きさにそろう。
+   ラベルは div:last-child で掴む — #retry には SPACE バッジ（span）が先に居るので、
+   :not(.cap) だとバッジまで太らせてしまう */
+/* flex にしないのは、ルビ（<ruby>）と地の文がそれぞれ別の flex アイテムに割れて
+   「もう 一度撮 る」と間が空くため。アイコンは vertical-align で行の真ん中へ */
+.btn.go > div:last-child {
+  display: block;
+  text-align: center;
+  padding: 0.7rem 1rem;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.btn.go .material-symbols-rounded { vertical-align: -0.2em; margin-right: 0.3rem; }
+.btn.back > div:last-child {
+  padding: 0.3rem 0.9rem;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.btn.sub > div:last-child {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+}
+/* 寄り道は影を浅くして、隣の主役より一段引っ込んで見せる */
+.btn.sub { box-shadow: 3px 3px 0 0 var(--color-ink); }
+@media (hover: hover) {
+  .btn.sub:hover { box-shadow: 4px 4px 0 0 var(--color-ink); }
+}
+/* 腕は幅いっぱいの棒なので、持ち上がりは 幅×sin(角度)。-2.5deg だと 560px の
+   「もう一度撮る」で約 25px、300px のロケ地の主ボタンでも約 13px 上がり、上の
+   Tips の枠やパネル本文に食い込んでいた。幅の広い進むボタンだけ -1deg（約 10px 以内）に */
+@media (hover: hover) {
+  .btn.go:hover::before { transform: rotate(-1deg); }
+}
+/* :active は hover より後に書く（.btn と同じ理由） */
+.btn.sub:active { box-shadow: 0 0 0 0 var(--color-ink); transform: translate(3px, 3px); }
+
+/* 見出し。白い字にインクの縁取り（8方向の text-shadow）と、下に黄色い線を1本。
+   -webkit-text-stroke は字の内側にも食い込んで、細いふりがなが潰れるので使わない */
+.screen-title {
+  position: relative;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.5rem;
+  line-height: 1.3;
+  color: var(--color-paper);
+  text-align: center;
+  white-space: nowrap;
+  padding: 0 0.25rem 0.35rem;
+  text-shadow:
+    2px 0 0 var(--color-ink), -2px 0 0 var(--color-ink),
+    0 2px 0 var(--color-ink), 0 -2px 0 var(--color-ink),
+    2px 2px 0 var(--color-ink), -2px 2px 0 var(--color-ink),
+    2px -2px 0 var(--color-ink), -2px -2px 0 var(--color-ink),
+    3px 4px 0 var(--color-ink);
+}
+.screen-title::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-yellow);
+}
+@media (min-width: 48rem) { .screen-title { font-size: 1.875rem; } }
+
+/* 文字だけのリンク。行き先は主ボタンと同じなので、ボタンの形にはしない */
+.text-link {
+  font-weight: 700;
+  font-size: 0.8125rem;
+  color: var(--color-paper);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+@media (hover: hover) { .text-link:hover { color: var(--color-yellow); } }
+
+/* ロケ地の主ボタンの置き場。パネル（#map-info）は overflow-hidden なので、
+   カチンコの腕（ボタンの上 13px、hover で幅×sin2.5° ほど持ち上がる）と
+   右下の影（5〜7px）が切れないだけの余白を取る */
+#map-cta {
+  padding: 0.35rem 0.85rem 0.6rem;
+  border-top: 3px solid var(--color-ink);
+  background: var(--color-navy-deep);
+}
+/* 文言は解放状況で入れ替わる。折り返すとボタンが伸びて本文の見える高さが変わるので、
+   行数を1に固定する（.btn.go 側で nowrap）。それでも入らない細いパネルでは短い形に */
+#map-next-label .short { display: none; }
+@container map-info (width < 250px) {
+  #map-next-label .long { display: none; }
+  #map-next-label .short { display: inline; }
+}
+#map-info { container: map-info / inline-size; }
+/* 本文の下端を 16px だけ薄くして、「下にまだ続く」ことを伝える（主ボタンの帯で切れて見えるため） */
+#map-info-body { mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); }
+#map-alt { font-size: 0.75rem; }
+/* 地図のエリアはダブルタップで次へ進む（main.js の DOUBLE_TAP_MS）。
+   ブラウザのダブルタップ拡大が残っていると、2打目が拡大に取られる */
+.map-area { touch-action: manipulation; }
+
+/* タイトルの分割ボタン（すぐ遊ぶ｜選ぶ、main.js の paintQuickPlay）。
+   並べた2枚は items-stretch で高さがそろうので、中身を縦の真ん中に置く。
+   .btn は display: block のうえ素の CSS でユーティリティ（w-auto 等）より強いので、
+   ここで直接書く。出し入れは hidden 属性（preflight の !important）が勝つ */
+#title-start > .btn { display: flex; flex-direction: column; }
+#title-start > .btn > :not(.cap) { flex: 1; }
+#start-go-full, #start-go-pick { display: flex; flex-direction: column; justify-content: center; }
+/* 「選ぶ」側は中身の幅だけ。1枚のときは従来どおり nav の幅いっぱい */
+#title-start > #start-go.w-auto { width: auto; flex: none; }
+/* 前回のロケ地／サメは長いと1行に収まらないので、ふりがなごと末尾を「…」で切る */
+#quick-play-sub rt { font-size: 0.6em; }
 
 
 /* ---- 横画面のタイトル ----
@@ -1062,7 +1299,23 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #map-en { display: none; }
   #map-title { font-size: 1.25rem; }
   #map-badge { margin-bottom: 0.4rem; }
+  /* 主ボタンに取られた高さを、バッジの下の空きから返してもらう（16px → 4px） */
+  #map-badges { margin-bottom: 0.25rem; }
   #map-info-body p { line-height: 1.5; }
+  /* 主ボタンのぶん本文がさらに減る。取り返す順に:
+     - パネル上端の縞（20px＋罫 4px）を畳む。カチンコの絵柄は主ボタン自身が持っている
+     - ボタンの上の余白は腕の 13px（.btn の margin-top）だけにし、ラベルを一段薄く
+     - ツールバーの上下の余白を詰める（地図とパネルが同じだけ伸びる） */
+  #map-info > .cap { display: none; }
+  #map-cta { padding: 0 0.6rem 0.4rem; }
+  /* 主ボタンの下の選び直しは畳む（同じリンクが右上の #map-skip にある）。
+     出すと本文が 20px 減り、未解放エリアの史実が1行しか映らなかった（実測 844x390） */
+  #map-alt { display: none; }
+  /* 上を下より 3px 厚くするのは、ふりがなが帯の下線（.cap の罫）に触れないため */
+  #map-next.go > div:last-child { padding: calc(0.15rem + 3px) 0.75rem 0.15rem; font-size: 1rem; line-height: 1.5; }
+  #map-bar { padding-block: 0.15rem; }
+  .screen-title { font-size: 1.25rem; padding-bottom: 0.25rem; }
+  .screen-title::after { height: 3px; }
 }
 
 /* 図鑑のカード。auto-fill なので列数は幅任せ。下限を 150px まで緩めるのは
@@ -1120,9 +1373,34 @@ rp {
   transform: translateY(-0.2em);
 }
 
-/* 未解放のサメ。図鑑では影、選択ダイヤルでは押せない */
+/* 未解放のサメ。図鑑では影（サメ選択では1枠にまとめるので、伏せ字のタイルはもう無い） */
 .dex-silhouette { filter: brightness(0) opacity(.35); }
-.shark-locked { opacity: .45; pointer-events: none; filter: grayscale(1); }
+/* サメ選択の「あと N 種類」の1枠（main.js の moreTile）。選べないので影を外し、
+   金寄りの破線で「これから埋まる枠」に見せる。中の一文は読ませたいので灰色にはしない */
+.shark-more { border-style: dashed; border-color: var(--color-yellow-dim); cursor: help; }
+/* 押したら一文を光らせる（画面は移さない）。横画面では一文を畳んでいるので、
+   光らせている間だけ「あと N 種類」と入れ替える。長さは main.js の MORE_HINT_MS */
+.shark-more.hinting .tile-sub { animation: more-hint .6s ease-out 2; color: var(--color-ink); }
+@keyframes more-hint {
+  0%, 100% { background: transparent; }
+  40%      { background: color-mix(in srgb, var(--color-yellow) 70%, transparent); }
+}
+@media (max-height: 500px) {
+  #shark-list .shark-more.hinting .tile-name { display: none; }
+  #shark-list .shark-more.hinting .tile-sub { display: block; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shark-more.hinting .tile-sub { animation: none; background: color-mix(in srgb, var(--color-yellow) 55%, transparent); }
+}
+/* ACTION! は広い画面では一段大きく。横画面の寸法はダイヤルのブロック（id 指定）が持つ */
+@media (min-height: 501px) { #start-btn.go > div:last-child { font-size: 1.25rem; } }
+
+/* サメ選択の ACTION!。押せることが伝わるよう、史料の獲得ボタン（.claim-pulse）と
+   同じ周期・強さで金色に脈打たせる。transform ではなく filter を使うのは、
+   hover / :active の持ち上げ・押し込み（.btn の transform）と取り合わないため。
+   押した後（play() が disabled にする）は止めて、.btn[disabled] の灰色を活かす */
+#start-btn:not([disabled]) { animation: claim-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { #start-btn:not([disabled]) { animation: none; } }
 
 /* 史料。海の底の泥・砂・海水の滲みで読めなくなっている文字と、
    この段階で新しく洗い出された文字。
@@ -1435,4 +1713,14 @@ rp {
      ほぼ同じ1文で、ゲージのラベルと [?] のヘルプに二重に載っている。
      短辺だけ隠す。#salvage-action に入るもう一方の獲得ボタンは <button> なので残る */
   #salvage-action p { display: none; }
+}
+
+/* 手応え（#4）の横画面スマホ。フィードは SIZE と順位帯の間に入るよう細く・小さく
+   （260px まで。300px だと右の一時停止ボタンに掛かった）。
+   ボス板はここでは左下へ逃げているので、ボス戦でもフィードは上に置いたまま */
+@media (max-height: 500px) {
+  #hud-feed { top: max(0.5rem, env(safe-area-inset-top)); max-width: min(260px, 40vw); gap: 0.2rem; }
+  #hud-boss:not(.hidden) ~ #hud-feed { top: max(0.5rem, env(safe-area-inset-top)); }
+  .feed-row { font-size: 13px; padding: 0.1rem 0.5rem; box-shadow: 2px 2px 0 var(--color-ink); }
+  #hud-combo { font-size: 11px; }
 }

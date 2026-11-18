@@ -108,13 +108,42 @@
       </script>
 
       <nav class="w-full max-w-[380px] flex flex-col gap-3">
-        <button class="btn primary" data-go="map">
-          <div class="cap clapper-stripes"></div>
-          <div class="py-3 px-6 flex items-center justify-between">
-            <span class="font-display font-extrabold text-2xl">ゲームスタート</span>
-            <span class="material-symbols-rounded">movie</span>
-          </div>
-        </button>
+        <!-- 2回目以降は「すぐ遊ぶ｜選ぶ」の分割ボタンになる（main.js の paintQuickPlay）。
+             4段にすると横画面で nav が潰れるので、1段の高さのまま左右に割る。
+             右は従来の「ゲームスタート」そのもの（data-go="map" は初回の遊び方の寄り道と
+             scripts/shots.mjs の toMap() が使うので残す）。前回が無いときは今までどおり1枚 -->
+        <div id="title-start" class="flex gap-2.5 items-stretch">
+          <button id="quick-play" class="btn primary flex-1 min-w-0" type="button" hidden>
+            <div class="cap clapper-stripes"></div>
+            <!-- 2行目（ロケ地／サメ）はふりがな付きなので、1行目との間と下の枠線の両方に余白を取る。
+                 ボタンの高さは1枚の「ゲームスタート」と同じに保つ（1行目を text-base に抑えて捻出） -->
+            <div class="quick-body pl-3 pr-4 pb-[5px] flex items-center gap-1.5 text-left">
+              <span class="material-symbols-rounded !text-[30px] shrink-0">play_arrow</span>
+              <span class="flex-1 min-w-0 leading-none">
+                <span class="block font-display font-extrabold text-base">すぐ<ruby>遊<rp>(</rp><rt>あそ</rt><rp>)</rp></ruby>ぶ</span>
+                <span id="quick-play-sub" class="block mt-[3px] font-bold text-[11px] text-ink/90 truncate"></span>
+              </span>
+              <!-- 下の「サメ図鑑」「史料」と同じく右端にアイコン -->
+              <span class="material-symbols-rounded shrink-0">movie</span>
+            </div>
+          </button>
+          <button id="start-go" class="btn primary" data-go="map">
+            <div class="cap clapper-stripes"></div>
+            <div id="start-go-full">
+              <div class="py-3 px-6 flex items-center justify-between">
+                <span class="font-display font-extrabold text-2xl">ゲームスタート</span>
+                <span class="material-symbols-rounded">movie</span>
+              </div>
+            </div>
+            <div id="start-go-pick" hidden>
+              <!-- 文字だけにする。アイコンを付けると、左下の設定ボタン（tune）と並んで
+                   「設定が2つある」ように見えた。幅を取らないよう2行に折る -->
+              <div class="px-3 flex flex-col items-center justify-center text-center">
+                <span class="font-display font-extrabold text-sm leading-tight"><ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>び<br>なおす</span>
+              </div>
+            </div>
+          </button>
+        </div>
         <button class="btn" data-go="dex">
           <div class="cap clapper-stripes"></div>
           <div class="py-2.5 px-6 flex items-center justify-between">
@@ -178,13 +207,15 @@
   <section id="s-map" class="screen">
     <div class="h-full flex flex-col py-[var(--bar-pad)] px-6">
       <!-- 左右を同じ幅(1fr)の列にして見出しを真ん中の列へ。flex + justify-between だと
-           右ボタンの文字数（「サメ選択 →」/「このエリアはまだ遊べません」）で見出しがずれる -->
-      <div class="grid grid-cols-[1fr_auto_1fr] max-sm:grid-cols-2 items-center gap-4 py-3 max-md:py-2">
-        <button class="btn !w-auto justify-self-start" data-go="title"><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2.5 font-bold text-sm">← タイトルへ<ruby>戻<rp>(</rp><rt>もど</rt><rp>)</rp></ruby>る</div></button>
-        <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard -rotate-1 max-sm:hidden">ロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>を<ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>ぶ</h2>
-        <button class="btn !w-auto primary justify-self-end" id="map-next" disabled><div class="cap clapper-stripes"></div>
-          <div id="map-next-label" class="px-5 py-2.5 font-bold text-sm">サメ<ruby>選択<rp>(</rp><rt>せんたく</rt><rp>)</rp></ruby> →</div></button>
+           左右の部品の幅の差で見出しがずれる。
+           画面のボタン規則（style.css の「画面のボタン規則」）: 戻るは左上の小さい白、
+           進むはパネルの下の大きい黄色（#map-next）。右上には同じ行き先の文字リンクだけ残す
+           （ボタンにすると「次に押すもの」が2つに見えるため） -->
+      <div id="map-bar" class="grid grid-cols-[1fr_auto_1fr] max-sm:grid-cols-2 items-center gap-4 py-3 max-md:py-2">
+        <button class="btn back !w-auto justify-self-start" data-go="title"><div class="cap clapper-stripes"></div>
+          <div>← <ruby>戻<rp>(</rp><rt>もど</rt><rp>)</rp></ruby>る</div></button>
+        <h2 class="screen-title max-sm:hidden">ロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>を<ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>ぶ</h2>
+        <button id="map-skip" class="text-link justify-self-end" type="button">サメ<ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>びへ →</button>
       </div>
 
       <!-- 畳むかどうかは style.css が決める。幅だけで畳むと横持ちスマホが潰れる -->
@@ -244,6 +275,16 @@
         <aside id="map-info" class="bg-navy text-paper ink-4 hard-lg rounded-lg overflow-hidden flex flex-col">
           <div class="cap clapper-stripes h-5 border-b-4 border-ink"></div>
           <div id="map-info-body" class="p-5 flex-1 overflow-auto thin-scroll"></div>
+          <!-- 進むボタン。本文（#map-info-body）の外＝スクロールしない所に置くので、
+               史実やボスの説明を読み進めても常に見えている。id は scripts/shots.mjs の
+               toShark() が押すので変えないこと。文言と動作は main.js の selectMap が
+               解放状態で切り替える（解放済み → サメ選択、未解放 → 解放パネル） -->
+          <div id="map-cta" class="shrink-0">
+            <button class="btn primary go" id="map-next" type="button"><div class="cap clapper-stripes"></div>
+              <div id="map-next-label"></div></button>
+            <!-- 未解放のときだけ出る、遊べるエリアへの選び直し（main.js の selectMap） -->
+            <button id="map-alt" class="text-link block mx-auto mt-1.5" type="button" hidden></button>
+          </div>
         </aside>
       </div>
     </div>
@@ -268,12 +309,13 @@
   <!-- ================= サメ選択 ================= -->
   <section id="s-shark" class="screen">
     <div class="h-full flex flex-col py-[var(--bar-pad)] px-6">
-      <div class="flex items-center justify-between gap-4 py-3">
-        <button class="btn !w-auto" data-go="map"><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2.5 font-bold text-sm">← ロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby></div></button>
-        <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard rotate-1">サメを<ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>ぶ</h2>
-        <button class="btn !w-auto primary" id="start-btn"><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2.5 font-extrabold text-sm">ACTION! →</div></button>
+      <!-- ロケ地選択（#map-bar）と同じ3列。戻るは左上の小さい白（.btn.back）。
+           進む（ACTION!）はツールバーには置かず、右カラムの一番下（一覧の下＝視線の終点）へ -->
+      <div id="shark-bar" class="grid grid-cols-[1fr_auto_1fr] max-sm:grid-cols-2 items-center gap-4 py-3 max-md:py-2">
+        <button class="btn back !w-auto justify-self-start" data-go="map"><div class="cap clapper-stripes"></div>
+          <div>← ロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby></div></button>
+        <h2 class="screen-title max-sm:hidden">サメを<ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>ぶ</h2>
+        <div></div>
       </div>
 
       <!-- 畳むかどうかは style.css が決める。幅だけで畳むと横持ちスマホが潰れる -->
@@ -291,6 +333,11 @@
         </div>
 
         <div class="shark-col min-h-0 flex flex-col gap-2.5">
+          <!-- サメ一覧 → NAME → ACTION! の順に、上から下へ一本の流れで並べる。
+               一覧が伸びて残りを取るので、ACTION! は常にカラムの一番下に居る -->
+          <!-- サメ一覧。未解放のサメは「あと N 種類」の1枠にまとめる（main.js の renderSharks） -->
+          <div id="shark-list" class="flex-1 min-h-0 overflow-auto thin-scroll flex flex-col gap-2.5 pr-1"></div>
+
           <!-- 名前。同じロケ地の部屋へ自動で入り、空いた席はボットが埋める -->
           <div class="name-pane bg-navy text-paper ink-3 hard rounded-lg p-3 shrink-0">
             <label class="block">
@@ -298,11 +345,14 @@
               <input id="player-name" maxlength="10" placeholder="PLAYER"
                      class="mt-1 w-full bg-paper text-ink ink-2 rounded px-2 py-1.5 font-display font-bold text-sm outline-none focus:bg-yellow">
             </label>
-            <p class="mt-2 text-[11px] leading-snug text-paper/70"><ruby>同<rp>(</rp><rt>おな</rt><rp>)</rp></ruby>じロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>の<ruby>部屋<rp>(</rp><rt>へや</rt><rp>)</rp></ruby>へ<ruby>入<rp>(</rp><rt>はい</rt><rp>)</rp></ruby>ります（<ruby>最大<rp>(</rp><rt>さいだい</rt><rp>)</rp></ruby>8<ruby>人<rp>(</rp><rt>にん</rt><rp>)</rp></ruby>）。<ruby>空<rp>(</rp><rt>あ</rt><rp>)</rp></ruby>いた<ruby>席<rp>(</rp><rt>せき</rt><rp>)</rp></ruby>はボットが<ruby>埋<rp>(</rp><rt>う</rt><rp>)</rp></ruby>めます。</p>
+            <p class="mt-2 text-[11px] leading-snug text-paper/70"><ruby>同<rp>(</rp><rt>おな</rt><rp>)</rp></ruby>じロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>の<ruby>部屋<rp>(</rp><rt>へや</rt><rp>)</rp></ruby>へ<ruby>入<rp>(</rp><rt>はい</rt><rp>)</rp></ruby>ります（<ruby>最大<rp>(</rp><rt>さいだい</rt><rp>)</rp></ruby>14<ruby>人<rp>(</rp><rt>にん</rt><rp>)</rp></ruby>）。<ruby>空<rp>(</rp><rt>あ</rt><rp>)</rp></ruby>いた<ruby>席<rp>(</rp><rt>せき</rt><rp>)</rp></ruby>はボットが<ruby>埋<rp>(</rp><rt>う</rt><rp>)</rp></ruby>めます。</p>
           </div>
 
-          <!-- サメ一覧 -->
-          <div id="shark-list" class="min-h-0 overflow-auto thin-scroll flex flex-col gap-2.5 pr-1"></div>
+          <!-- 進む。id は scripts/shots.mjs の startGame() と main.js の play() が使うので変えないこと。
+               Enter でも押せる（main.js の keydown）。ENTER の札はタッチ端末では .kbd-badge ごと隠れる -->
+          <button class="btn primary go shrink-0" id="start-btn" type="button"><div class="cap clapper-stripes"></div>
+            <span class="kbd-badge absolute -top-3 -right-2 z-10 px-1.5 py-0.5 bg-paper ink-2 rounded-full font-mono font-bold text-[9px] leading-none hard-sm pointer-events-none">ENTER</span>
+            <div>ACTION! →</div></button>
         </div>
       </div>
     </div>
@@ -381,11 +431,12 @@
   <!-- ================= 図鑑 ================= -->
   <section id="s-dex" class="screen">
     <div class="h-full flex flex-col py-[var(--bar-pad)] px-6">
-      <div class="flex items-center justify-between gap-4 py-3">
-        <button class="btn !w-auto" data-go="title"><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2.5 font-bold text-sm">← タイトルへ<ruby>戻<rp>(</rp><rt>もど</rt><rp>)</rp></ruby>る</div></button>
-        <h2 class="font-display font-extrabold text-2xl md:text-3xl bg-yellow ink-3 rounded-lg px-8 py-2 hard -rotate-1">サメ<ruby>図鑑<rp>(</rp><rt>ずかん</rt><rp>)</rp></ruby></h2>
-        <div class="w-[150px]"></div>
+      <!-- ロケ地選択と同じ 1fr / auto / 1fr。右の列は空けておき、見出しを真ん中に保つ -->
+      <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-4 py-3 max-md:py-2">
+        <button class="btn back !w-auto justify-self-start" data-go="title"><div class="cap clapper-stripes"></div>
+          <div>← <ruby>戻<rp>(</rp><rt>もど</rt><rp>)</rp></ruby>る</div></button>
+        <h2 class="screen-title">サメ<ruby>図鑑<rp>(</rp><rt>ずかん</rt><rp>)</rp></ruby></h2>
+        <div></div>
       </div>
       <div id="dex-list" class="flex-1 min-h-0 overflow-auto thin-scroll grid gap-4 max-sm:gap-2.5 pb-4 content-start"></div>
       <!-- ロック中のカードを押したときの解放条件。カードの中に入れるとカードの
@@ -548,6 +599,12 @@
       </div>
     </div>
 
+    <!-- キルフィード。自分が倒した相手だけを「○○を撮影終了！」で上中央に積む（最大3行・2.5秒で消える。
+         main.js の paintHud が足す）。PC ではボス板と同じ上中央なので、板が出ている間は
+         style.css が板の下へ下げる（そのため #hud-boss の後ろの兄弟に置く） -->
+    <div id="hud-feed" class="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none"
+         aria-live="polite"></div>
+
     <!-- HUD -->
     <div id="hud" class="absolute inset-0 pointer-events-none flex flex-col justify-between">
       <div class="flex justify-between items-start gap-4">
@@ -583,6 +640,10 @@
               <span class="font-mono font-bold text-xs md:text-sm lg:text-base xl:text-lg tracking-[0.25em] text-paper/80 bg-ink/75 px-2 py-0.5 md:py-1 rounded">SIZE</span>
               <span id="hud-mass" class="font-mono font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl text-yellow leading-none"
                     style="text-shadow:3px 3px 0 #2d2d2d">0</span>
+              <!-- コンボ。3連から出し、途切れたらフェードで畳む（main.js の paintHud）。
+                   地は紙色 —— 黄色だと跳ねた SIZE の黄色い数字と溶けて境目が読めない -->
+              <span id="hud-combo" class="font-mono font-bold text-sm md:text-base lg:text-lg xl:text-xl text-ink bg-paper ink-2 px-1.5 py-0.5 rounded leading-none whitespace-nowrap"
+                    aria-hidden="true">×<span id="hud-combo-n">3</span> COMBO</span>
             </div>
           </div>
           <!-- ミニマップ（SIZEの下に配置） -->
@@ -597,9 +658,9 @@
                   class="hidden shrink-0 w-11 h-11 bg-paper ink-4 hard grid place-items-center pointer-events-auto active:translate-x-1 active:translate-y-1 transition-transform">
             <span class="material-symbols-rounded !text-2xl">pause</span>
           </button>
-          <div id="hud-board-card" class="w-[220px] md:w-[260px] lg:w-[290px] xl:w-[320px] bg-paper ink-4 hard-lg overflow-hidden">
+          <div id="hud-board-card" class="w-[180px] md:w-[200px] xl:w-[230px] bg-paper ink-4 hard-lg overflow-hidden">
             <div class="clapper-stripes h-4 border-b-4 border-ink"></div>
-            <ul id="hud-board" class="p-2 md:p-2.5 space-y-0.5 text-[11px] md:text-[13px] lg:text-[14px] xl:text-[16px]"></ul>
+            <ul id="hud-board" class="p-2 md:p-2.5 space-y-0.5 text-[10px] md:text-[12px] lg:text-[13px] xl:text-[14px]"></ul>
           </div>
         </div>
       </div>
@@ -680,14 +741,20 @@
             <p id="res-tip" class="text-xs sm:text-sm max-sm:text-[12px] leading-relaxed mt-0.5"></p>
           </div>
         </div>
-        <div id="res-actions" class="p-6 pt-2 pb-6 max-sm:p-4 max-sm:pt-2 max-sm:pb-4 shrink-0 grid grid-cols-3 gap-2 sm:gap-3">
-          <button class="btn primary" id="retry"><div class="cap clapper-stripes"></div>
-            <div class="py-2 px-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap text-center">もう<ruby>一度撮<rp>(</rp><rt>いちどと</rt><rp>)</rp></ruby>る</div></button>
-          <button class="btn" data-go="map"><div class="cap clapper-stripes"></div>
-            <div class="py-2 px-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap text-center">ロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>を<ruby>変<rp>(</rp><rt>か</rt><rp>)</rp></ruby>える</div></button>
+        <!-- 画面のボタン規則どおり、進む（もう一度撮る）が主役。1段まるごとの大きい黄色にして、
+             寄り道の2つは下の段に小さく並べる。横持ちの組み替え（style.css の #res-actions）も
+             同じ「上に主役・下に2つ」なので、縦と横で並びが入れ替わらない -->
+        <div id="res-actions" class="p-6 pt-5 pb-6 max-sm:p-4 max-sm:pt-2 max-sm:pb-4 shrink-0 grid grid-cols-2 gap-x-2 sm:gap-x-3 gap-y-1">
+          <!-- SPACE / Enter でも押せる（main.js の RETRY_KEY_GRACE のあたり）。
+               キー表示は .kbd-badge なので、タッチ端末（pointer: coarse）では出ない -->
+          <button class="btn primary go col-span-2" id="retry"><div class="cap clapper-stripes"></div>
+            <span class="kbd-badge absolute -top-3 -right-2 z-10 px-1.5 py-0.5 bg-paper ink-2 rounded-full font-mono font-bold text-[9px] leading-none hard-sm pointer-events-none">SPACE</span>
+            <div class="whitespace-nowrap text-center">もう<ruby>一度撮<rp>(</rp><rt>いちどと</rt><rp>)</rp></ruby>る</div></button>
+          <button class="btn sub" data-go="map"><div class="cap clapper-stripes"></div>
+            <div class="font-display font-bold whitespace-nowrap text-center">ロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>を<ruby>変<rp>(</rp><rt>か</rt><rp>)</rp></ruby>える</div></button>
           <!-- 赤点はボタンの内側へ。外周だとカチンコの腕（.btn::before）と重なる（タイトル側と同じ理由） -->
-          <button class="btn" data-go="title" aria-label="タイトルへ"><div class="cap clapper-stripes"></div>
-            <div class="py-2 px-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap text-center relative">タイトルへ<span
+          <button class="btn sub" data-go="title" aria-label="タイトルへ"><div class="cap clapper-stripes"></div>
+            <div class="font-display font-bold whitespace-nowrap text-center relative">タイトルへ<span
               class="salvage-dot absolute -top-1 -right-0.5 w-3 h-3 rounded-full bg-danger border-2 border-ink hidden"></span></div></button>
         </div>
       </div>
