@@ -94,12 +94,15 @@ function show(name) {
       screens[cur]?.classList.remove('on');
       screens[name]?.classList.add('on');
       cur = name;
+      // リザルトの誤爆よけ（RETRY_KEY_GRACE）は、リザルトが実際に見えた瞬間から数える。
+      // showResult の頭で取ると、ここまでの CLAP + SHUT（300ms）を食われて実質 100ms しか効かない
+      if (name === 'result') resultAt = performance.now();
       syncSalvageDot();
       if (name === 'shark') renderSharks();
       if (name === 'dex') { renderDex(); if (pendingClaim) { openDex(pendingClaim, true); pendingClaim = null; } }
       if (name === 'salvage') renderSalvage();
       if (name === 'howto') goHowtoPage(0);   // 入り直したら1ページ目から
-      if (name === 'title') paintTitleShark();
+      if (name === 'title') { paintTitleShark(); paintQuickPlay(); }
       closeTitleMenu();   // 開いたまま出ていくと、戻ってきたときに乗ったままになる
       if (name === 'game') stopAttract(); else startAttract();
       // ゲームとリザルトはロケ地の曲、それ以外はメインテーマ
@@ -327,6 +330,48 @@ function paintTitleShark() {
   img.src = portrait(selShark);
   img.alt = plainText(selShark.name);
 }
+
+// ---------- 前回の設定ですぐ遊ぶ ----------
+// 2回目以降は、ロケ地選択とサメ選択を飛ばして前回と同じ撮影に入れる。
+// nav を4段にすると横画面（844x390）で潰れる（index.html の史料ボタンのコメント）ので、
+// 先頭の「ゲームスタート」を同じ高さのまま2つに割り、左を「すぐ遊ぶ」、右を「選ぶ」にする。
+// 右は従来の [data-go="map"] そのもの（初回の遊び方の寄り道と scripts/shots.mjs の toMap() が使う）。
+const quickBtn = $('#quick-play'), quickSub = $('#quick-play-sub');
+const startGo = $('#start-go'), startFull = $('#start-go-full'), startPick = $('#start-go-pick');
+
+/** 前回のロケ地とサメ。どちらかが今は選べない（未解放・初回で空）なら null */
+function lastPick() {
+  const m = MAPS.find((x) => x.id === save.map);
+  const d = SHARKS.find((x) => x.id === save.shark);
+  return m && d && isUnlocked(m) && isUnlockedShark(d) ? { m, d } : null;
+}
+
+// タイトルに入るたびに描き直す。解放状態は史料の獲得などで変わるので、
+// 条件を満たさなくなったら黙って1枚の「ゲームスタート」へ戻す
+function paintQuickPlay() {
+  const q = lastPick();
+  // 出し入れは hidden 属性で。.hidden クラスは style.css の .btn { display: block } に負ける
+  // （素の CSS はユーティリティの層より強い）が、preflight の [hidden] は !important で勝つ
+  quickBtn.hidden = !q;
+  startFull.hidden = !!q;
+  startPick.hidden = !q;
+  // 主役（塗り）はどちらか片方だけ。w-auto はカチンコの腕の傾きを細いボタン用にするため（style.css の .btn:hover）
+  startGo.classList.toggle('primary', !q);
+  startGo.classList.toggle('w-auto', !!q);
+  startGo.setAttribute('aria-label', q ? 'ロケ地とサメを選びなおす' : 'ゲームスタート');
+  if (!q) return;
+  quickSub.innerHTML = `${rubify(q.m.name)} ／ ${rubify(q.d.name)}`;
+  quickBtn.setAttribute('aria-label', `すぐ遊ぶ（${plainText(q.m.name)}／${plainText(q.d.name)}）`);
+}
+paintQuickPlay();   // 起動時は show() を通らずタイトルが表示されている
+
+quickBtn.onclick = () => {
+  const q = lastPick();
+  if (!q || shutting) return;   // play() も止めるが、選び直し（selectMap 等）の前に止めておく
+  selectMap(q.m);
+  selectShark(q.d);
+  play();   // play() が自分で show('game') を呼ぶので、ロケ地・サメ選択は経由しない
+};
 
 // ふりがなは常時表示。以前は「こどもモード」トグル（既定OFF）で出し分けていたが、
 // 既定が OFF だと読めない子には最初から読めず、設定を見つけて押せる子はそもそも
@@ -666,7 +711,9 @@ function spotCard(m) {
 }
 
 $('#map-next').onclick = () => { if (isUnlocked(selMap)) show('shark'); };
-renderMaps();
+// 起動時は前回のロケ地を選んだ状態から始める（selShark が save.shark から戻るのと同じ）。
+// 解放状態は史料の獲得などで変わるので、閉じていたら黙って既定の選び方へ落とす
+renderMaps(MAPS.find((m) => m.id === save.map && isUnlocked(m)));
 
 // ---------- エリア解放（現地写真の照合） ----------
 // 撮影 → 現在地 → 照合 の一本道は verify.js の runUnlock が持つ。ここが受け持つのは
@@ -1287,10 +1334,12 @@ const dropNet = () => { net?.close(); net = null; };
 
 let starting = false;
 async function play() {
-  if (starting) return;
+  // shutting: 画面の切り替え中（帯が閉じている間）の2打目。#retry の連打・リザルトのキー・
+  // 「すぐ遊ぶ」の3経路とも、ここで二重に startGame しないよう止める
+  if (starting || shutting) return;
   starting = true;
   try {
-    save.shark = selShark.id; save.name = playerName(); persist();
+    save.shark = selShark.id; save.name = playerName(); save.map = selMap.id; persist();
     dropNet();
     $('#start-btn').disabled = true;
     // ボスステージ（深大寺）はシングルプレイ。部屋に入ると他人とボットが混ざって
@@ -1403,6 +1452,35 @@ function paintBossBar(b, wait = 0) {
 $('#resume').onclick = () => ctl?.resume();
 $('#quit').onclick = () => { dropNet(); show('title'); };
 $('#retry').onclick = () => play();
+
+// リザルトでは Space / Enter が「もう一度撮る」。死んでから次の撮影までをキー1つにする。
+// Space はゲーム中のダッシュ（game.js の onKey）でもあるので、誤爆よけを2つ重ねる:
+//   - オートリピート（e.repeat）は捨てる。押したまま死んでも、押し直すまで始まらない
+//   - リザルトが見えてから RETRY_KEY_GRACE ms の間の入力も捨てる。死ぬ間際に連打していた分が
+//     リザルトに漏れて、結果を見る前に次が始まるのを防ぐ
+// Enter は、Tab で他のボタン（「ロケ地を変える」など）に乗っているとそのボタンの click と
+// 二重に走るので、フォーカスが #retry 以外の操作部品にあるときは何もしない。
+const RETRY_KEY_GRACE = 400;
+let resultAt = -Infinity;   // リザルトが見えた時刻（performance.now）。show() が書く
+const retryBtn = $('#retry');
+const isRetryKey = (e) => e.key === ' ' || e.key === 'Enter';
+addEventListener('keydown', (e) => {
+  if (cur !== 'result' || !isRetryKey(e)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;   // ショートカット（Alt+Enter 等）は横取りしない
+  const on = e.target.closest?.('button, input, a, select, textarea');
+  if (on && on !== retryBtn) return;
+  // #retry にフォーカスがあるときも自前で処理する。ボタン既定の click（Enter は keydown、
+  // Space は keyup で出る）に任せると、上の誤爆よけを素通りしてしまう
+  e.preventDefault();   // ページのスクロールも止める
+  // shutting: 押してから画面が切り替わるまでの間の2打目で play() を二重に呼ばない
+  if (e.repeat || shutting || performance.now() - resultAt < RETRY_KEY_GRACE) return;
+  clap(retryBtn);   // クリックしたときと同じく、カチンコを鳴らしてから入る
+  play();
+});
+// フォーカスのある #retry で Space を離したときの既定の click も止める（上の keydown と対）
+addEventListener('keyup', (e) => {
+  if (cur === 'result' && e.key === ' ' && e.target === retryBtn) e.preventDefault();
+});
 
 const hudBoardCard = $('#hud-board-card');
 hudBoardCard.addEventListener('click', (e) => {

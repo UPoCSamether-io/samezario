@@ -108,13 +108,42 @@
       </script>
 
       <nav class="w-full max-w-[380px] flex flex-col gap-3">
-        <button class="btn primary" data-go="map">
-          <div class="cap clapper-stripes"></div>
-          <div class="py-3 px-6 flex items-center justify-between">
-            <span class="font-display font-extrabold text-2xl">ゲームスタート</span>
-            <span class="material-symbols-rounded">movie</span>
-          </div>
-        </button>
+        <!-- 2回目以降は「すぐ遊ぶ｜選ぶ」の分割ボタンになる（main.js の paintQuickPlay）。
+             4段にすると横画面で nav が潰れるので、1段の高さのまま左右に割る。
+             右は従来の「ゲームスタート」そのもの（data-go="map" は初回の遊び方の寄り道と
+             scripts/shots.mjs の toMap() が使うので残す）。前回が無いときは今までどおり1枚 -->
+        <div id="title-start" class="flex gap-2.5 items-stretch">
+          <button id="quick-play" class="btn primary flex-1 min-w-0" type="button" hidden>
+            <div class="cap clapper-stripes"></div>
+            <!-- 2行目（ロケ地／サメ）はふりがな付きなので、1行目との間と下の枠線の両方に余白を取る。
+                 ボタンの高さは1枚の「ゲームスタート」と同じに保つ（1行目を text-base に抑えて捻出） -->
+            <div class="quick-body pl-3 pr-4 pb-[5px] flex items-center gap-1.5 text-left">
+              <span class="material-symbols-rounded !text-[30px] shrink-0">play_arrow</span>
+              <span class="flex-1 min-w-0 leading-none">
+                <span class="block font-display font-extrabold text-base">すぐ<ruby>遊<rp>(</rp><rt>あそ</rt><rp>)</rp></ruby>ぶ</span>
+                <span id="quick-play-sub" class="block mt-[3px] font-bold text-[11px] text-ink/90 truncate"></span>
+              </span>
+              <!-- 下の「サメ図鑑」「史料」と同じく右端にアイコン -->
+              <span class="material-symbols-rounded shrink-0">movie</span>
+            </div>
+          </button>
+          <button id="start-go" class="btn primary" data-go="map">
+            <div class="cap clapper-stripes"></div>
+            <div id="start-go-full">
+              <div class="py-3 px-6 flex items-center justify-between">
+                <span class="font-display font-extrabold text-2xl">ゲームスタート</span>
+                <span class="material-symbols-rounded">movie</span>
+              </div>
+            </div>
+            <div id="start-go-pick" hidden>
+              <!-- 文字だけにする。アイコンを付けると、左下の設定ボタン（tune）と並んで
+                   「設定が2つある」ように見えた。幅を取らないよう2行に折る -->
+              <div class="px-3 flex flex-col items-center justify-center text-center">
+                <span class="font-display font-extrabold text-sm leading-tight"><ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>び<br>なおす</span>
+              </div>
+            </div>
+          </button>
+        </div>
         <button class="btn" data-go="dex">
           <div class="cap clapper-stripes"></div>
           <div class="py-2.5 px-6 flex items-center justify-between">
@@ -681,7 +710,10 @@
           </div>
         </div>
         <div id="res-actions" class="p-6 pt-2 pb-6 max-sm:p-4 max-sm:pt-2 max-sm:pb-4 shrink-0 grid grid-cols-3 gap-2 sm:gap-3">
+          <!-- SPACE / Enter でも押せる（main.js の RETRY_KEY_GRACE のあたり）。
+               キー表示は .kbd-badge なので、タッチ端末（pointer: coarse）では出ない -->
           <button class="btn primary" id="retry"><div class="cap clapper-stripes"></div>
+            <span class="kbd-badge absolute -top-3 -right-2 z-10 px-1.5 py-0.5 bg-paper ink-2 rounded-full font-mono font-bold text-[9px] leading-none hard-sm pointer-events-none">SPACE</span>
             <div class="py-2 px-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap text-center">もう<ruby>一度撮<rp>(</rp><rt>いちどと</rt><rp>)</rp></ruby>る</div></button>
           <button class="btn" data-go="map"><div class="cap clapper-stripes"></div>
             <div class="py-2 px-2 font-display font-bold text-xs sm:text-sm whitespace-nowrap text-center">ロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>を<ruby>変<rp>(</rp><rt>か</rt><rp>)</rp></ruby>える</div></button>
