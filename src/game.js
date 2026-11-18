@@ -28,6 +28,11 @@ const INTRO_SHORT_CH = 500;
 // 0.5秒だと薄くなった黄色が水色の海と混ざって、灰緑の四角に見える時間が長かった
 const YOU_FADE = 0.3;
 const YOU_RISE = 12;   // フェードしながら浮かせる高さ（画面 px）。「消えた」ではなく「離れていった」に見せる
+// 1位の王冠（#5）。大きさは画面 px で、引きの絵でも同じ大きさに見せる。
+// 色は自機の名前と「あなた」の目印の YELLOW と分けて、明るい金にする
+const CROWN_W = 30, CROWN_H = 20;
+const CROWN_GAP = 4;   // 名前の上端と王冠の下端のすき間（画面 px）
+const CROWN_GOLD = '#ffd84a';
 
 // 食べる・倒すの手応え（#4）。
 // 粒の同時数の上限。上限が無かったころは、ボス撃破（100粒）と死の連鎖が重なると
@@ -728,6 +733,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       ctx.restore();
     }
 
+    // 1位の王冠。名前を出さない引きの絵でも出す（狙う目標なので）
+    if (s === crowned) drawCrown(s);
+
     // 名前
     if (cam.zoom > 0.4 || s === player || s.isBoss) {
       ctx.save();
@@ -1270,6 +1278,41 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // ゾーンの内外と再装填の状態は drawSprings の縁と泡（ミント／灰）が持つ
   }
 
+  // 盤面の1位（生きている中で質量最大・ボスは除く）。draw() が毎フレーム決め、drawShark が王冠を載せる。
+  // ボスを除くのは、深大寺のヌシ（質量 8000〜13000）が常に1位になってしまうから
+  let crowned = null;
+  // 王冠の輪郭。原点が王冠の下辺の中央で、画面 px。Path2D はブラウザにしか無いので遅れて作り、使い回す
+  let crownPath = null;
+  /** s の名前の上端（ワールド座標）。名前は s.y - hr - 12/zoom に、字の高さ max(12, hr*0.75) で描かれる */
+  const nameTopOf = (s) => s.y - s.body[0].r - 12 / cam.zoom - Math.max(12, s.body[0].r * 0.75);
+  /** 名前の上に王冠を載せる。塗りとインクの縁を1回ずつ */
+  function drawCrown(s) {
+    if (!crownPath) {
+      const w = CROWN_W / 2, h = CROWN_H;
+      crownPath = new Path2D();
+      crownPath.moveTo(-w + 2, 0);
+      crownPath.lineTo(-w, -h + 4);
+      crownPath.lineTo(-w / 2, -h * 0.45);
+      crownPath.lineTo(0, -h);
+      crownPath.lineTo(w / 2, -h * 0.45);
+      crownPath.lineTo(w, -h + 4);
+      crownPath.lineTo(w - 2, 0);
+      crownPath.closePath();
+    }
+    const k = 1 / cam.zoom;
+    ctx.save();
+    ctx.translate(s.x, nameTopOf(s));
+    ctx.scale(k, k);
+    ctx.translate(0, -CROWN_GAP);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = INK;
+    ctx.fillStyle = CROWN_GOLD;
+    ctx.fill(crownPath);
+    ctx.stroke(crownPath);
+    ctx.restore();
+  }
+
   // 「あなた」の吹き出し（下向きの ▼ 付き）。形は画面 px で決めてあり、描くときに
   // 1/cam.zoom を掛けて画面上の大きさを一定にする。Path2D はブラウザにしか無いので遅れて作る
   const YOU_W = 64, YOU_H = 26, YOU_TIP = 10, YOU_R = 8;
@@ -1307,15 +1350,15 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       youPath.closePath();
     }
     const k = 1 / cam.zoom;
-    const hr = player.body[0].r;
-    // 名前は drawShark で s.y - hr - 12/zoom に、字の高さ max(12, hr*0.75)（ワールド単位）で描かれる
-    const nameTop = player.y - hr - 12 * k - Math.max(12, hr * 0.75);
+    const nameTop = nameTopOf(player);
+    // 自分が1位なら名前の上に王冠があるので、目印はそのさらに上に積む（重ねない）
+    const lift = player === crowned ? CROWN_H + CROWN_GAP : 0;
     // 上下にゆっくり弾ませる（画面 px）。盤面の時計から作るので、ポーズ中は止まる
     const bob = Math.sin(world.elapsed * 4) * 4;
     ctx.save();
     ctx.translate(player.x, nameTop);
     ctx.scale(k, k);
-    ctx.translate(0, -6 + bob - (1 - a) * YOU_RISE);
+    ctx.translate(0, -6 - lift + bob - (1 - a) * YOU_RISE);
     ctx.globalAlpha = a;
     // HUD（Retro Pop）と同じ INK のずらし影。塗り → 縁の順にして、縁を狙いの太さで見せる
     ctx.fillStyle = INK;
@@ -1437,6 +1480,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // サメ（小さい順に描いて大物を前面へ）。画面外は捨てる —
     // rope は1匹あたり節の数だけ drawImage するので、映らない分を描かないのが一番効く
     const alive = sharks.filter((s) => s.alive).sort((a, b) => a.mass - b.mass);
+    crowned = null;
+    for (let i = alive.length - 1; i >= 0; i--) {
+      if (!alive[i].isBoss) { crowned = alive[i]; break; }
+    }
     for (const s of alive) {
       if (s.x + s.reach < vx0 || s.x - s.reach > vx1) continue;
       if (s.y + s.reach < vy0 || s.y - s.reach > vy1) continue;
@@ -1621,10 +1668,23 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     hudT += dt;
     if (hudT > 0.08) {
       hudT = 0;
-      const board = sharks.filter((s) => s.alive).sort((a, b) => b.mass - a.mass).slice(0, 5);
+      // 表示は上位3人＋自分だが、順位表をタップして広げたときだけ上位5人を出すので5人ぶん送る（#5）
+      const ranked = sharks.filter((s) => s.alive).sort((a, b) => b.mass - a.mass);
+      const board = ranked.slice(0, 5);
+      const rank = 1 + sharks.filter((o) => o.alive && o !== player && o.mass > player.mass).length;
+      // ひとつ上の相手（自分より重い中でいちばん軽いサメ）。HUD が「あと N で X 位」を出す。
+      // rank と同じく「自分より重い」で数えるので、同じ重さの相手は上に数えない。
+      // ボスは目標にしない（深大寺のヌシは 8000 以上あり、「あと 8949 で 1位」は手が届く目標にならない）。
+      // ボスはいつも1位なので、飛ばしても rank - 1 はひとつ上のサメの順位のまま
+      let above = null;
+      for (const o of ranked) {
+        if (o === player || o.isBoss || o.mass <= player.mass) continue;
+        if (!above || o.mass < above.mass) above = o;
+      }
       onHud?.({
         mass: Math.round(player.mass),
-        rank: 1 + sharks.filter((o) => o.alive && o !== player && o.mass > player.mass).length,
+        rank,
+        next: above && player.alive ? { rank: rank - 1, mass: Math.round(above.mass) } : null,
         alive: sharks.filter((s) => s.alive).length,
         time: world.elapsed,
         cd: player.cd, cdMax: player.def.skill.cd,
