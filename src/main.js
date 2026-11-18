@@ -1494,6 +1494,8 @@ async function play() {
   }
 }
 
+// 順位表の「位」。HUD は 0.08秒ごとに書き直すので、ルビの HTML は一度だけ作っておく
+const RANK_RUBY = rubify('｜位《い》');
 function paintHud(h) {
   if (h.paused !== undefined) {
     pausePanel.style.display = h.paused ? 'grid' : 'none';
@@ -1503,21 +1505,45 @@ function paintHud(h) {
   paintJuice(h);
   if (h.time !== undefined) hudTime.textContent = fmtTime(h.time);
   if (h.edge !== undefined) vignette.style.setProperty('--warn', h.edge.toFixed(2));
-  const isPlayerLead = h.rank === 1 || (h.board && h.board[0] && h.board[0].me);
+  // h.rank・h.board の順位はボスを除いたサメだけで数えてある（game.js）。ボスの行は番号の無い「BOSS」札
+  const isPlayerLead = h.rank === 1;
   hudBoardCard.classList.toggle('is-lead', !!isPlayerLead);
+  // 自分が1位で2位のサメが居ない（深大寺でボスと自分だけ等）。スリム帯は2位の代わりにボスの行を出す
+  hudBoardCard.classList.toggle('solo', !!isPlayerLead && h.board.filter((b) => !b.boss).length < 2);
+  // 「あと N で X 位」。N はひとつ上を抜くのに要る質量 − 自分の質量 + 1。
+  // 1位なら出さない（王冠で分かる）。横画面のスリム帯では短い「+N→X位」を重さの代わりに出す
+  const gap = h.next ? h.next.mass - h.mass + 1 : 0;
   const row = (b, rank, extra = '') => {
     const isLead = rank === 1;
     const isSecond = rank === 2;
     const isMe = !!b.me;
+    const short = isMe && gap > 0
+      ? `<span class="board-next-short font-mono shrink-0">+${gap.toLocaleString()}→${h.next.rank}${RANK_RUBY}</span>` : '';
     return `
-    <li class="board-row ${isLead ? 'board-lead' : ''} ${isSecond ? 'board-second' : ''} ${isMe ? 'board-me' : ''} flex justify-between items-center gap-2 px-1.5 py-0.5 ${extra} ${isMe ? 'bg-yellow text-ink font-bold ink-2 -rotate-1 hard-sm relative z-10' : ''}">
+    <li class="board-row ${isLead ? 'board-lead' : ''} ${isSecond ? 'board-second' : ''} ${isMe ? 'board-me' : ''} ${short ? 'has-next' : ''} flex justify-between items-center gap-2 px-1.5 py-0.5 ${extra} ${isMe ? 'bg-yellow text-ink font-bold ink-2 -rotate-1 hard-sm relative z-10' : ''}">
       <span class="font-bold truncate">${rank}. ${b.human && !isMe ? '◆ ' : ''}${esc(b.name)}</span>
-      <span class="font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
+      ${short}<span class="board-mass font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
     </li>`;
   };
-  hudBoard.innerHTML = h.board.map((b, i) => row(b, i + 1)).join('')
-    + (h.board.some((b) => b.me) ? ''
-      : row({ name: myName, mass: h.mass, me: true, human: true }, h.rank, 'mt-1.5 border-t-2 border-ink/25 pt-1'));
+  const bossRow = (b) => `
+    <li class="board-row board-boss flex justify-between items-center gap-2 px-1.5 py-0.5">
+      <span class="font-bold truncate"><span class="board-boss-tag font-mono">BOSS</span> ${esc(b.name)}</span>
+      <span class="board-mass font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
+    </li>`;
+  // 上位3人＋自分（#5）。4・5位は順位表をタップして広げたときだけ出す（.board-extra）。
+  // 自分が4・5位なら、その行は畳んだままでも出す
+  const meIn = h.board.some((b) => b.me);
+  const next = gap > 0
+    ? `<li class="board-next">あと <b class="font-mono">${gap.toLocaleString()}</b> で ${h.next.rank}${RANK_RUBY}</li>` : '';
+  let sharkNo = 0;
+  hudBoard.innerHTML = h.board.map((b) => {
+    if (b.boss) return bossRow(b);
+    const i = sharkNo++;
+    if (b.me) return row(b, i + 1, i >= 3 ? 'board-sep' : '') + next;
+    return row(b, i + 1, i >= 3 ? 'board-extra' : '');
+  }).join('')
+    + (meIn ? ''
+      : row({ name: myName, mass: h.mass, me: true, human: true }, h.rank, 'board-sep') + next);
   hudCd.style.opacity = h.cd > 0 ? '1' : '0';
   hudCd.textContent = Math.ceil(h.cd);
   hudReel.style.animation = h.boosting ? 'spin .35s linear infinite' : 'spin 4s linear infinite';
