@@ -748,14 +748,15 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       p.closePath();
       return p;
     };
-    const deck = quad(-half, half, w);
-    // 橋脚は流れに沿って細長い（水を切る形）。桁の影の中、一定の間隔で
-    const piers = new Path2D();
+    const shadow = quad(-half, half, w);
+    // 橋脚は流れに沿って細長い（水を切る形）。桁の影から上下へ少しだけ出して、一定の間隔で並べる。
+    // 桁と同じ Path に足して1回で塗る —— 向きの揃った四角どうしなので、重なりは濃くならず
+    // 和になる（橋脚は桁の縁から出た小さな出っ張りとして見える）
     for (let a = -half + KEIO_PIER_GAP / 2; a < half; a += KEIO_PIER_GAP) {
-      piers.addPath(quad(a - 16, a + 16, w + 12));
+      shadow.addPath(quad(a - 16, a + 16, w + 12));
     }
     const ex = Math.abs(nx) * half + w + 40, ey = Math.abs(ny) * half + w + 40;
-    return (bridge = { deck, piers, x0: cx - ex, x1: cx + ex, y0: cy - ey, y1: cy + ey });
+    return (bridge = { shadow, x0: cx - ex, x1: cx + ex, y0: cy - ey, y1: cy + ey });
   }
 
   /**
@@ -765,7 +766,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
    *
    * 重ね順は 川底の石 → 帯の水色 → 漂流物・白波 → 鉄橋の影。石を水色の下に敷くので、
    * 深い帯ほど水色が濃く（不透明に）なって石が沈んで見える。
-   * 描画命令はいちばん多くても 石1・水色1・葉2・泡1・白波1・鉄橋2 の 8回で、
+   * 描画命令はいちばん多くても 石1・水色1・葉2・泡1・白波1・鉄橋1 の 7回で、
    * 帯の数にも、映っている物の数にもよらない。
    */
   function drawCurrent(t, view) {
@@ -843,10 +844,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // 京王線の鉄橋の影。水面に落ちた影なので漂流物の上に重ねる
     const br = bridgeArt();
     if (br.x1 > vx0 && br.x0 < vx1 && br.y1 > vy0 && br.y0 < vy1) {
-      ctx.fillStyle = 'rgba(16,31,35,.26)';
-      ctx.fill(br.deck);
-      ctx.fillStyle = 'rgba(16,31,35,.32)';
-      ctx.fill(br.piers);
+      ctx.fillStyle = 'rgba(16,31,35,.28)';
+      ctx.fill(br.shadow);
     }
   }
 
