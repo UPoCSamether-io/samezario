@@ -161,4 +161,103 @@ assert.equal(i.ws.readyState, 3, 'I の線は閉じられている');
 assert.ok(!take(j).filter((m) => m.r).pop()?.r.some((e) => e[0] === i.hello.id), 'I は名簿から消える');
 
 j.ws.close(); http3.close();
+delete process.env.WS_DEAD_MS;
+await settle();   // 部屋の一覧はプロセスで1つ。前の部屋が畳まれてから上限を試す
+
+/** 環境変数を入れて attach し直す（上限は attach の時点で読まれる） */
+async function serve(env) {
+  Object.assign(process.env, env);
+  const h = createServer();
+  attach(h);
+  await new Promise((r) => h.listen(0, r));
+  url = `ws://localhost:${h.address().port}/ws`;
+  for (const k of Object.keys(env)) delete process.env[k];
+  return h;
+}
+/** 生の線を張る。upgrade で断られたら status に HTTP の番号が入る */
+function raw(headers) {
+  const ws = new WebSocket(url, { headers });
+  const c = { ws, status: 0, code: 0, open: false };
+  ws.on('open', () => { c.open = true; });
+  ws.on('unexpected-response', (_, res) => { c.status = res.statusCode; ws.terminate(); });
+  ws.on('error', () => {});
+  ws.on('close', (code) => { c.code = code; });
+  return c;
+}
+
+// 11. 総部屋数の上限。部屋を増やせないときは busy を返して閉じる（クライアントはソロへ落ちる）
+{
+  const h = await serve({ WS_MAX_ROOMS: '1' });
+  const k = client('K', 'chofu');
+  await settle();
+  assert.ok(k.hello, '1部屋目は立つ');
+  const l = client('L', 'airport');
+  let lCode = 0;
+  l.ws.on('close', (code) => { lCode = code; });
+  await settle();
+  assert.equal(l.hello, null, '別マップは部屋を立てられない');
+  assert.ok(l.inbox.some((m) => m.t === 'busy'), 'busy が届く');
+  assert.equal(lCode, 1013, 'Try Again Later で閉じられる');
+  const m2 = client('M', 'chofu');
+  await settle();
+  assert.ok(m2.hello, '同じマップの空いた部屋へは入れる');
+  k.ws.close(); m2.ws.close(); h.close();
+  await settle();
+}
+
+// 12. IP ごとの同時接続数。3本目は upgrade の段階で 429。1本閉じればまた入れる
+{
+  const h = await serve({ WS_MAX_PER_IP: '2' });
+  const c1 = raw(), c2 = raw();
+  await settle(100);
+  const c3 = raw();
+  await settle(100);
+  assert.ok(c1.open && c2.open, '2本までは繋がる');
+  assert.equal(c3.status, 429, '3本目は断られる');
+  c1.ws.close();
+  await settle(100);
+  const c4 = raw();
+  await settle(100);
+  assert.ok(c4.open, '1本閉じればまた繋がる');
+  c2.ws.close(); c4.ws.close(); h.close();
+  await settle(100);
+}
+
+// 13. TRUST_PROXY=1 なら X-Forwarded-For ごとに数える（Caddy の後ろでは全員 127.0.0.1 に見える）
+{
+  const h = await serve({ WS_MAX_PER_IP: '1', TRUST_PROXY: '1' });
+  const x1 = raw({ 'x-forwarded-for': '203.0.113.1' });
+  const x2 = raw({ 'x-forwarded-for': '203.0.113.2, 10.0.0.1' });
+  await settle(100);
+  const x3 = raw({ 'x-forwarded-for': '203.0.113.1' });
+  await settle(100);
+  assert.ok(x1.open && x2.open, '別の IP は別に数える');
+  assert.equal(x3.status, 429, '同じ IP の2本目は断られる');
+  x1.ws.close(); x2.ws.close(); h.close();
+  await settle(100);
+}
+
+// 14. maxPayload を超える1メッセージで線は閉じられる（ws が 1009）
+// 15. 1秒に WS_IN_KILL を超えて送る線は切られる。20Hz の線は切られない
+{
+  const h = await serve({ WS_MAX_PAYLOAD: '1024', WS_IN_KILL: '100' });
+  const big = raw();
+  await settle(100);
+  big.ws.send('x'.repeat(2000));
+  await settle(100);
+  assert.equal(big.ws.readyState, 3, '大きすぎるメッセージで閉じられる');
+  assert.equal(big.code, 1009);
+
+  const flood = client('N'), calm = client('O');
+  await settle();
+  assert.ok(flood.hello && calm.hello);
+  const beat2 = setInterval(() => calm.ws.send(JSON.stringify({ t: 'in', a: 0, b: 0 })), 50);
+  for (let n = 0; n < 150; n++) flood.ws.send(JSON.stringify({ t: 'in', a: 0, b: 0 }));
+  await settle(1500);
+  clearInterval(beat2);
+  assert.equal(flood.ws.readyState, 3, '洪水の線は切られる');
+  assert.equal(calm.ws.readyState, 1, '20Hz の線は生きている');
+  assert.ok(!take(calm).filter((m) => m.r).pop()?.r.some((e) => e[0] === flood.hello.id), '切られた線は名簿から消える');
+  calm.ws.close(); h.close();
+}
 console.log('relay ok');
