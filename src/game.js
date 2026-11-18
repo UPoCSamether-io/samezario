@@ -269,44 +269,94 @@ function polyPath(h, pts) {
   for (let i = 1; i < pts.length; i++) h.lineTo(pts[i][0], pts[i][1]);
 }
 
-// 調布駅・布田: 街区。太い通り＋細い路地の格子と、区画の中の建物。
-// 映画のまちなので、区画の1つにフィルムの帯（縁の穴）を沈めておく
+// 調布駅・布田: 街区。横に抜ける通りと、帯ごとに位置のずれた縦の路地、区画の中の建物。
+// 映画のまちなので、区画の1つにフィルムの帯（縁の穴）を沈めておく。
+// 以前は太い通りが縦横1本ずつタイルを貫く格子で、引きの絵（質量 40000）では 512px ごとに
+// 同じ大きな四角が並び、タイルの繰り返しが見えていた。そこで
+//   - 太い通りは横の1本（甲州街道）だけにし、縦の太い通り（駅前通り）は途中の路地で突き当たらせる
+//   - 縦の路地は、横の通りで区切った帯ごとに位置を変える（T字路にして、格子の線を通さない）
+//   - 横の通りの間隔も揃えない
+// で、区画の大きさにばらつきを出し、四角の並びが目で追えないようにした
 function floorChofu(g, scratch) {
   const s = FLOOR_TILE;
   const rnd = floorRand(0xc40f);
-  // [中心, 幅]。太い通り（30px）が縦横 1本ずつ、残りは路地
-  const vx = [[40, 30], [170, 10], [292, 12], [410, 10]];
-  const hy = [[96, 30], [226, 10], [352, 12], [452, 8]];
-  const roads = (h) => {
-    for (const [x, w] of vx) h.fillRect(x - w / 2, 0, w, s);
-    for (const [y, w] of hy) h.fillRect(0, y - w / 2, s, w);
-  };
-  // 区画（道と道の間）。最後の区画はタイルの端をまたいで次のタイルの最初の道まで
-  const spans = (list) => list.map(([c, w], i) => {
-    const [c2, w2] = list[(i + 1) % list.length];
-    return [c + w / 2, (i + 1 < list.length ? c2 : c2 + s) - w2 / 2];
+  // 横の通り [中心 y, 幅]。タイルを端から端まで抜ける。最初が甲州街道（太い通り）
+  const hy = [[104, 28], [262, 10], [378, 12]];
+  // 帯（横の通りと次の横の通りの間）の上端・下端。最後の帯はタイルの端をまたいで次のタイルの甲州街道まで
+  const bands = hy.map(([y, w], i) => {
+    const [y2, w2] = hy[(i + 1) % hy.length];
+    return [y + w / 2, (i + 1 < hy.length ? y2 : y2 + s) - w2 / 2];
   });
+  // 帯ごとの縦の路地 [中心 x, 幅]。帯をまたいで線がつながらないよう、位置を帯ごとにずらす。
+  // 幅 22 の 1本が駅前通り（甲州街道から2本目の横の通りまでで、3つ目の帯では突き当たる）
+  const vx = [
+    [[34, 10], [148, 10], [232, 22], [352, 10], [458, 12]],
+    [[78, 12], [232, 22], [318, 10], [436, 10]],
+    [[20, 10], [124, 12], [288, 10], [392, 10]],
+  ];
+  // 帯の中で途中まで入る横の路地（行き止まり）[帯, x0, x1, 中心 y の帯の上端からの位置, 幅]
+  const stubs = [[0, 148, 352, 70, 8], [2, 288, 512 + 20, 104, 8]];
+  const roads = (h) => {
+    for (const [y, w] of hy) h.fillRect(0, y - w / 2, s, w);
+    vx.forEach((list, b) => {
+      const [y0, y1] = bands[b];
+      for (const [x, w] of list) h.fillRect(x - w / 2, y0, w, y1 - y0);
+    });
+    for (const [b, x0, x1, dy, w] of stubs) h.fillRect(x0, bands[b][0] + dy - w / 2, x1 - x0, w);
+  };
+  // 区画（帯の中の、縦の路地と縦の路地の間）。最後の区画はタイルの端をまたぐ
   const blocks = [];
-  for (const [x0, x1] of spans(vx)) for (const [y0, y1] of spans(hy)) blocks.push([x0, y0, x1, y1]);
-  const film = 5;   // フィルムの帯を沈める区画
-  const bld = [];
+  vx.forEach((list, b) => {
+    const [y0, y1] = bands[b];
+    list.forEach(([x, w], i) => {
+      const [x2, w2] = list[(i + 1) % list.length];
+      const bx0 = x + w / 2, bx1 = (i + 1 < list.length ? x2 : x2 + s) - w2 / 2;
+      // 行き止まりの路地が通る区画は、路地の上下2つに分ける
+      const st = stubs.find(([sb, sx0, sx1]) => sb === b && sx0 <= bx0 && sx1 >= bx1);
+      if (st) {
+        const cy = y0 + st[3];
+        blocks.push([bx0, y0, bx1, cy - st[4] / 2], [bx0, cy + st[4] / 2, bx1, y1]);
+      } else {
+        blocks.push([bx0, y0, bx1, y1]);
+      }
+    });
+  });
+  const film = 7;   // フィルムの帯を沈める区画（2つ目の帯の、駅前通りの西）
+  const park = 12;  // 建物を建てない区画（公園・空き地）。引きの絵での抜けにする
+  // 建物は2層に分けて濃さを少し変える（.11 と .14）。同じ濃さの四角が並ぶより、繰り返しが目立たない
+  const bld = [[], []];
   blocks.forEach(([x0, y0, x1, y1], i) => {
-    if (i === film) return;
-    const m = 8, gap = 8;
-    const cols = 1 + Math.floor(rnd() * 3), rows = 1 + Math.floor(rnd() * 2);
-    const cw = (x1 - x0 - m * 2 - gap * (cols - 1)) / cols;
-    const rh = (y1 - y0 - m * 2 - gap * (rows - 1)) / rows;
-    for (let c = 0; c < cols; c++) {
-      for (let r = 0; r < rows; r++) {
-        if (rnd() < 0.15) continue;     // 空き地
-        bld.push([x0 + m + c * (cw + gap), y0 + m + r * (rh + gap), cw, rh]);
+    if (i === film || i === park) return;
+    const m = 7, gap = 7;
+    const bw = x1 - x0 - m * 2, bh = y1 - y0 - m * 2;
+    // 大きな区画ほど細かく割る。たまに区画まるごと1棟（駅ビル・映画館）
+    const big = rnd() < 0.2;
+    const cols = big ? 1 : Math.max(1, Math.round(bw / (36 + rnd() * 40)));
+    const rows = big ? 1 : Math.max(1, Math.round(bh / (40 + rnd() * 50)));
+    // 列の幅・行の高さも揃えない（割り目を乱数でずらす）
+    const cuts = (n, len) => {
+      const w = Array.from({ length: n }, () => 0.6 + rnd() * 0.8);
+      const sum = w.reduce((a, b) => a + b, 0);
+      const free = len - gap * (n - 1);
+      let at = 0;
+      return w.map((k) => { const seg = [at, free * k / sum]; at += seg[1] + gap; return seg; });
+    };
+    for (const [cx, cw] of cuts(cols, bw)) {
+      for (const [ry, rh] of cuts(rows, bh)) {
+        if (!big && rnd() < 0.15) continue;     // 空き地
+        bld[rnd() < 0.5 ? 0 : 1].push([x0 + m + cx, y0 + m + ry, cw, rh]);
       }
     }
   });
+  floorLayer(g, scratch, FLOOR_DARK, 0.14, (h) => {
+    for (const [x, y, w, hh] of bld[1]) h.fillRect(x, y, w, hh);
+  });
+  // フィルムの帯は薄い方の層に入れる。タイルに1つしかない目印なので、濃いと引きの絵で
+  // 512px ごとに同じ模様が並ぶのがいちばん目につく
   const [fx0, fy0, fx1, fy1] = blocks[film];
   const fm = 10, fw = fx1 - fx0 - fm * 2, fh = fy1 - fy0 - fm * 2;
-  floorLayer(g, scratch, FLOOR_DARK, 0.13, (h) => {
-    for (const [x, y, w, hh] of bld) h.fillRect(x, y, w, hh);
+  floorLayer(g, scratch, FLOOR_DARK, 0.11, (h) => {
+    for (const [x, y, w, hh] of bld[0]) h.fillRect(x, y, w, hh);
     h.fillRect(fx0 + fm, fy0 + fm, fw, fh);
   }, (h) => {
     // フィルムの縁の穴（上下2列）と、コマの窓
@@ -370,26 +420,50 @@ function floorJindaiji(g, scratch) {
     const i = Math.min(3, Math.floor(y / 128)), k = (y - i * 128) / 128;
     return path[i][0] + (path[i + 1][0] - path[i][0]) * k;
   };
-  const trees = [];
-  for (let n = 0; trees.length < 46 && n < 400; n++) {
-    const x = rnd() * s, y = rnd() * s, r = 24 + rnd() * 22;
-    // 参道の上には木を置かない（タイルの継ぎ目をまたぐ分も見る）
-    let d = Math.abs(x - pathX(y));
-    d = Math.min(d, s - d);
-    if (d < r + 22) continue;
-    trees.push([x, y, r, rnd() * TAU]);
+  // 木のかたまり（木立）。以前は小さめの樹冠（半径 24〜46）を 46 個まんべんなく撒いていて、
+  // 引きの絵では丸と隙間が同じくらいの大きさで混ざり、迷彩柄（苔）に見えた。
+  // そこで、大きな木立（長径 84〜118 の楕円）を少なく置き、木立と木立の間に下草の抜けを残す。
+  // 木立は芯の楕円に、大小の樹冠の丸を不揃いに重ねて縁を波打たせる
+  // （縁に丸を等間隔に並べると、引きの絵で花の判子に見えた）
+  const groves = [];
+  const PATH_CLEAR = 104;   // 参道の両脇で木を抜く幅（灯籠の外側まで）
+  const GAP = 12;   // 木立どうしの最小の隙間（抜け）
+  for (let n = 0; groves.length < 6 && n < 800; n++) {
+    const x = rnd() * s, y = rnd() * s;
+    const rx = 84 + rnd() * 34, ry = 58 + rnd() * 24, rot = rnd() * Math.PI;
+    const r = (rx + ry) / 2;
+    // ほかの木立と重ねない（タイルの継ぎ目をまたいだ距離で見る）
+    const near = groves.some(([gx, gy, gr]) => {
+      let dx = Math.abs(x - gx), dy = Math.abs(y - gy);
+      dx = Math.min(dx, s - dx); dy = Math.min(dy, s - dy);
+      return Math.hypot(dx, dy) < r + gr + GAP;
+    });
+    if (near) continue;
+    // 樹冠の丸。楕円の外寄りに不揃いに散らし（中は芯が埋める）、半径は 18〜38 とばらつかせる
+    const crowns = [];
+    const k = 12 + Math.floor(rnd() * 5);
+    for (let i = 0; i < k; i++) {
+      const a = rnd() * TAU, t = 0.5 + rnd() * 0.5;
+      const lr = 18 + rnd() * 20;
+      const ex = Math.cos(a) * (rx - lr) * t, ey = Math.sin(a) * (ry - lr) * t;
+      crowns.push([x + ex * Math.cos(rot) - ey * Math.sin(rot), y + ex * Math.sin(rot) + ey * Math.cos(rot), lr]);
+    }
+    groves.push([x, y, r, rx, ry, rot, crowns]);
   }
   floorLayer(g, scratch, '#0e3a2c', 0.11, (h) => {
     h.beginPath();
-    for (const [x, y, r, a] of trees) {
-      // 1本の樹冠 = 大きな丸＋ふくらみ2つ
-      h.moveTo(x + r, y); h.arc(x, y, r, 0, TAU);
-      for (const k of [0, 2.3]) {
-        const cx = x + Math.cos(a + k) * r * 0.6, cy = y + Math.sin(a + k) * r * 0.6;
-        h.moveTo(cx + r * 0.6, cy); h.arc(cx, cy, r * 0.6, 0, TAU);
-      }
+    for (const [x, y, , rx, ry, rot, crowns] of groves) {
+      // 芯（木立の中は隙間なく埋める）
+      h.moveTo(x + Math.cos(rot) * rx * 0.62, y + Math.sin(rot) * rx * 0.62);
+      h.ellipse(x, y, rx * 0.62, ry * 0.62, rot, 0, TAU);
+      for (const [cx, cy, lr] of crowns) { h.moveTo(cx + lr, cy); h.arc(cx, cy, lr, 0, TAU); }
     }
     h.fill('nonzero');
+  }, (h) => {
+    // 参道と石灯籠の上は木を抜く。木立を参道から離して置くと、大きな木立はタイルに
+    // 2つしか入らなかったので、木立は自由に置き、参道の幅で切り開く
+    h.lineWidth = PATH_CLEAR;
+    h.beginPath(); polyPath(h, path); h.stroke();
   });
   // 参道と、両脇の石灯籠。敷石の目地も描いてみたが、引きの絵で梯子（線路）に見えたのでやめた
   floorLayer(g, scratch, FLOOR_LIGHT, 0.07, (h) => {
