@@ -1076,7 +1076,9 @@ function renderSharks() {
   }
   selectShark(selShark);
   // ダイヤルでは選択中が中央に居ないと辻褄が合わないので、開くたびに寄せ直す
-  if (isDial()) centerTile(list, SHARKS.indexOf(selShark), 'auto');
+  // 回さない一覧（.dial-flat）は2枚まとめて縦の真ん中に置くので、寄せない
+  if (isDial() && !flat) centerTile(list, SHARKS.indexOf(selShark), 'auto');
+  else if (flat) list.scrollTop = 0;
 }
 
 /** 解放済みのサメのタイル1枚の中身 */

@@ -697,12 +697,10 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   }
   /* 中央から外れた候補は少し引っ込める。ダイヤルらしさは選択中との差で出す */
   #shark-list .shark-tile:not(.is-sel) { opacity: .55; transform: scale(.92); }
-  /* 回さない一覧（解放1体＋まとめ枠。main.js の DIAL_MIN）。選択中を中央に置き、
-     「あと N 種類」をその下に1枚、上は空けておく。前後の余白は「1件目を中央まで
-     送るため」の詰め物で、縦の flex では flex-basis の % がコンテナの高さに解決される */
-  #shark-list.dial-flat { overflow: hidden; }
-  #shark-list.dial-flat::before,
-  #shark-list.dial-flat::after { content: ""; flex: 0 0 50%; }
+  /* 回さない一覧（解放1体＋まとめ枠。main.js の DIAL_MIN）。ダイヤルの中央寄せをやめ、
+     2枚まとめて縦の真ん中に置く。選択中を中央にすると下の枠が一覧の下端で文字の途中から
+     切れ、壊れて見えた（実測 844x390、一覧の高さ 117px に対し 2枚で約 98px なら収まる） */
+  #shark-list.dial-flat { overflow: hidden; justify-content: center; scroll-snap-type: none; }
 
   /* ---- サメ選択の ACTION! ----
      右カラム（約 270px）に 一覧 → NAME → ACTION! を縦に積む。ACTION! は腕の 13px を
