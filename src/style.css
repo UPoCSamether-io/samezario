@@ -930,6 +930,18 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    ボタンが伸びてツールバーごと地図を押し下げる。行数を1に固定して高さを保つ */
 #map-next-label { white-space: nowrap; }
 
+/* タイトルの分割ボタン（すぐ遊ぶ｜選ぶ、main.js の paintQuickPlay）。
+   並べた2枚は items-stretch で高さがそろうので、中身を縦の真ん中に置く。
+   .btn は display: block のうえ素の CSS でユーティリティ（w-auto 等）より強いので、
+   ここで直接書く。出し入れは hidden 属性（preflight の !important）が勝つ */
+#title-start > .btn { display: flex; flex-direction: column; }
+#title-start > .btn > :not(.cap) { flex: 1; }
+#start-go-full, #start-go-pick { display: flex; flex-direction: column; justify-content: center; }
+/* 「選ぶ」側は中身の幅だけ。1枚のときは従来どおり nav の幅いっぱい */
+#title-start > #start-go.w-auto { width: auto; flex: none; }
+/* 前回のロケ地／サメは長いと1行に収まらないので、ふりがなごと末尾を「…」で切る */
+#quick-play-sub rt { font-size: 0.6em; }
+
 
 /* ---- 横画面のタイトル ----
    縦積み（タイトル→立ち絵→ボタン3つ）は 419px 要るので、横持ちの 390px には
