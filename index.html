@@ -115,12 +115,16 @@
         <div id="title-start" class="flex gap-2.5 items-stretch">
           <button id="quick-play" class="btn primary flex-1 min-w-0" type="button" hidden>
             <div class="cap clapper-stripes"></div>
-            <div class="quick-body pl-3 pr-4 flex items-center gap-1.5 text-left">
-              <span class="material-symbols-rounded !text-[34px] shrink-0">play_arrow</span>
-              <span class="min-w-0 leading-none">
-                <span class="block font-display font-extrabold text-xl">すぐ<ruby>遊<rp>(</rp><rt>あそ</rt><rp>)</rp></ruby>ぶ</span>
-                <span id="quick-play-sub" class="block mt-0.5 font-bold text-[11px] text-ink/75 truncate"></span>
+            <!-- 2行目（ロケ地／サメ）はふりがな付きなので、1行目との間と下の枠線の両方に余白を取る。
+                 ボタンの高さは1枚の「ゲームスタート」と同じに保つ（1行目を text-base に抑えて捻出） -->
+            <div class="quick-body pl-3 pr-4 pb-[5px] flex items-center gap-1.5 text-left">
+              <span class="material-symbols-rounded !text-[30px] shrink-0">play_arrow</span>
+              <span class="flex-1 min-w-0 leading-none">
+                <span class="block font-display font-extrabold text-base">すぐ<ruby>遊<rp>(</rp><rt>あそ</rt><rp>)</rp></ruby>ぶ</span>
+                <span id="quick-play-sub" class="block mt-[3px] font-bold text-[11px] text-ink/90 truncate"></span>
               </span>
+              <!-- 下の「サメ図鑑」「史料」と同じく右端にアイコン -->
+              <span class="material-symbols-rounded shrink-0">movie</span>
             </div>
           </button>
           <button id="start-go" class="btn primary" data-go="map">
@@ -132,9 +136,10 @@
               </div>
             </div>
             <div id="start-go-pick" hidden>
-              <div class="px-3.5 flex flex-col items-center justify-center leading-none">
-                <span class="material-symbols-rounded">tune</span>
-                <span class="font-display font-extrabold text-sm"><ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>ぶ</span>
+              <!-- 文字だけにする。アイコンを付けると、左下の設定ボタン（tune）と並んで
+                   「設定が2つある」ように見えた。幅を取らないよう2行に折る -->
+              <div class="px-3 flex flex-col items-center justify-center text-center">
+                <span class="font-display font-extrabold text-sm leading-tight"><ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>び<br>なおす</span>
               </div>
             </div>
           </button>

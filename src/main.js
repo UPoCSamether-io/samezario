@@ -94,6 +94,9 @@ function show(name) {
       screens[cur]?.classList.remove('on');
       screens[name]?.classList.add('on');
       cur = name;
+      // リザルトの誤爆よけ（RETRY_KEY_GRACE）は、リザルトが実際に見えた瞬間から数える。
+      // showResult の頭で取ると、ここまでの CLAP + SHUT（300ms）を食われて実質 100ms しか効かない
+      if (name === 'result') resultAt = performance.now();
       syncSalvageDot();
       if (name === 'shark') renderSharks();
       if (name === 'dex') { renderDex(); if (pendingClaim) { openDex(pendingClaim, true); pendingClaim = null; } }
@@ -355,7 +358,7 @@ function paintQuickPlay() {
   // 主役（塗り）はどちらか片方だけ。w-auto はカチンコの腕の傾きを細いボタン用にするため（style.css の .btn:hover）
   startGo.classList.toggle('primary', !q);
   startGo.classList.toggle('w-auto', !!q);
-  startGo.setAttribute('aria-label', q ? 'ロケ地とサメを選ぶ' : 'ゲームスタート');
+  startGo.setAttribute('aria-label', q ? 'ロケ地とサメを選びなおす' : 'ゲームスタート');
   if (!q) return;
   quickSub.innerHTML = `${rubify(q.m.name)} ／ ${rubify(q.d.name)}`;
   quickBtn.setAttribute('aria-label', `すぐ遊ぶ（${plainText(q.m.name)}／${plainText(q.d.name)}）`);
@@ -364,8 +367,7 @@ paintQuickPlay();   // 起動時は show() を通らずタイトルが表示さ�
 
 quickBtn.onclick = () => {
   const q = lastPick();
-  // 画面の切り替え中（帯が閉じている間）の連打で play() が二重に走らないように
-  if (!q || shutting) return;
+  if (!q || shutting) return;   // play() も止めるが、選び直し（selectMap 等）の前に止めておく
   selectMap(q.m);
   selectShark(q.d);
   play();   // play() が自分で show('game') を呼ぶので、ロケ地・サメ選択は経由しない
@@ -1332,7 +1334,9 @@ const dropNet = () => { net?.close(); net = null; };
 
 let starting = false;
 async function play() {
-  if (starting) return;
+  // shutting: 画面の切り替え中（帯が閉じている間）の2打目。#retry の連打・リザルトのキー・
+  // 「すぐ遊ぶ」の3経路とも、ここで二重に startGame しないよう止める
+  if (starting || shutting) return;
   starting = true;
   try {
     save.shark = selShark.id; save.name = playerName(); save.map = selMap.id; persist();
@@ -1452,16 +1456,17 @@ $('#retry').onclick = () => play();
 // リザルトでは Space / Enter が「もう一度撮る」。死んでから次の撮影までをキー1つにする。
 // Space はゲーム中のダッシュ（game.js の onKey）でもあるので、誤爆よけを2つ重ねる:
 //   - オートリピート（e.repeat）は捨てる。押したまま死んでも、押し直すまで始まらない
-//   - showResult から RETRY_KEY_GRACE ms の間の入力も捨てる。死ぬ間際に連打していた分が
+//   - リザルトが見えてから RETRY_KEY_GRACE ms の間の入力も捨てる。死ぬ間際に連打していた分が
 //     リザルトに漏れて、結果を見る前に次が始まるのを防ぐ
 // Enter は、Tab で他のボタン（「ロケ地を変える」など）に乗っているとそのボタンの click と
 // 二重に走るので、フォーカスが #retry 以外の操作部品にあるときは何もしない。
 const RETRY_KEY_GRACE = 400;
-let resultAt = -Infinity;   // showResult が入った時刻（performance.now）
+let resultAt = -Infinity;   // リザルトが見えた時刻（performance.now）。show() が書く
 const retryBtn = $('#retry');
 const isRetryKey = (e) => e.key === ' ' || e.key === 'Enter';
 addEventListener('keydown', (e) => {
   if (cur !== 'result' || !isRetryKey(e)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;   // ショートカット（Alt+Enter 等）は横取りしない
   const on = e.target.closest?.('button, input, a, select, textarea');
   if (on && on !== retryBtn) return;
   // #retry にフォーカスがあるときも自前で処理する。ボタン既定の click（Enter は keydown、
@@ -1513,7 +1518,6 @@ const CAUSE_RUBY = {
 const rubifyCause = (c) => rubify(c.replace(/泳いだ跡|外壁|胴体/g, (w) => CAUSE_RUBY[w]));
 
 function showResult(r) {
-  resultAt = performance.now();   // リザルトの Space / Enter の誤爆よけ（RETRY_KEY_GRACE）
   dropNet();
   vignette.style.setProperty('--warn', '0');
   paintBossBar(null);
