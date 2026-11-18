@@ -2,6 +2,7 @@
 
 - 発表：**2026-11-21**　打ち切り：**2026-11-20 12:00**（これ以降は新しい issue に着手しない・途中のものは統合しない）
 - 統合ブランチ：`final-polish`（upstream なし。**master への push / merge はしない**）
+- **11/19 人間の指示で PR #104 を master にマージ済み（9419cc9）**。deploy-ec2・CI とも成功。切り戻しは `git revert -m 1 9419cc9`（部分的に外すなら REVIEW.md 2章の順）
 - 仕様：`docs/final/specs/`（一覧と衝突表は `specs/README.md`）
 
 ## 実行計画
