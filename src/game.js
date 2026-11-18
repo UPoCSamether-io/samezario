@@ -404,17 +404,17 @@ function floorJindaiji(g, scratch) {
 // 調布飛行場: 草地と誘導路。滑走路本体は #6 が水底に描くので、ここには入れない
 function floorAirport(g, scratch) {
   const s = FLOOR_TILE;
-  // 誘導路: 横1本・縦1本・斜め1本（傾き 1 なら 512 進んで 512 ずれるので、タイルの継ぎ目でつながる）
+  // 誘導路: タイルの縦（y 方向）に平行な2本と、その間をつなぐ短い連絡路1本。
+  // タイルは startGame で滑走路の向き（17/35）に回して敷くので、縦の2本は滑走路と平行になる。
+  // 横・縦・45°の斜めで組んでいたころは、引きの絵で網（方眼紙）に見えた
   const ways = (h) => {
     h.beginPath();
-    h.moveTo(0, 150); h.lineTo(s, 150);
+    h.moveTo(120, 0); h.lineTo(120, s);
     h.moveTo(380, 0); h.lineTo(380, s);
-    h.moveTo(0, 300); h.lineTo(s, 300 + s);
+    h.moveTo(120, 300); h.lineTo(380, 300);
     h.stroke();
   };
-  const wayW = 26;
-  const shoulder = (h) => { h.lineWidth = wayW + 14; ways(h); };
-  floorLayer(g, scratch, '#3f8a52', 0.09, (h) => h.fillRect(0, 0, s, s), shoulder);
+  floorLayer(g, scratch, '#3f8a52', 0.09, (h) => h.fillRect(0, 0, s, s));
   // 草むら。草地の中に、少し濃い不揃いの斑を置く
   // （刈り込みの縞も描いてみたが、誘導路と合わさって格子柄の布のように見えたのでやめた）
   const rnd = floorRand(0xa1e0);
@@ -426,10 +426,9 @@ function floorAirport(g, scratch) {
       h.ellipse(x, y, rx, 24 + rnd() * 18, 0, 0, TAU);
     }
     h.fill();
-  }, shoulder);
-  floorLayer(g, scratch, FLOOR_LIGHT, 0.07, (h) => { h.lineWidth = wayW; ways(h); });
-  // 誘導路の中心線（黄）。引きの絵で消えないよう 6px
-  floorLayer(g, scratch, YELLOW, 0.12, (h) => { h.lineWidth = 6; ways(h); });
+  });
+  // 誘導路は草地寄りの暗い色にして沈める。明るい線や黄の中心線は、#6 の滑走路と主役を取り合った
+  floorLayer(g, scratch, '#123d33', 0.12, (h) => { h.lineWidth = 24; ways(h); });
 }
 
 // マップ別の水底。ここに無いマップは水底を敷かず、きらめき（dotTile）だけ。
@@ -451,6 +450,7 @@ function floorTile(id) {
   scratch.width = scratch.height = FLOOR_TILE;
   const g = c.getContext('2d');
   art(g, scratch);
+  scratch.width = 0;   // 作業用の canvas は作り終えたら手放す
   g.fillStyle = SPARKLE.color;
   for (let y = 0; y < FLOOR_TILE; y += SPARKLE.gap) {
     for (let x = 0; x < FLOOR_TILE; x += SPARKLE.gap) g.fillRect(x, y, SPARKLE.size, SPARKLE.size);
@@ -488,6 +488,11 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   const stripes = ctx.createPattern(stripeTile(), 'repeat');
   // 水底（#9）。そのマップの分だけ、起動時に1枚作る
   const floor = ctx.createPattern(floorTile(map.id), 'repeat');
+  // 飛行場は誘導路が滑走路と平行になるよう、タイルを滑走路の向きに回して敷く
+  // （タイルの縦 = +y = 90° を runway.ang に合わせる）。回しても fill 1回のまま
+  if (map.id === 'airport' && gim?.runway && floor.setTransform) {
+    floor.setTransform(new DOMMatrix().rotate((gim.runway.ang - Math.PI / 2) * 180 / Math.PI));
+  }
 
   const fx = [];
   // 手応え（#4）。hitstop は絵を止めている残り秒数（実時間）。
