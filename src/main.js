@@ -1051,11 +1051,16 @@ function renderSharks() {
   // 1面の枚数は解放数で変わる（解放済み全部 ＋ 未解放があれば「あと N 種類」の1枠）。
   // 史料の獲得で解放状態が変わるので、塗り直しではなく開くたびに面ごと作り直す
   // （以前は器をキャッシュして中身だけ塗り直していたが、枚数が変わるとそれができない）。
-  // 面を3つ並べるのは、ダイヤルを一周させるため（端まで来たら中央の面へ戻す）
+  // 面を3つ並べるのは、ダイヤルを一周させるため（端まで来たら中央の面へ戻す）。
+  // ただし1面が DIAL_MIN 枚以下（解放1体＋まとめ枠）では回さず、中央の面だけにする。
+  // 2枚の面を3つ並べると、選択中の上下どちらにも「あと N 種類」が来て2枠に見え、
+  // 上の枠は一覧の上端で半分切れていた（実測 844x390）
   const open = SHARKS.filter(isUnlockedShark);
   const rest = SHARKS.length - open.length;
+  const flat = open.length + (rest ? 1 : 0) <= DIAL_MIN;
+  list.classList.toggle('dial-flat', flat);
   list.innerHTML = '';
-  for (let copy = 0; copy < DIAL_COPIES; copy++) {
+  for (let copy = flat ? 1 : 0; copy < (flat ? 2 : DIAL_COPIES); copy++) {
     for (const d of open) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -1085,6 +1090,7 @@ const tileInner = (d) => `
     <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${rubify(d.tag)}</span>
   </span>`;
 
+const MORE_HINT_MS = 2200;   // 「あと N 種類」を押したとき一文を見せておく長さ
 // 解放の道すじ。図鑑の吹き出し（unlockCopy）は幕ごとの文面なので、まとめた枠では総称で言う
 const MORE_HINT = '｜史料《しりょう》を｜復元《ふくげん》すると｜増《ふ》える';
 
@@ -1097,10 +1103,20 @@ const MORE_HINT = '｜史料《しりょう》を｜復元《ふくげん》す�
  * mountDial は選び直さない）。どうすれば増えるかは中の一文と aria-label で言う
  */
 function moreTile(n, copy) {
-  const el = document.createElement('div');
-  el.className = 'shark-tile shark-more bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3';
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'shark-tile shark-more text-left bg-paper ink-3 rounded-lg px-3 py-2.5 flex items-center gap-3';
   el.dataset.copy = copy;
-  el.setAttribute('role', 'note');
+  // 押しても画面は移さない（サメ選択から抜けると名前や選択を見失う）。
+  // 代わりに中の一文を一瞬光らせる。横画面ではこの一文を畳んでいるので、
+  // 光らせている間だけ「あと N 種類」と入れ替えて見せる（style.css の .hinting）
+  el.onclick = () => {
+    el.classList.remove('hinting');
+    void el.offsetWidth;   // 連打でもアニメーションを最初からやり直す
+    el.classList.add('hinting');
+    clearTimeout(el.hintTimer);
+    el.hintTimer = setTimeout(() => el.classList.remove('hinting'), MORE_HINT_MS);
+  };
   el.setAttribute('aria-label', plainText(`まだ｜見《み》つかっていないサメが あと${n}｜種類《しゅるい》。${MORE_HINT}`));
   el.innerHTML = `
     <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper"
@@ -1115,6 +1131,8 @@ function moreTile(n, copy) {
 // スマホ横画面のサメ選択はダイヤル。中央で止まったサメがそのまま選ばれる。
 const isDial = () => matchMedia('(max-height: 500px)').matches;
 const DIAL_COPIES = 3;   // 一周させるための面の数。中央の面を基準にする
+// 1面がこの枚数以下なら回さない。2枚の面を並べると、選択中の上下に同じ枠が来る
+const DIAL_MIN = 2;
 
 // スキル札のタップで効果説明を開閉する。
 document.addEventListener('click', (e) => {
@@ -1177,14 +1195,27 @@ function recenter(list) {
 
 function mountDial(list) {
   let idle;
+  let lastTop = list.scrollTop, dir = 1;   // 最後に回した向き（下へ = 1）
   list.addEventListener('scroll', () => {
     if (!isDial()) return;
+    // 回さない一覧（.dial-flat）では選び直しも引き戻しもしない
+    if (list.classList.contains('dial-flat')) return;
+    if (list.scrollTop !== lastTop) dir = Math.sign(list.scrollTop - lastTop);
+    lastTop = list.scrollTop;
     clearTimeout(idle);
     idle = setTimeout(() => {
       const el = centeredTile(list);
       if (!el) return;
-      // 「あと N 種類」の枠は data-i を持たないので d が無く、選択は変わらない
-      const d = el.dataset.i === undefined ? null : SHARKS[+el.dataset.i];
+      // 「あと N 種類」の枠は選べないので、そこで止まると「中央＝選択」が崩れる。
+      // 回していた向きの隣のサメへ送る（送った先で次の scroll が選び直す）。
+      // 戻すのではなく送るのは、この枠が面の継ぎ目に居るため —— 戻すと一周できなくなる
+      if (el.dataset.i === undefined) {
+        const next = dir > 0 ? el.nextElementSibling : el.previousElementSibling;
+        if (next?.dataset.i !== undefined) next.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        else centerTile(list, SHARKS.indexOf(selShark));
+        return;
+      }
+      const d = SHARKS[+el.dataset.i];
       if (d && d !== selShark) selectShark(d);
       recenter(list);
     }, 140);
