@@ -1611,25 +1611,49 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // 4分の1 まで落ちた。丸1つではない複雑な Path は GPU の速い道（楕円・矩形）に乗らず、
   // 塗るたびに作り直しになる。泡を Path 1本にまとめたときも同じ理由で遅くなったので、
   // 泡と波紋は丸1つずつ塗る（丸は速い道に乗る）。焼いた絵は stop() で手放す
+  //
+  // GPU の無い端末向けの軽量化（N3）。塗る面積（フィルレート）がそのまま重さになる端末 ——
+  // GPU の無いソフトウェア描画（SwiftShader で計測）や低〜中価格帯のスマホ —— では、#8 の
+  // 「水のグラデーションを塗る → その上に石組みの絵を重ねる」が、縁の所を2回塗るぶん重かった
+  // （sp 844×390・dpr2 の実測で、#8 を外した版より 9〜20% 遅い）。そこで水と石組みを
+  // 1枚の絵に焼いて1回で描く。焼くのは「もらえる」「再装填中」「再装填中で中に居る」の3枚。
+  // グラデーションを毎フレーム塗るより絵を貼るほうが安く、この形で #8 を外した版との差は ±2% ほどに収まった。
+  // 絵は増える（ゾーンあたり 1040px 角が 3枚）が、作るのは1フレームに1枚ずつ（springTodo）
   let springArt = null;
+  let springTodo = [];        // まだ焼いていない絵（[art, 名前]）。drawSprings が1フレームに1枚ずつ焼く
   const RIM_PAD = 60;     // 縁の石がゾーンの円からはみ出す分（径方向に最大 ±45px）＋影のずれ
   const RIM_HI_SCALE = 0.5;   // 「中に居る」の明るみの絵の解像度。ぼけても困らないので半分
-  // 石組みの絵の内側は透明（石の内縁はゾーンの中心から z.r - 52px より外）。その透明な所まで
-  // 描くと、塗る面積（フィルレート）に弱い低〜中価格帯のスマホで重い。そこで絵を横長の帯
-  // （上・下・中ほど3段の左右）8枚に分けて、真ん中の穴を描かずに済ませる。
-  // 帯の段の高さ（中心からの距離、z.r との比）。穴の半幅はその段で透明が保てる幅（RIM_HOLE）から決まる。
-  // 正方形1枚と比べて描く面積は約 35% 減る
-  const RIM_BANDS = [0.72, 0.37];
+  // 絵は円の形で、外側の四隅は透明（「中に居る」の明るみは輪の形で、内側も透明）。その透明な所まで
+  // 描くと上と同じ理由で重いので、絵を横長の帯に切り、段ごとに左右の端を円に合わせて詰める。
+  // 外側は石が届く半径（RIM_REACH）の円、明るみの内側は「透明だと言える半径」（RIM_HOLE）の円に合わせる。
+  // 段の数は 12（描く面積は正方形に対して、水＋石で 86%、明るみで 46%。#8 の石組みは 3段で 65%）
+  const RIM_ROWS = 12;
   const RIM_HOLE = 0.86;      // 透明だと言える半径（z.r との比。石の内縁は z.r - 53、影のずれ 9px を引いてさらに内側）
+  // 石が届く最も外（z.r からの距離）。石の外縁は z.r + 52、影は右下へ 9px ずれるので z.r + 61、
+  // 縁のにじみを足して 64。正方形の端（RIM_PAD）より外は、どのみち絵が無い
+  const RIM_REACH = 64;
 
-  /** 石組みの絵を描く帯（ゾーン中心からの相対座標の矩形 [x0, y0, x1, y1]）。継ぎ目が重ならないよう隙間なく敷く */
-  function rimPieces(r) {
-    const m = r + RIM_PAD, h = r * RIM_HOLE;
-    const [a1, a2] = RIM_BANDS.map((f) => r * f);
-    const b1 = Math.sqrt(h * h - a1 * a1), b2 = Math.sqrt(h * h - a2 * a2);
-    const p = [[-m, -m, m, -a1], [-m, a1, m, m]];
-    for (const [y0, y1, b] of [[-a1, -a2, b1], [-a2, a2, b2], [a2, a1, b1]]) {
-      p.push([-m, y0, -b, y1], [b, y0, m, y1]);
+  /**
+   * 焼いた絵を描く帯（ワールド座標の矩形 [x0, y0, x1, y1]）。段の上下の境は隙間なく接する。
+   * hole > 0 なら、その半径より内側（透明な穴）を描かないよう、穴をまたぐ段を左右に分ける
+   */
+  function springPieces(z, hole) {
+    const m = z.r + RIM_PAD, o = z.r + RIM_REACH;
+    const p = [];
+    const at = (x0, y0, x1, y1) => p.push([z.x + x0, z.y + y0, z.x + x1, z.y + y1]);
+    for (let k = 0; k < RIM_ROWS; k++) {
+      const y0 = -m + (2 * m * k) / RIM_ROWS, y1 = -m + (2 * m * (k + 1)) / RIM_ROWS;
+      // 段の中で中心にいちばん近い y（外側の円が最も広い所）と、いちばん遠い y（穴が最も狭い所）
+      const near = y0 < 0 && y1 > 0 ? 0 : Math.min(Math.abs(y0), Math.abs(y1));
+      const far = Math.max(Math.abs(y0), Math.abs(y1));
+      const xo = Math.min(m, Math.sqrt(Math.max(0, o * o - near * near)));
+      if (far < hole) {
+        const xi = Math.sqrt(hole * hole - far * far);
+        at(-xo, y0, -xi, y1);
+        at(xi, y0, xo, y1);
+      } else {
+        at(-xo, y0, xo, y1);
+      }
     }
     return p;
   }
@@ -1660,9 +1684,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   /** 焼いた絵を手放す（stop() から呼ぶ）。ImageBitmap は GPU の記憶を持っているので明示的に閉じる */
   function dropSpringArt() {
     for (const art of springArt ?? []) {
-      for (const b of [art.rim, art.hi]) b?.close?.();
+      for (const b of [art.ready, art.rest, art.restHere, art.hi]) b?.close?.();
     }
     springArt = null;
+    springTodo = [];
   }
 
   function makeSpringArt() {
@@ -1713,29 +1738,31 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         }
       }
 
-      // 縁の内側の水。もらえる間はミント寄りに明るく、再装填中は暗い青で平らに。
-      // 再装填中を灰にしていたころは、水没した調布の水色の中で濁って見えたので青へ寄せた。
-      // グラデーションはゾーン×2状態の 6本だけなので使い回す（以前は毎フレーム作っていた）。
-      // 水は丸1つなので、焼かずにそのまま塗るほうが速い
-      const grad = (stops) => {
-        const gr = ctx.createRadialGradient(z.x, z.y, z.r * 0.1, z.x, z.y, z.r);
-        for (const [o, c] of stops) gr.addColorStop(o, c);
-        return gr;
-      };
       const art = {
         box: [z.x - z.r - RIM_PAD, z.y - z.r - RIM_PAD, 2 * (z.r + RIM_PAD)],
-        pieces: rimPieces(z.r).map(([x0, y0, x1, y1]) => [z.x + x0, z.y + y0, z.x + x1, z.y + y1]),
-        ready: grad([[0, 'rgba(163,240,240,0.30)'], [0.75, 'rgba(163,240,240,0.16)'], [1, 'rgba(120,210,215,0.24)']]),
-        rest: grad([[0, 'rgba(30,60,86,0.30)'], [1, 'rgba(16,38,58,0.40)']]),
-        rim: null, hi: null,
+        disk: springPieces(z, 0),                  // 水＋石組みの絵（円）を描く帯
+        ring: springPieces(z, z.r * RIM_HOLE),     // 明るみの絵（輪）を描く帯
+        // 焼いた絵。ready = もらえる、rest = 再装填中、restHere = 再装填中で中に居る、hi = 明るみだけ
+        ready: null, rest: null, restHere: null, hi: null,
+        bake: {},
+        /** 名前の絵を返す。まだ焼いていなければ、いま焼く */
+        get(key) { if (!this[key]) this.bake[key](); return this[key]; },
+      };
+
+      // 縁の内側の水。もらえる間はミント寄りに明るく、再装填中は暗い青で平らに。
+      // 再装填中を灰にしていたころは、水没した調布の水色の中で濁って見えたので青へ寄せた
+      const water = (g, stops) => {
+        const gr = g.createRadialGradient(z.x, z.y, z.r * 0.1, z.x, z.y, z.r);
+        for (const [o, c] of stops) gr.addColorStop(o, c);
+        g.fillStyle = gr;
+        g.beginPath(); g.arc(z.x, z.y, z.r, 0, TAU); g.fill();
       };
       // 石組み。水底に沈んだ石に見せる —— 飛行場の滑走路（drawGust）と同じく、
       // インクの縁は付けず、色を水の色へ寄せて暗く沈ませる。インクの縁と明るい灰だと
       // 「水の上に置いた、ぶつかる岩の壁」に見えた。
       // 影（右下へずらした暗い塗り）→ 石 → ごく弱い照り → 苔（石の形で切り抜く）→ 暗いティールの細い縁。
       // 引きの絵での「輪」は、石の数と並びと影で読ませる
-      const rimPx = Math.ceil(2 * (z.r + RIM_PAD));
-      bakeSpring(z, rimPx, (g) => {
+      const rim = (g) => {
         g.save();
         g.translate(5, 7);
         g.fillStyle = SPRING_SHADE;
@@ -1754,12 +1781,27 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
         g.lineWidth = 2.5;
         g.lineJoin = 'round';
         g.stroke(rocks);
-      }, (b) => { art.rim = b; });
+      };
+      const READY = [[0, 'rgba(163,240,240,0.30)'], [0.75, 'rgba(163,240,240,0.16)'], [1, 'rgba(120,210,215,0.24)']];
+      const REST = [[0, 'rgba(30,60,86,0.30)'], [1, 'rgba(16,38,58,0.40)']];
+      const rimPx = Math.ceil(2 * (z.r + RIM_PAD));
+      const [bx0, by0, bs] = art.box;
       // 自機がゾーンの中に居るとき、石の上に重ねる薄い白（石の形だけ）
-      bakeSpring(z, Math.ceil(rimPx * RIM_HI_SCALE), (g) => {
+      art.bake.hi = () => bakeSpring(z, Math.ceil(rimPx * RIM_HI_SCALE), (g) => {
         g.fillStyle = SPRING_HERE;
         g.fill(rocks);
       }, (b) => { art.hi = b; });
+      art.bake.ready = () => bakeSpring(z, rimPx, (g) => { water(g, READY); rim(g); }, (b) => { art.ready = b; });
+      art.bake.rest = () => bakeSpring(z, rimPx, (g) => { water(g, REST); rim(g); }, (b) => { art.rest = b; });
+      // 明るみは、別に重ねていたころと同じ半分の解像度の絵を引き伸ばして焼き込む（縁のぼけ方を揃える）
+      art.bake.restHere = () => bakeSpring(z, rimPx, (g) => {
+        water(g, REST); rim(g);
+        g.drawImage(art.get('hi'), bx0, by0, bs, bs);
+      }, (b) => { art.restHere = b; });
+      // 最初の絵に要るのは「もらえる」だけ。残りは1フレームに1枚ずつ前もって焼く
+      // （まとめて焼くと開始直後の1フレームが長くなる）
+      art.get('ready');
+      springTodo.push([art, 'hi'], [art, 'rest'], [art, 'restHere']);
       return art;
     });
   }
@@ -1786,6 +1828,10 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     const ready = player.springT <= 0;
     const env = world.envT;
     if (!springArt) springArt = makeSpringArt();
+    else if (springTodo.length) {
+      const [art, key] = springTodo.shift();
+      art.get(key);              // 前もって焼く絵を1フレームに1枚（焼き済みなら何もしない）
+    }
     for (let i = 0; i < gim.springs.length; i++) {
       const z = gim.springs[i];
       const art = springArt[i];
@@ -1794,11 +1840,12 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       if (z.x + m < view.x0 || z.x - m > view.x1 || z.y + m < view.y0 || z.y - m > view.y1) continue;
       const here = (player.x - z.x) ** 2 + (player.y - z.y) ** 2 < z.r * z.r;
 
-      ctx.fillStyle = ready ? art.ready : art.rest;
-      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.fill();
-
-      // 石組み（焼いた絵）。水底に沈んでいるので、波紋と泡より下に描く。
-      // 中に居るゾーンだけ、石に薄い白を重ねて明るくする
+      // 水と石組み（焼いた絵）。石は水底に沈んでいるので、波紋と泡より下に描く。
+      // 中に居るゾーンだけ、石に薄い白を重ねて明るくする（再装填中は焼き込み済みの絵）。
+      // もらえる間に中に居るのは、オンラインで入った瞬間の再装填がサーバから届くまでの
+      // 数フレームだけなので、そこは明るみの絵を別に重ねる
+      const lit = here && ready;
+      const water = ready ? art.get('ready') : art.get(here ? 'restHere' : 'rest');
       // 帯ごとに、画面に入っている部分だけを切り出して描く。塗る面積がそのまま重さになる
       // 端末（GPU の無いソフトウェア描画、フィルレートの低いスマホ）のため。
       // 寄りの絵ではゾーンの大半が画面の外にある
@@ -1811,16 +1858,18 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       const tm = ctx.getTransform();
       const snapX = (x) => (Math.round(tm.a * x + tm.e) - tm.e) / tm.a;
       const snapY = (y) => (Math.round(tm.d * y + tm.f) - tm.f) / tm.d;
-      for (const [qx0, qy0, qx1, qy1] of art.pieces) {
-        const px0 = snapX(qx0), py0 = snapY(qy0), px1 = snapX(qx1), py1 = snapY(qy1);
-        const x0 = Math.max(px0, view.x0 - pad), y0 = Math.max(py0, view.y0 - pad);
-        const x1 = Math.min(px1, view.x1 + pad), y1 = Math.min(py1, view.y1 + pad);
-        if (x1 <= x0 || y1 <= y0) continue;
-        for (const img of here ? [art.rim, art.hi] : [art.rim]) {
-          const k = img.width / bs;
+      const paste = (img, pieces) => {
+        const k = img.width / bs;
+        for (const [qx0, qy0, qx1, qy1] of pieces) {
+          const px0 = snapX(qx0), py0 = snapY(qy0), px1 = snapX(qx1), py1 = snapY(qy1);
+          const x0 = Math.max(px0, view.x0 - pad), y0 = Math.max(py0, view.y0 - pad);
+          const x1 = Math.min(px1, view.x1 + pad), y1 = Math.min(py1, view.y1 + pad);
+          if (x1 <= x0 || y1 <= y0) continue;
           ctx.drawImage(img, (x0 - bx0) * k, (y0 - by0) * k, (x1 - x0) * k, (y1 - y0) * k, x0, y0, x1 - x0, y1 - y0);
         }
-      }
+      };
+      paste(water, art.disk);
+      if (lit) paste(art.get('hi'), art.ring);
 
       if (ready) {
         // 波紋。中心付近から 3本の輪が広がり、縁の手前で消える。外へ行くほど薄く細く。
