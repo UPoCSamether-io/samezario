@@ -535,7 +535,7 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    DOM 順のまま畳むと一覧が最下段に来て、「一覧をタップ → 上へスクロールして
    プレビューを確認 → また下へ」の往復が毎回発生する。
    タップ対象(一覧)をその結果(プレビュー)の直下に置いて往復を消す。
-   決定ボタンはスクロール領域の外のツールバーに居るので、ここでは触らない。
+   決定ボタン（ACTION!）は名前欄の直後、いちばん最後に置く。
 
    `>` (子結合子) は使えない。display: contents は箱の生成を消すだけで
    DOM ツリーは変えないので、この4要素は grid item にはなっても
@@ -556,7 +556,8 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #shark-cols #preview-tag  { order: 2; }   /* 立ち絵の説明なので直下に置く */
   #shark-cols #shark-list   { order: 3; overflow: visible; }
   #shark-cols #stats        { order: 4; }
-  #shark-cols .name-pane    { order: 5; }   /* 一度入れたら変えないので最後 */
+  #shark-cols .name-pane    { order: 5; }   /* 名前 → ACTION! を一本の流れにする */
+  #shark-cols #start-btn    { order: 6; }
 }
 
 /* サメ選択の一覧は、ダイヤルを一周させるために同じ5体を3面ぶん持っている。
@@ -695,6 +696,13 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   }
   /* 中央から外れた候補は少し引っ込める。ダイヤルらしさは選択中との差で出す */
   #shark-list .shark-tile:not(.is-sel) { opacity: .55; transform: scale(.92); }
+
+  /* ---- サメ選択の ACTION! ----
+     右カラム（約 270px）に 一覧 → NAME → ACTION! を縦に積む。ACTION! は腕の 13px を
+     含めて約 50px に抑え、一覧（ダイヤル）に高さを残す。
+     上を下より 3px 厚くするのは、ふりがなが帯の罫に触れないため（#map-next と同じ） */
+  #start-btn.go > div:last-child { padding: calc(0.2rem + 3px) 0.75rem 0.2rem; font-size: 1rem; line-height: 1.5; }
+  #shark-bar { padding-block: 0.15rem; }
 }
 
 /* ---- ゲーム HUD ----
@@ -1260,6 +1268,16 @@ rp {
 /* 未解放のサメ。図鑑では影、選択ダイヤルでは押せない */
 .dex-silhouette { filter: brightness(0) opacity(.35); }
 .shark-locked { opacity: .45; pointer-events: none; filter: grayscale(1); }
+/* サメ選択の「あと N 種類」の1枠（main.js の moreTile）。選べないので押せる見た目を外し、
+   破線の枠で「まだ空いている枠」に見せる。中の一文は読ませたいので grayscale は掛けない */
+.shark-more { border-style: dashed; box-shadow: none; opacity: .8; cursor: default; }
+
+/* サメ選択の ACTION!。押せることが伝わるよう、史料の獲得ボタン（.claim-pulse）と
+   同じ周期・強さで金色に脈打たせる。transform ではなく filter を使うのは、
+   hover / :active の持ち上げ・押し込み（.btn の transform）と取り合わないため。
+   押した後（play() が disabled にする）は止めて、.btn[disabled] の灰色を活かす */
+#start-btn:not([disabled]) { animation: claim-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { #start-btn:not([disabled]) { animation: none; } }
 
 /* 史料。海の底の泥・砂・海水の滲みで読めなくなっている文字と、
    この段階で新しく洗い出された文字。

@@ -1043,64 +1043,73 @@ const STAT_KEYS = [
 
 let mainPreview = null;
 function renderSharks() {
+  const list = $('#shark-list');
   if (!mainPreview) {
     mainPreview = mountPreview($('#preview'), selShark);
-    const list = $('#shark-list');
-    list.innerHTML = '';
-    // 面を3つ並べる。ダイヤルを一周させるために、端まで来たら中央の面へ戻す。
-    // ここで作るのは器だけで、中身（名前・施錠状態）は下の paintLocks() が入れる
-    for (let copy = 0; copy < DIAL_COPIES; copy++) {
-      SHARKS.forEach((d, i) => {
-        const b = document.createElement('button');
-        b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
-          'transition-transform hover:-translate-x-1 active:translate-y-0.5';
-        b.dataset.i = i;
-        b.dataset.copy = copy;
-        b.onclick = () => selectShark(d);
-        list.appendChild(b);
-      });
-    }
     mountDial(list);
   }
-  paintLocks();
+  // 1面の枚数は解放数で変わる（解放済み全部 ＋ 未解放があれば「あと N 種類」の1枠）。
+  // 史料の獲得で解放状態が変わるので、塗り直しではなく開くたびに面ごと作り直す
+  // （以前は器をキャッシュして中身だけ塗り直していたが、枚数が変わるとそれができない）。
+  // 面を3つ並べるのは、ダイヤルを一周させるため（端まで来たら中央の面へ戻す）
+  const open = SHARKS.filter(isUnlockedShark);
+  const rest = SHARKS.length - open.length;
+  list.innerHTML = '';
+  for (let copy = 0; copy < DIAL_COPIES; copy++) {
+    for (const d of open) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'shark-tile text-left bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3 ' +
+        'transition-transform hover:-translate-x-1 active:translate-y-0.5';
+      b.dataset.i = SHARKS.indexOf(d);   // 添字は SHARKS の通し番号。面の中の位置ではない
+      b.dataset.copy = copy;
+      b.innerHTML = tileInner(d);
+      b.onclick = () => selectShark(d);
+      list.appendChild(b);
+    }
+    if (rest) list.appendChild(moreTile(rest, copy));
+  }
   selectShark(selShark);
   // ダイヤルでは選択中が中央に居ないと辻褄が合わないので、開くたびに寄せ直す
-  if (isDial()) centerTile($('#shark-list'), SHARKS.indexOf(selShark), 'auto');
+  if (isDial()) centerTile(list, SHARKS.indexOf(selShark), 'auto');
 }
 
-/**
- * タイル1枚の中身。ロック中は図鑑のカードと同じで、名前も英字も肩書きも出さない。
- * モチーフのアイコンと色はそれ自体が正体を指す（terrain＝土偶）ので、鍵と地の色へ寄せる。
- * 見えるのは「まだ居ないサメが1枠ある」ことだけ。
- */
-const tileInner = (d, locked) => `
+/** 解放済みのサメのタイル1枚の中身 */
+const tileInner = (d) => `
   <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper"
-        style="background:${locked ? 'var(--color-ink)' : d.color}">
-    ${icon(locked ? 'lock' : ICON[d.id], '!text-[22px]')}
+        style="background:${d.color}">
+    ${icon(ICON[d.id], '!text-[22px]')}
   </span>
   <span class="min-w-0">
-    <span class="tile-name block font-display font-extrabold text-base leading-tight">${
-      locked ? MASK : rubify(d.name)}</span>
-    <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${
-      locked ? MASK : `${esc(d.en)} · ${rubify(d.tag)}`}</span>
+    <span class="tile-name block font-display font-extrabold text-base leading-tight">${rubify(d.name)}</span>
+    <span class="tile-sub block font-mono text-[10px] tracking-widest text-ink/55">${esc(d.en)} · ${rubify(d.tag)}</span>
   </span>`;
 
-// タイルの生成はキャッシュされるが解放状態は史料の獲得で変わるので、表示のたびに
-// 塗り直す（3面ぶん・data-i で当てる）。伏せているのは見た目ではなく中身なので、
-// 施錠状態だけでなく innerHTML ごと入れ替える——そうしないと、獲得した直後に
-// サメ選択を開いても伏せ字のままになる
-function paintLocks() {
-  $$('.shark-tile').forEach((n) => {
-    const d = SHARKS[+n.dataset.i];
-    const locked = !isUnlockedShark(d);
-    n.classList.toggle('shark-locked', locked);
-    n.disabled = locked;
-    n.toggleAttribute('aria-disabled', locked);
-    n.innerHTML = tileInner(d, locked);
-    // 名前を伏せたぶん、押せない理由は解放条件で言う（図鑑のカードと同じ文面）
-    if (locked) n.setAttribute('aria-label', plainText(unlockCopy(d)));
-    else n.removeAttribute('aria-label');
-  });
+// 解放の道すじ。図鑑の吹き出し（unlockCopy）は幕ごとの文面なので、まとめた枠では総称で言う
+const MORE_HINT = '｜史料《しりょう》を｜復元《ふくげん》すると｜増《ふ》える';
+
+/**
+ * 未解放のサメをまとめた1枠「あと N 種類」。図鑑のカードと同じで、名前も英字も
+ * 肩書きも出さない。モチーフのアイコンと色はそれ自体が正体を指す（terrain＝土偶）ので、
+ * 鍵と地の色だけにする。見えるのは「まだ居ないサメが N 種類ある」ことだけ。
+ * 1体ずつ「????」を並べていた頃は、それが一覧を埋めて選べるサメが押し出されていた。
+ * 選べないので button にはせず、data-i も持たせない（ダイヤルの中央に来ても
+ * mountDial は選び直さない）。どうすれば増えるかは中の一文と aria-label で言う
+ */
+function moreTile(n, copy) {
+  const el = document.createElement('div');
+  el.className = 'shark-tile shark-more bg-paper ink-3 rounded-lg hard px-3 py-2.5 flex items-center gap-3';
+  el.dataset.copy = copy;
+  el.setAttribute('role', 'note');
+  el.setAttribute('aria-label', plainText(`まだ｜見《み》つかっていないサメが あと${n}｜種類《しゅるい》。${MORE_HINT}`));
+  el.innerHTML = `
+    <span class="tile-icon w-10 h-10 shrink-0 rounded-full ink-2 grid place-items-center text-paper"
+          style="background:var(--color-ink)">${icon('lock', '!text-[22px]')}</span>
+    <span class="min-w-0">
+      <span class="tile-name block font-display font-extrabold text-base leading-tight">あと${n}${rubify('｜種類《しゅるい》')}</span>
+      <span class="tile-sub block text-[11px] leading-snug text-ink/60">${rubify(MORE_HINT)}</span>
+    </span>`;
+  return el;
 }
 
 // スマホ横画面のサメ選択はダイヤル。中央で止まったサメがそのまま選ばれる。
@@ -1130,7 +1139,8 @@ document.addEventListener('click', (e) => {
 
 /** 中央の面の i 番目を、ダイヤルの中央へ持ってくる */
 function centerTile(list, i, behavior = 'smooth') {
-  const el = list.children[SHARKS.length + i];
+  // 1面の枚数は解放数で変わるので、位置ではなく「中央の面の data-i」で引く
+  const el = list.querySelector(`.shark-tile[data-copy="1"][data-i="${i}"]`);
   if (el) el.scrollIntoView({ block: 'center', behavior });
 }
 
@@ -1149,7 +1159,13 @@ function centeredTile(list) {
 
 /** 端まで来たら中央の面へ黙って引き戻す。 */
 function recenter(list) {
-  const copy = list.scrollHeight / DIAL_COPIES;
+  // 1面の長さは、隣り合う面の先頭どうしの距離で測る。scrollHeight / 3 だと
+  // 面の間の gap の端数ぶんずれ、1面が2枚しかないときに一周が目に見えて飛ぶ
+  const a = list.querySelector('.shark-tile[data-copy="0"]');
+  const b = list.querySelector('.shark-tile[data-copy="1"]');
+  if (!a || !b) return;
+  const copy = b.offsetTop - a.offsetTop;
+  if (copy <= 0) return;
   const t = list.scrollTop;
   const to = t < copy * 0.5 ? t + copy : t >= copy * 1.5 ? t - copy : null;
   if (to === null) return;
@@ -1167,7 +1183,8 @@ function mountDial(list) {
     idle = setTimeout(() => {
       const el = centeredTile(list);
       if (!el) return;
-      const d = SHARKS[+el.dataset.i];
+      // 「あと N 種類」の枠は data-i を持たないので d が無く、選択は変わらない
+      const d = el.dataset.i === undefined ? null : SHARKS[+el.dataset.i];
       if (d && d !== selShark) selectShark(d);
       recenter(list);
     }, 140);
@@ -1181,7 +1198,7 @@ function selectShark(d) {
   selShark = d;
   if (mainPreview) mainPreview.def = d;
   // 面を3つ持っているので、位置ではなく data-i で当てる
-  $$('.shark-tile').forEach((n) => {
+  $$('.shark-tile[data-i]').forEach((n) => {
     const on = SHARKS[+n.dataset.i] === d;
     n.style.background = on ? '#f3b553' : '';
     n.style.boxShadow = on ? '6px 6px 0 0 #2d2d2d' : '';
@@ -1228,7 +1245,26 @@ const nameInput = $('#player-name');
 nameInput.value = save.name;
 const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10) || 'PLAYER';
 
-$('#start-btn').onclick = () => play();
+const startBtn = $('#start-btn');
+startBtn.onclick = () => play();
+
+// サメ選択では Enter でも撮影を始める（ACTION! の ENTER の札と対）。
+// - 日本語入力の変換を確定する Enter では始めない。名前を確定した瞬間にゲームが
+//   始まってしまう。確定中は isComposing、古い Safari は keyCode 229 で来る
+// - フォーカスが他のボタン（「← ロケ地」など）にあるときは、そのボタンの click に任せる。
+//   ACTION! 自身に乗っているときも同じ（既定の click で play() が呼ばれる）
+// 二重起動は play() の starting / shutting が止める
+addEventListener('keydown', (e) => {
+  if (cur !== 'shark' || e.key !== 'Enter') return;
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat) return;
+  const on = e.target.closest?.('button, a, select, textarea, input');
+  if (on && on !== nameInput) return;
+  e.preventDefault();
+  if (startBtn.disabled || starting || shutting) return;
+  clap(startBtn);   // クリックしたときと同じく、カチンコを鳴らしてから入る
+  play();
+});
 
 // ---------- 図鑑 ----------
 // カードは7枚・全ポートレート起動時プリロード済みで、開くのも手動遷移のみ。

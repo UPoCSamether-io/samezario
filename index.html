@@ -309,12 +309,13 @@
   <!-- ================= サメ選択 ================= -->
   <section id="s-shark" class="screen">
     <div class="h-full flex flex-col py-[var(--bar-pad)] px-6">
-      <div class="flex items-center justify-between gap-4 py-3">
-        <button class="btn !w-auto" data-go="map"><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2.5 font-bold text-sm">← ロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby></div></button>
-        <h2 class="screen-title">サメを<ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>ぶ</h2>
-        <button class="btn !w-auto primary" id="start-btn"><div class="cap clapper-stripes"></div>
-          <div class="px-5 py-2.5 font-extrabold text-sm">ACTION! →</div></button>
+      <!-- ロケ地選択（#map-bar）と同じ3列。戻るは左上の小さい白（.btn.back）。
+           進む（ACTION!）はツールバーには置かず、右カラムの一番下（一覧の下＝視線の終点）へ -->
+      <div id="shark-bar" class="grid grid-cols-[1fr_auto_1fr] max-sm:grid-cols-2 items-center gap-4 py-3 max-md:py-2">
+        <button class="btn back !w-auto justify-self-start" data-go="map"><div class="cap clapper-stripes"></div>
+          <div>← ロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby></div></button>
+        <h2 class="screen-title max-sm:hidden">サメを<ruby>選<rp>(</rp><rt>えら</rt><rp>)</rp></ruby>ぶ</h2>
+        <div></div>
       </div>
 
       <!-- 畳むかどうかは style.css が決める。幅だけで畳むと横持ちスマホが潰れる -->
@@ -332,6 +333,11 @@
         </div>
 
         <div class="shark-col min-h-0 flex flex-col gap-2.5">
+          <!-- サメ一覧 → NAME → ACTION! の順に、上から下へ一本の流れで並べる。
+               一覧が伸びて残りを取るので、ACTION! は常にカラムの一番下に居る -->
+          <!-- サメ一覧。未解放のサメは「あと N 種類」の1枠にまとめる（main.js の renderSharks） -->
+          <div id="shark-list" class="flex-1 min-h-0 overflow-auto thin-scroll flex flex-col gap-2.5 pr-1"></div>
+
           <!-- 名前。同じロケ地の部屋へ自動で入り、空いた席はボットが埋める -->
           <div class="name-pane bg-navy text-paper ink-3 hard rounded-lg p-3 shrink-0">
             <label class="block">
@@ -339,11 +345,14 @@
               <input id="player-name" maxlength="10" placeholder="PLAYER"
                      class="mt-1 w-full bg-paper text-ink ink-2 rounded px-2 py-1.5 font-display font-bold text-sm outline-none focus:bg-yellow">
             </label>
-            <p class="mt-2 text-[11px] leading-snug text-paper/70"><ruby>同<rp>(</rp><rt>おな</rt><rp>)</rp></ruby>じロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>の<ruby>部屋<rp>(</rp><rt>へや</rt><rp>)</rp></ruby>へ<ruby>入<rp>(</rp><rt>はい</rt><rp>)</rp></ruby>ります（<ruby>最大<rp>(</rp><rt>さいだい</rt><rp>)</rp></ruby>8<ruby>人<rp>(</rp><rt>にん</rt><rp>)</rp></ruby>）。<ruby>空<rp>(</rp><rt>あ</rt><rp>)</rp></ruby>いた<ruby>席<rp>(</rp><rt>せき</rt><rp>)</rp></ruby>はボットが<ruby>埋<rp>(</rp><rt>う</rt><rp>)</rp></ruby>めます。</p>
+            <p class="mt-2 text-[11px] leading-snug text-paper/70"><ruby>同<rp>(</rp><rt>おな</rt><rp>)</rp></ruby>じロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>の<ruby>部屋<rp>(</rp><rt>へや</rt><rp>)</rp></ruby>へ<ruby>入<rp>(</rp><rt>はい</rt><rp>)</rp></ruby>ります（<ruby>最大<rp>(</rp><rt>さいだい</rt><rp>)</rp></ruby>14<ruby>人<rp>(</rp><rt>にん</rt><rp>)</rp></ruby>）。<ruby>空<rp>(</rp><rt>あ</rt><rp>)</rp></ruby>いた<ruby>席<rp>(</rp><rt>せき</rt><rp>)</rp></ruby>はボットが<ruby>埋<rp>(</rp><rt>う</rt><rp>)</rp></ruby>めます。</p>
           </div>
 
-          <!-- サメ一覧 -->
-          <div id="shark-list" class="min-h-0 overflow-auto thin-scroll flex flex-col gap-2.5 pr-1"></div>
+          <!-- 進む。id は scripts/shots.mjs の startGame() と main.js の play() が使うので変えないこと。
+               Enter でも押せる（main.js の keydown）。ENTER の札はタッチ端末では .kbd-badge ごと隠れる -->
+          <button class="btn primary go shrink-0" id="start-btn" type="button"><div class="cap clapper-stripes"></div>
+            <span class="kbd-badge absolute -top-3 -right-2 z-10 px-1.5 py-0.5 bg-paper ink-2 rounded-full font-mono font-bold text-[9px] leading-none hard-sm pointer-events-none">ENTER</span>
+            <div>ACTION! →</div></button>
         </div>
       </div>
     </div>
