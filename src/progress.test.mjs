@@ -20,6 +20,8 @@ assert.ok(isUnlocked(chofu));
 assert.ok(!isUnlocked(jindaiji));
 assert.equal(save.points, 0);
 assert.ok(!isCleared(jindaiji.spot));
+// 前回のロケ地は空。タイトルの「すぐ遊ぶ」は、これが空のあいだ出ない
+assert.equal(save.map, '');
 
 // 照合成功 → エリアが開き、スポットのポイントが入る
 clearSpot(jindaiji, 88);
