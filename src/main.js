@@ -581,7 +581,8 @@ function renderMaps(keep = null) {
       'aria-label': `${plainText(m.name)}${open ? '' : '（未解放）'}`,
     });
     p.onclick = p.onfocus = () => selectMap(m);
-    p.onpointerup = () => {
+    p.onpointerup = (e) => {
+      if (e.button !== 0) return;   // 右クリック・中クリックは数えない
       const now = performance.now();
       // 未解放エリアの2回押しでは何もしない（解放パネルを勝手に開かない）
       if (open && lastTap.m === m && now - lastTap.t < DOUBLE_TAP_MS) {
@@ -591,7 +592,9 @@ function renderMaps(keep = null) {
     };
     // キーボードでは、Tab で選んで Enter で次へ（主ボタンを押したのと同じ）
     p.onkeydown = (e) => {
-      if (e.key !== 'Enter') return;
+      // 画面を離れても path にフォーカスが残る。リザルトの Enter（もう一度撮る）が
+      // ここに届いてサメ選択へ飛ばないよう、ロケ地選択が見えている間だけ受ける
+      if (cur !== 'map' || e.key !== 'Enter') return;
       e.preventDefault();
       selectMap(m);
       goMapNext();
@@ -650,7 +653,22 @@ function selectMap(m) {
       + `<span class="long">${rubify('｜現地《げんち》で｜写真《しゃしん》を｜撮《と》って｜解放《かいほう》')}</span>`
       + `<span class="short">${rubify('｜写真《しゃしん》で｜解放《かいほう》')}</span>`;
   // 右上の文字リンクは解放済みのときだけ。未解放で「サメ選びへ」と書くと嘘になる
-  $('#map-skip').style.visibility = open ? '' : 'hidden';
+  // 未解放のときは「いま遊べる場所」へ選び直す道を添える。主ボタンは解放（現地へ行く）
+  // なので、今すぐ遊びたい人がそこで行き止まらないように。置き場は2か所:
+  //   - 主ボタンのすぐ下（#map-alt）。横持ちでは本文の高さを食うので style.css が畳む
+  //   - 右上の文字リンク（#map-skip）。解放済みでは「サメ選びへ →」、未解放ではこれ。
+  //     ツールバーの空いている列なので、横持ちでも高さを食わない
+  const playable = open ? null : MAPS.find(isUnlocked);
+  const alt = $('#map-alt'), skip = $('#map-skip');
+  alt.hidden = !playable;
+  skip.style.visibility = open || playable ? '' : 'hidden';
+  if (playable) {
+    alt.innerHTML = skip.innerHTML = rubify(`いま｜遊《あそ》べるのは ${playable.name} →`);
+    alt.onclick = skip.onclick = () => selectMap(playable);
+  } else {
+    skip.innerHTML = rubify('サメ｜選《えら》びへ →');
+    skip.onclick = () => { if (isUnlocked(selMap)) show('shark'); };
+  }
   // 並びは重要な順。パネルは横持ちで本文 197px しか映らず（実測 844x390）、下に置いたものは
   // 読まれない。従来の順（blurb → HISTORY）だと史実が丸ごと折り返しの下に沈んでいた。
   // 史実とロック解除の導線がこの画面の主役、blurb は雰囲気づけなので最後に回す
@@ -747,7 +765,6 @@ function goMapNext() {
   else openUnlock(selMap);
 }
 $('#map-next').onclick = goMapNext;
-$('#map-skip').onclick = () => { if (isUnlocked(selMap)) show('shark'); };
 // 起動時は前回のロケ地を選んだ状態から始める（selShark が save.shark から戻るのと同じ）。
 // 解放状態は史料の獲得などで変わるので、閉じていたら黙って既定の選び方へ落とす
 renderMaps(MAPS.find((m) => m.id === save.map && isUnlocked(m)));

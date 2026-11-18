@@ -966,6 +966,12 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
 @media (hover: hover) {
   .btn.sub:hover { box-shadow: 4px 4px 0 0 var(--color-ink); }
 }
+/* 腕は幅いっぱいの棒なので、持ち上がりは 幅×sin(角度)。-2.5deg だと 560px の
+   「もう一度撮る」で約 25px、300px のロケ地の主ボタンでも約 13px 上がり、上の
+   Tips の枠やパネル本文に食い込んでいた。幅の広い進むボタンだけ -1deg（約 10px 以内）に */
+@media (hover: hover) {
+  .btn.go:hover::before { transform: rotate(-1deg); }
+}
 /* :active は hover より後に書く（.btn と同じ理由） */
 .btn.sub:active { box-shadow: 0 0 0 0 var(--color-ink); transform: translate(3px, 3px); }
 
@@ -1014,7 +1020,7 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    カチンコの腕（ボタンの上 13px、hover で幅×sin2.5° ほど持ち上がる）と
    右下の影（5〜7px）が切れないだけの余白を取る */
 #map-cta {
-  padding: 0.35rem 0.85rem 0.85rem;
+  padding: 0.35rem 0.85rem 0.6rem;
   border-top: 3px solid var(--color-ink);
   background: var(--color-navy-deep);
 }
@@ -1026,6 +1032,9 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #map-next-label .short { display: inline; }
 }
 #map-info { container: map-info / inline-size; }
+/* 本文の下端を 16px だけ薄くして、「下にまだ続く」ことを伝える（主ボタンの帯で切れて見えるため） */
+#map-info-body { mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); }
+#map-alt { font-size: 0.75rem; }
 /* 地図のエリアはダブルタップで次へ進む（main.js の DOUBLE_TAP_MS）。
    ブラウザのダブルタップ拡大が残っていると、2打目が拡大に取られる */
 .map-area { touch-action: manipulation; }
@@ -1182,8 +1191,12 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
      - ボタンの上の余白は腕の 13px（.btn の margin-top）だけにし、ラベルを一段薄く
      - ツールバーの上下の余白を詰める（地図とパネルが同じだけ伸びる） */
   #map-info > .cap { display: none; }
-  #map-cta { padding: 0 0.6rem 0.5rem; }
-  #map-next.go > div:last-child { padding: 0.15rem 0.75rem; font-size: 1rem; line-height: 1.5; }
+  #map-cta { padding: 0 0.6rem 0.4rem; }
+  /* 主ボタンの下の選び直しは畳む（同じリンクが右上の #map-skip にある）。
+     出すと本文が 20px 減り、未解放エリアの史実が1行しか映らなかった（実測 844x390） */
+  #map-alt { display: none; }
+  /* 上を下より 3px 厚くするのは、ふりがなが帯の下線（.cap の罫）に触れないため */
+  #map-next.go > div:last-child { padding: calc(0.15rem + 3px) 0.75rem 0.15rem; font-size: 1rem; line-height: 1.5; }
   #map-bar { padding-block: 0.15rem; }
   .screen-title { font-size: 1.25rem; padding-bottom: 0.25rem; }
   .screen-title::after { height: 3px; }
