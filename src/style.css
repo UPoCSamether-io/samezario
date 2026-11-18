@@ -535,7 +535,7 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
    DOM 順のまま畳むと一覧が最下段に来て、「一覧をタップ → 上へスクロールして
    プレビューを確認 → また下へ」の往復が毎回発生する。
    タップ対象(一覧)をその結果(プレビュー)の直下に置いて往復を消す。
-   決定ボタンはスクロール領域の外のツールバーに居るので、ここでは触らない。
+   決定ボタン（ACTION!）は名前欄の直後、いちばん最後に置く。
 
    `>` (子結合子) は使えない。display: contents は箱の生成を消すだけで
    DOM ツリーは変えないので、この4要素は grid item にはなっても
@@ -556,10 +556,12 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   #shark-cols #preview-tag  { order: 2; }   /* 立ち絵の説明なので直下に置く */
   #shark-cols #shark-list   { order: 3; overflow: visible; }
   #shark-cols #stats        { order: 4; }
-  #shark-cols .name-pane    { order: 5; }   /* 一度入れたら変えないので最後 */
+  #shark-cols .name-pane    { order: 5; }   /* 名前 → ACTION! を一本の流れにする */
+  #shark-cols #start-btn    { order: 6; }
 }
 
-/* サメ選択の一覧は、ダイヤルを一周させるために同じ5体を3面ぶん持っている。
+/* サメ選択の一覧は、ダイヤルを一周させるために同じ面（解放済みのサメ ＋「あと N 種類」）を
+   3面ぶん持っている（1面が2枚以下のときは中央の1面だけ。main.js の DIAL_MIN）。
    ダイヤルでない環境では複製が並んで見えるので、中央の面だけ出す。
    このブロックが下のダイヤル側より前に居るのは意図的 —
    特異度が同じなので、順序が入れ替わると隠す側が勝って一周できなくなる */
@@ -695,6 +697,17 @@ html.icons-ready .material-symbols-rounded { visibility: visible; }
   }
   /* 中央から外れた候補は少し引っ込める。ダイヤルらしさは選択中との差で出す */
   #shark-list .shark-tile:not(.is-sel) { opacity: .55; transform: scale(.92); }
+  /* 回さない一覧（解放1体＋まとめ枠。main.js の DIAL_MIN）。ダイヤルの中央寄せをやめ、
+     2枚まとめて縦の真ん中に置く。選択中を中央にすると下の枠が一覧の下端で文字の途中から
+     切れ、壊れて見えた（実測 844x390、一覧の高さ 117px に対し 2枚で約 98px なら収まる） */
+  #shark-list.dial-flat { overflow: hidden; justify-content: center; scroll-snap-type: none; }
+
+  /* ---- サメ選択の ACTION! ----
+     右カラム（約 270px）に 一覧 → NAME → ACTION! を縦に積む。ACTION! は腕の 13px を
+     含めて約 50px に抑え、一覧（ダイヤル）に高さを残す。
+     上を下より 3px 厚くするのは、ふりがなが帯の罫に触れないため（#map-next と同じ） */
+  #start-btn.go > div:last-child { padding: calc(0.2rem + 3px) 0.75rem 0.2rem; font-size: 1rem; line-height: 1.5; }
+  #shark-bar { padding-block: 0.15rem; }
 }
 
 /* ---- ゲーム HUD ----
@@ -1257,9 +1270,34 @@ rp {
   transform: translateY(-0.2em);
 }
 
-/* 未解放のサメ。図鑑では影、選択ダイヤルでは押せない */
+/* 未解放のサメ。図鑑では影（サメ選択では1枠にまとめるので、伏せ字のタイルはもう無い） */
 .dex-silhouette { filter: brightness(0) opacity(.35); }
-.shark-locked { opacity: .45; pointer-events: none; filter: grayscale(1); }
+/* サメ選択の「あと N 種類」の1枠（main.js の moreTile）。選べないので影を外し、
+   金寄りの破線で「これから埋まる枠」に見せる。中の一文は読ませたいので灰色にはしない */
+.shark-more { border-style: dashed; border-color: var(--color-yellow-dim); cursor: help; }
+/* 押したら一文を光らせる（画面は移さない）。横画面では一文を畳んでいるので、
+   光らせている間だけ「あと N 種類」と入れ替える。長さは main.js の MORE_HINT_MS */
+.shark-more.hinting .tile-sub { animation: more-hint .6s ease-out 2; color: var(--color-ink); }
+@keyframes more-hint {
+  0%, 100% { background: transparent; }
+  40%      { background: color-mix(in srgb, var(--color-yellow) 70%, transparent); }
+}
+@media (max-height: 500px) {
+  #shark-list .shark-more.hinting .tile-name { display: none; }
+  #shark-list .shark-more.hinting .tile-sub { display: block; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shark-more.hinting .tile-sub { animation: none; background: color-mix(in srgb, var(--color-yellow) 55%, transparent); }
+}
+/* ACTION! は広い画面では一段大きく。横画面の寸法はダイヤルのブロック（id 指定）が持つ */
+@media (min-height: 501px) { #start-btn.go > div:last-child { font-size: 1.25rem; } }
+
+/* サメ選択の ACTION!。押せることが伝わるよう、史料の獲得ボタン（.claim-pulse）と
+   同じ周期・強さで金色に脈打たせる。transform ではなく filter を使うのは、
+   hover / :active の持ち上げ・押し込み（.btn の transform）と取り合わないため。
+   押した後（play() が disabled にする）は止めて、.btn[disabled] の灰色を活かす */
+#start-btn:not([disabled]) { animation: claim-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { #start-btn:not([disabled]) { animation: none; } }
 
 /* 史料。海の底の泥・砂・海水の滲みで読めなくなっている文字と、
    この段階で新しく洗い出された文字。
