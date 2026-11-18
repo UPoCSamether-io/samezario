@@ -1225,8 +1225,123 @@ const GIMMICKED = ['jindaiji', 'tamagawa', 'airport'];
   w.destroy();
 }
 
+
+
+
+
+
+// ---------------------------------------------------------------------------
+// 27. 開始直後に理不尽に死なない（#3a）。
+//
+// 人のサメは壁から SPAWN_CLEAR(450px) 離れた点に、いちばん開けた向きで湧く。
+// 多摩川は流れの無い帯（河川敷）に出す —— 流れは向きと関係なく体を押すので、
+// 無敵の3秒間ずっと壁に押し付けられ、切れた最初のティックで「外壁」で死んでいた
+// （改修前は操作なしで 25% が 3.0〜3.5秒に外壁死）。
+const playable = MAPS.filter((m) => !m.boss);
+const tamagawa = MAPS.find((m) => m.id === 'tamagawa');
+
+// 27a. 全マップ（ボス面以外）で湧き位置が壁から離れている
+for (const map of playable) {
+  const w = createWorld({ map });
+  let far = 0, min = Infinity;
+  for (let i = 0; i < 500; i++) {
+    const s = w.addPlayer({ nid: 'p' + i, sharkId: 'cinema', name: 'P' });
+    const d = w.arena.edgeDist(s.x, s.y);
+    assert.ok(w.arena.inside(s.x, s.y), `${map.id}: 人のサメが壁の外に湧いた`);
+    if (d >= 450) far++;
+    if (d < min) min = d;
+    w.removeShark(s.nid);
+  }
+  assert.ok(far / 500 >= 0.99, `${map.id}: 壁から 450px 以上に湧いたのが ${far}/500 しかない`);
+  assert.ok(min >= 300, `${map.id}: 壁から ${min.toFixed(0)}px の所に湧いた`);
+  w.destroy();
+}
+
+// 27b. 多摩川では全部が河川敷（流れ 0）に湧く
+{
+  const w = createWorld({ map: tamagawa });
+  for (let i = 0; i < 500; i++) {
+    const s = w.addPlayer({ nid: 'p' + i, sharkId: 'cinema', name: 'P' });
+    const v = w.gimmick.windAt(s.x, s.y, 0);
+    assert.ok(v.x === 0 && v.y === 0, `多摩川で流れのある所 (${s.x.toFixed(0)}, ${s.y.toFixed(0)}) に湧いた`);
+    w.removeShark(s.nid);
+  }
+  w.destroy();
+}
+
+// 27c. 操作なし（湧いた向きのまま）で 4秒回しても外壁で死なない。
+// 4秒 = 無敵 3秒が切れてから 1秒。ボットは入れない（壁との関係だけを見たい。
+// 食われる死は別の話で、ここで混ぜると乱数で間欠的に落ちる）
+for (const map of playable) {
+  let wall = 0;
+  for (let r = 0; r < 200; r++) {
+    const w = createWorld({ map });
+    const p = w.addPlayer({ nid: 'me', sharkId: 'cinema', name: 'P' });
+    for (let t = 0; t < 4 && p.alive; t += 1 / 30) {
+      w.step(1 / 30);
+      for (const e of w.drainEvents()) if (e.k === 'die' && e.shark === p && e.cause === '外壁') wall++;
+    }
+    w.destroy();
+  }
+  assert.equal(wall, 0, `${map.id}: 操作なしで 4秒以内に外壁で ${wall}/200 回死んだ`);
+}
+
+// 27d. ボットの湧き方は変わっていない（壁際にも湧く）。
+// ボットまで壁から離すと海の真ん中に寄って密度が上がり、難易度が変わる
+for (const map of playable) {
+  let near = 0, n = 0;
+  for (let i = 0; i < 40; i++) {
+    const w = createWorld({ map });
+    w.fillBots();
+    for (const s of w.sharks) { n++; if (w.arena.edgeDist(s.x, s.y) < 300) near++; }
+    w.destroy();
+  }
+  // 改修前の実測で 300px 未満は 28〜41%。5% を割るなら湧き方が変わっている
+  assert.ok(near / n > 0.05, `${map.id}: ボットが壁際に湧かなくなった（${near}/${n}）`);
+}
+
+// 27e. 自機の無敵はサーバに合わせて縮む（延ばしはしない）。
+// 手元だけで数えていると、fps が落ちたぶん点滅と壁の押し戻しが実時間より長く残り、
+// サーバではもう切れていて「無敵中なのに外壁で死んだ」に見えた
+{
+  const server = createWorld({ map: chofu });
+  const sp = server.addPlayer({ nid: 'me', sharkId: 'cinema', name: 'P' });
+  const client = createWorld({ map: chofu, authority: false });
+  const me = client.addPlayer({ nid: 'me', sharkId: 'cinema', name: 'P' });
+  client.applySnapshot(server.snapshot(true), 'me');
+
+  // サーバでは切れた
+  sp.iframe = 0;
+  me.iframe = 2.5;
+  client.applySnapshot(server.snapshot(), 'me');
+  assert.equal(me.iframe, 0, 'サーバで無敵が切れても自機の無敵が残っている');
+
+  // サーバではまだ無敵 → 手元の値はそのまま
+  sp.iframe = 1;
+  me.iframe = 2.5;
+  client.applySnapshot(server.snapshot(), 'me');
+  assert.equal(me.iframe, 2.5, 'サーバが無敵なのに自機の無敵を書き換えた');
+  server.destroy(); client.destroy();
+}
+
+// 27f. 盤面の時計（world.elapsed ＝ HUD の TIME とリザルトの生存時間）は
+// スナップショットで巻き戻らない。多摩川（ギミックあり＝ envT も届く）で、
+// サーバが手元より若い時刻でも、full でも、手元の elapsed は手元の step だけで進む。
+// 「対戦中だけ TIME が 0:00 のまま」の疑いを潰すための検査（原因は frame() の dt 切り捨てだった）
+{
+  const server = createWorld({ map: tamagawa });
+  server.addPlayer({ nid: 'me', sharkId: 'cinema', name: 'P' });
+  const client = createWorld({ map: tamagawa, authority: false });
+  client.addPlayer({ nid: 'me', sharkId: 'cinema', name: 'P' });
+  for (let i = 0; i < 90; i++) client.step(1 / 30);
+  const before = client.elapsed;
+  client.applySnapshot(server.snapshot(true), 'me');
+  client.applySnapshot(server.snapshot(), 'me');
+  assert.equal(client.elapsed, before, 'スナップショットで elapsed が書き換わった');
+  assert.equal(client.envT, server.envT, '環境の時計はサーバに合わせる（こちらは上書きしてよい）');
+  client.step(1 / 30);
+  assert.ok(client.elapsed > before, 'スナップショットの後に elapsed が進まない');
+  server.destroy(); client.destroy();
+}
+
 console.log('sim ok');
-
-
-
-
