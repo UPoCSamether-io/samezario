@@ -1633,11 +1633,12 @@ rp {
   #salvage-action p { display: none; }
 }
 
-/* 手応え（#4）の横画面スマホ。フィードは SIZE と順位帯の間（約 300px）に入るよう細く・小さく。
+/* 手応え（#4）の横画面スマホ。フィードは SIZE と順位帯の間に入るよう細く・小さく
+   （260px まで。300px だと右の一時停止ボタンに掛かった）。
    ボス板はここでは左下へ逃げているので、ボス戦でもフィードは上に置いたまま */
 @media (max-height: 500px) {
-  #hud-feed { top: max(0.5rem, env(safe-area-inset-top)); max-width: min(300px, 40vw); gap: 0.2rem; }
+  #hud-feed { top: max(0.5rem, env(safe-area-inset-top)); max-width: min(260px, 40vw); gap: 0.2rem; }
   #hud-boss:not(.hidden) ~ #hud-feed { top: max(0.5rem, env(safe-area-inset-top)); }
-  .feed-row { font-size: 11px; padding: 0.1rem 0.5rem; box-shadow: 2px 2px 0 var(--color-ink); }
+  .feed-row { font-size: 13px; padding: 0.1rem 0.5rem; box-shadow: 2px 2px 0 var(--color-ink); }
   #hud-combo { font-size: 11px; }
 }

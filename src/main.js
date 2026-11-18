@@ -1476,11 +1476,14 @@ const BUMP_GAP = 150;
 const COMBO_MIN = 3;      // コンボは3連から出す。2連は普通に泳いでいても起きる
 const FEED_MAX = 3;       // キルフィードは最大3行。溢れたら古い行から消す
 const FEED_SEC = 2500;    // 1行が消えるまで(ms)。style.css の feed-life と同じ長さ
-let lastMass = 0, lastBump = 0;
+// 跳ねの伸び分を数字の右に空けておく割合。左下支点で 1.22倍 なので、余白 p は
+// p ≥ 0.22 × (幅 + p) → p ≥ 0.282 × 幅。1文字 ≒ 1ch として桁数に掛ける（少し多めに）
+const BUMP_ROOM = 0.29;
+let lastMass = 0, lastBump = 0, massLen = 0;
 
 /** 跳ね・フィードを1回のプレイごとに白紙へ戻す（前のプレイの続きで跳ねないように） */
 function resetJuice() {
-  lastMass = 0; lastBump = 0;
+  lastMass = 0; lastBump = 0; massLen = 0;
   hudCombo.classList.remove('on');
   hudFeed.replaceChildren();
 }
@@ -1493,7 +1496,13 @@ function replay(el, cls) {
 }
 
 function paintJuice(h) {
-  // SIZE の跳ね。増えたときだけ（死んで減ったときや開始直後の 0 からは跳ねない）
+  // SIZE の跳ね。増えたときだけ（死んで減ったときや開始直後の 0 からは跳ねない）。
+  // 跳ねた数字が右のコンボ札（の「×」）を隠さないよう、伸びる分の余白を桁数に合わせて持つ
+  const len = hudMass.textContent.length;
+  if (len !== massLen) {
+    massLen = len;
+    hudMass.style.paddingRight = `${(len * BUMP_ROOM).toFixed(2)}ch`;
+  }
   const now = performance.now();
   if (lastMass && h.mass > lastMass && now - lastBump >= BUMP_GAP) {
     replay(hudMass, 'bump');
@@ -1508,17 +1517,20 @@ function paintJuice(h) {
       hudComboN.textContent = combo;
       replay(hudCombo, 'pop');
     }
-    hudCombo.classList.add('on');
+    if (!hudCombo.classList.contains('on')) hudCombo.classList.add('on');
   } else {
     hudCombo.classList.remove('on');
   }
 
   // キルフィード。名前はオンラインでは利用者が付けるので必ず esc を通す
-  // （rubify にそのまま渡すと、名前に ｜《》 があればルビに化ける）
+  // （rubify にそのまま渡すと、名前に ｜《》 があればルビに化ける）。
+  // ruby が立っているのは data.js のボスの名前だけ
   for (const victim of h.feed ?? []) {
     const row = document.createElement('div');
     row.className = 'feed-row';
-    row.innerHTML = `<span class="feed-name">${esc(victim)}</span>${rubify('を｜撮影《さつえい》｜終了《しゅうりょう》！')}`;
+    const nm = victim.ruby ? rubify(victim.name) : esc(victim.name);
+    // ルビは1語にまとめる。2語に分けると「撮影 終了」の間にルビの幅ぶんの隙間が空いた
+    row.innerHTML = `<span class="feed-name">${nm}</span>${rubify('を｜撮影終了《さつえいしゅうりょう》！')}`;
     hudFeed.append(row);
     while (hudFeed.children.length > FEED_MAX) hudFeed.firstElementChild.remove();
     setTimeout(() => row.remove(), FEED_SEC);
