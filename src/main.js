@@ -1505,19 +1505,33 @@ function paintHud(h) {
   if (h.edge !== undefined) vignette.style.setProperty('--warn', h.edge.toFixed(2));
   const isPlayerLead = h.rank === 1 || (h.board && h.board[0] && h.board[0].me);
   hudBoardCard.classList.toggle('is-lead', !!isPlayerLead);
+  // 「あと N で X 位」。N はひとつ上の質量 − 自分の質量 + 1（追い越すのに要るぶん）。
+  // 1位なら出さない（王冠で分かる）。横画面のスリム帯では短い「+N→X位」を重さの代わりに出す
+  const gap = h.next ? h.next.mass - h.mass + 1 : 0;
+  const rankRuby = rubify('｜位《い》');
   const row = (b, rank, extra = '') => {
     const isLead = rank === 1;
     const isSecond = rank === 2;
     const isMe = !!b.me;
+    const short = isMe && gap > 0
+      ? `<span class="board-next-short font-mono shrink-0">+${gap.toLocaleString()}→${h.next.rank}${rankRuby}</span>` : '';
     return `
-    <li class="board-row ${isLead ? 'board-lead' : ''} ${isSecond ? 'board-second' : ''} ${isMe ? 'board-me' : ''} flex justify-between items-center gap-2 px-1.5 py-0.5 ${extra} ${isMe ? 'bg-yellow text-ink font-bold ink-2 -rotate-1 hard-sm relative z-10' : ''}">
+    <li class="board-row ${isLead ? 'board-lead' : ''} ${isSecond ? 'board-second' : ''} ${isMe ? 'board-me' : ''} ${short ? 'has-next' : ''} flex justify-between items-center gap-2 px-1.5 py-0.5 ${extra} ${isMe ? 'bg-yellow text-ink font-bold ink-2 -rotate-1 hard-sm relative z-10' : ''}">
       <span class="font-bold truncate">${rank}. ${b.human && !isMe ? '◆ ' : ''}${esc(b.name)}</span>
-      <span class="font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
+      ${short}<span class="board-mass font-mono text-[11px] shrink-0">${b.mass.toLocaleString()}</span>
     </li>`;
   };
-  hudBoard.innerHTML = h.board.map((b, i) => row(b, i + 1)).join('')
-    + (h.board.some((b) => b.me) ? ''
-      : row({ name: myName, mass: h.mass, me: true, human: true }, h.rank, 'mt-1.5 border-t-2 border-ink/25 pt-1'));
+  // 上位3人＋自分（#5）。4・5位は順位表をタップして広げたときだけ出す（.board-extra）。
+  // 自分が4・5位なら、その行は畳んだままでも出す
+  const meIn = h.board.some((b) => b.me);
+  const next = gap > 0
+    ? `<li class="board-next">あと <b class="font-mono">${gap.toLocaleString()}</b> で ${h.next.rank}${rankRuby}</li>` : '';
+  hudBoard.innerHTML = h.board.map((b, i) => {
+    if (b.me) return row(b, i + 1, i >= 3 ? 'board-sep' : '') + next;
+    return row(b, i + 1, i >= 3 ? 'board-extra' : '');
+  }).join('')
+    + (meIn ? ''
+      : row({ name: myName, mass: h.mass, me: true, human: true }, h.rank, 'board-sep') + next);
   hudCd.style.opacity = h.cd > 0 ? '1' : '0';
   hudCd.textContent = Math.ceil(h.cd);
   hudReel.style.animation = h.boosting ? 'spin .35s linear infinite' : 'spin 4s linear infinite';
