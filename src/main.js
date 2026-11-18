@@ -1381,6 +1381,9 @@ const hudBoss = $('#hud-boss'), hudBossName = $('#hud-boss-name');
 const hudBossHp = $('#hud-boss-hp'), hudBossPips = $('#hud-boss-pips');
 // 裏ボスの復活待ち。ボスが居ない20秒だけ、セルの列と入れ替わりで出る
 const hudBossWait = $('#hud-boss-wait'), hudBossWaitBar = $('#hud-boss-wait-bar');
+// 手応え（#4）: コンボ（SIZE の横）とキルフィード（上中央）
+const hudCombo = $('#hud-combo'), hudComboN = $('#hud-combo-n');
+const hudFeed = $('#hud-feed');
 
 let net = null;
 let myName = 'YOU';   // リーダーボードに自分の行を足すときに使う
@@ -1406,6 +1409,7 @@ async function play() {
     show('game');
     pausePanel.style.display = 'none';
     vignette.style.setProperty('--warn', '0');
+    resetJuice();
     hudScene.textContent = plainText(selMap.name);
     $('#hud-skill-icon').textContent = ICON[selShark.id] || 'help';
     $('#hud-skill-name').innerHTML = rubify(selShark.skill.name);
@@ -1427,6 +1431,7 @@ function paintHud(h) {
     if (Object.keys(h).length === 1) return;
   }
   hudMass.textContent = h.mass.toLocaleString();
+  paintJuice(h);
   if (h.time !== undefined) hudTime.textContent = fmtTime(h.time);
   if (h.edge !== undefined) vignette.style.setProperty('--warn', h.edge.toFixed(2));
   const isPlayerLead = h.rank === 1 || (h.board && h.board[0] && h.board[0].me);
@@ -1462,6 +1467,62 @@ function paintHud(h) {
   hudSpring.classList.toggle('hidden', !refilling);
   if (refilling) hudSpringT.textContent = Math.ceil(h.springT);
   paintBossBar(h.boss, h.bossRevive);
+}
+
+// ---- 食べる・倒すの手応え（#4）----
+// SIZE の跳ねの間隔(ms)。HUD は 0.08秒ごとに来るので、毎回付け直すと跳ねきる前に
+// 次が始まって震えにしか見えない。跳ね（style.css の mass-bump 0.18秒）が見える間は空ける
+const BUMP_GAP = 150;
+const COMBO_MIN = 3;      // コンボは3連から出す。2連は普通に泳いでいても起きる
+const FEED_MAX = 3;       // キルフィードは最大3行。溢れたら古い行から消す
+const FEED_SEC = 2500;    // 1行が消えるまで(ms)。style.css の feed-life と同じ長さ
+let lastMass = 0, lastBump = 0;
+
+/** 跳ね・フィードを1回のプレイごとに白紙へ戻す（前のプレイの続きで跳ねないように） */
+function resetJuice() {
+  lastMass = 0; lastBump = 0;
+  hudCombo.classList.remove('on');
+  hudFeed.replaceChildren();
+}
+
+/** クラスを外して付け直し、CSS アニメーションを頭から流し直す（clap() と同じ手口） */
+function replay(el, cls) {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+
+function paintJuice(h) {
+  // SIZE の跳ね。増えたときだけ（死んで減ったときや開始直後の 0 からは跳ねない）
+  const now = performance.now();
+  if (lastMass && h.mass > lastMass && now - lastBump >= BUMP_GAP) {
+    replay(hudMass, 'bump');
+    lastBump = now;
+  }
+  lastMass = h.mass;
+
+  // コンボ。途切れたら数字はそのまま残してフェードだけさせる（消えながら 0 に変わると読めない）
+  const combo = h.combo ?? 0;
+  if (combo >= COMBO_MIN) {
+    if (hudComboN.textContent !== String(combo)) {
+      hudComboN.textContent = combo;
+      replay(hudCombo, 'pop');
+    }
+    hudCombo.classList.add('on');
+  } else {
+    hudCombo.classList.remove('on');
+  }
+
+  // キルフィード。名前はオンラインでは利用者が付けるので必ず esc を通す
+  // （rubify にそのまま渡すと、名前に ｜《》 があればルビに化ける）
+  for (const victim of h.feed ?? []) {
+    const row = document.createElement('div');
+    row.className = 'feed-row';
+    row.innerHTML = `<span class="feed-name">${esc(victim)}</span>${rubify('を｜撮影《さつえい》｜終了《しゅうりょう》！')}`;
+    hudFeed.append(row);
+    while (hudFeed.children.length > FEED_MAX) hudFeed.firstElementChild.remove();
+    setTimeout(() => row.remove(), FEED_SEC);
+  }
 }
 
 // ボスの残り耐久。セルの本数は data.js の hp がそのまま出るので、
