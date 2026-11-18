@@ -88,8 +88,13 @@ function makeRoom(id, map) {
   return room;
 }
 
-/** 同じマップで空きのある部屋へ。無ければ作る */
-function joinRoom(ws, mapId) {
+/**
+ * 同じマップで空きのある部屋へ。無ければ作る。
+ * 総部屋数が maxRooms に達していたら作らずに null（呼び手が busy を返して閉じる）。
+ * 別マップの部屋へ寄せないのは盤面が違うから。満席の部屋へ押し込まないのは、
+ * ボットが残っていないと addPlayer が足すだけになって 15匹以上に増え、密度が変わるから
+ */
+function joinRoom(ws, mapId, maxRooms) {
   const key = clean(mapId).replace(/[^a-z0-9_-]/gi, '');
   // 知らないロケ地名は既定のマップへ落とす。world を作れない名前で部屋は立てられない
   const map = MAPS.find((m) => m.id === key) || MAPS[0];
@@ -98,6 +103,7 @@ function joinRoom(ws, mapId) {
     if (k.startsWith(map.id + '#') && r.members.size < CAP) { room = r; break; }
   }
   if (!room) {
+    if (maxRooms > 0 && rooms.size >= maxRooms) return null;
     let id = null;
     for (let n = 1; !id; n++) if (!rooms.has(`${map.id}#${n}`)) id = `${map.id}#${n}`;
     room = makeRoom(id, map);
@@ -108,18 +114,36 @@ function joinRoom(ws, mapId) {
   return room;
 }
 
-function wire(ws) {
+function wire(ws, lim) {
   ws.seen = Date.now();
+  ws.tokens = lim.inBurst;   // 受信のトークンバケツ（attach の lim 参照）
+  ws.tokT = ws.seen;
+  ws.winT = ws.seen;         // 1秒窓の受信数。壊れた／悪意のある線を切る用
+  ws.winN = 0;
   ws.on('message', (raw) => {
-    ws.seen = Date.now();
+    const now = Date.now();
+    ws.seen = now;           // 捨てるメッセージでも「喋っている」ことに変わりはない
+    if (now - ws.winT >= 1000) { ws.winT = now; ws.winN = 0; }
+    if (++ws.winN > lim.inKill) { ws.terminate(); return; }
+    ws.tokens = Math.min(lim.inBurst, ws.tokens + (now - ws.tokT) * lim.inRate / 1000);
+    ws.tokT = now;
+    if (ws.tokens < 1) return;   // 溢れた分は黙って捨てる。JSON.parse もしない（CPU を守る）
+    ws.tokens -= 1;
     let m;
     try { m = JSON.parse(raw); } catch { return; }
     if (!m || typeof m.t !== 'string') return;
 
     if (m.t === 'join') {
       if (ws.room) return;
+      const room = joinRoom(ws, m.map, lim.maxRooms);
+      if (!room) {
+        // 部屋を増やせない。クライアント（net.js）は hello の前に閉じられると reject し、
+        // main.js がソロへ落とす —— 「サーバに繋がらない」と同じ黙ったソロになる
+        send(ws, { t: 'busy' });
+        ws.close(1013);   // Try Again Later
+        return;
+      }
       ws.id = 's' + ++seq;
-      const room = joinRoom(ws, m.map);
       room.world.addPlayer({ nid: ws.id, sharkId: clean(m.shark), name: clean(m.name) });
       room.paused = false;   // 独りだから止めていた部屋。人が来たら動かす
       ws.needFull = true;    // 盤面は次のティックで撮って送る（上の makeRoom 参照）
@@ -162,9 +186,32 @@ function wire(ws) {
 
 /** 既存の http サーバ（vite dev / 本番）に /ws だけ相乗りさせる */
 export function attach(server) {
+  // 上限はここで読む（モジュール読み込み時ではなく）。テストが環境変数を変えて attach し直せるように
+  const num = (k, d) => (process.env[k] != null && process.env[k] !== '' && Number.isFinite(Number(process.env[k]))
+    ? Number(process.env[k]) : d);
+  const lim = {
+    // 総部屋数。0.5 CPU で 40人＝5部屋が 14.5/s（README「必要なCPU」）、t3.micro は
+    // バースト 2 vCPU。8部屋＝最大 112人。超えた人は黙ってソロになる。0 で無制限
+    maxRooms: num('WS_MAX_ROOMS', 8),
+    // IP ごとの同時接続数。会場の Wi-Fi は全員が同じグローバル IP（NAT）なので既定は 0＝無制限
+    maxPerIp: num('WS_MAX_PER_IP', 0),
+    // クライアントが送る最大は join（名前10文字）で 200 バイト未満。超えると ws が 1009 で閉じる
+    maxPayload: num('WS_MAX_PAYLOAD', 4096),
+    // 受信頻度。クライアントは 20Hz（game.js）なので平均 40/s・溜め 80 なら正規の線は捨てられない
+    inRate: num('WS_IN_RATE', 40),
+    inBurst: num('WS_IN_BURST', 80),
+    // 1秒にこれを超えて送ってくる線は切る
+    inKill: num('WS_IN_KILL', 400),
+    // 1 なら IP を X-Forwarded-For の先頭から取る。本番は Caddy の後ろなので 1 にしないと
+    // 全員が 127.0.0.1 に見える。Caddy は信頼していない相手の X-Forwarded-For を捨てて
+    // 自分で付け直すので先頭を信じてよいが、直結で 1 にすると偽装で IP 上限をすり抜けられる
+    trustProxy: process.env.TRUST_PROXY === '1',
+  };
+  const perIp = new Map();   // ip -> 同時接続数。0 になったら消す（メモリを溜めない）
+
   const wss = new WebSocketServer({
     noServer: true,
-    maxPayload: 1 << 20,
+    maxPayload: lim.maxPayload,
     // 既定は圧縮なし。中継サーバだった頃は「CPU を少し払って通信量を買う」で正しかったが、
     // 盤面をここで回すようになってから逆転した —— zlib がプロセス全体の CPU の 51% を占め、
     // 0.1 vCPU では 1部屋すら回らなくなる（実測 3.9/s → 切ると 14.1/s）。
@@ -175,7 +222,23 @@ export function attach(server) {
   });
   server.on('upgrade', (req, socket, head) => {
     if (new URL(req.url, 'http://x').pathname !== '/ws') return;   // vite の HMR は素通し
-    wss.handleUpgrade(req, socket, head, wire);
+    if (lim.maxPerIp > 0) {
+      const ip = (lim.trustProxy && String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim())
+        || req.socket.remoteAddress || '?';
+      const n = perIp.get(ip) || 0;
+      if (n >= lim.maxPerIp) {
+        socket.write('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      perIp.set(ip, n + 1);
+      // ws の close ではなく socket の close で減らす。upgrade の途中で転んだ線も漏れなく戻る
+      socket.once('close', () => {
+        const k = (perIp.get(ip) || 1) - 1;
+        if (k > 0) perIp.set(ip, k); else perIp.delete(ip);
+      });
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => wire(ws, lim));
   });
 
   // FIN の来ない線（回線断・スリープ）は readyState 1 のまま永久に残る。放っておくと
