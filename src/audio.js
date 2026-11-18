@@ -298,7 +298,8 @@ clapEl.volume = 0.5;
 // 続けて食べているあいだは半音ずつ上げる（食べ続ける行為そのものを気持ちよくする）。
 // 手が止まれば下がるので、上がりきった音は「いま連れて食べている」の合図になる
 const EAT_BASE = 523.25;   // C5
-const EAT_GAP = 500;       // これ以上空いたら仕切り直し
+// これ以上空いたら仕切り直し(ms)。HUD のコンボ（game.js）も同じ値で数えるので export する
+export const EAT_GAP = 500;
 const EAT_MAX = 12;        // 1オクターブで頭打ち。青天井だと最後は耳に刺さるだけになる
 let lastEat = 0;
 let chain = 0;
