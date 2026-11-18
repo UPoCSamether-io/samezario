@@ -60,8 +60,10 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 | `scripts/seal-arms.mjs` | エリア輪郭から細すぎる腕を落とすワンショット道具（`node scripts/seal-arms.mjs --emit`）。取り出したままの path もここ |
 | `scripts/loadtest.mjs` | 人数分ぶら下がって配信レートを測る。判定は「スナップショットが 15Hz 届くか」 |
 | `scripts/ec2-deploy.sh` | EC2(t3.micro) 上で流す初回セットアップ兼デプロイ。何度流してもいい |
-| `hash-lab.html` | 基準写真から dHash を作り、しきい値の分離帯を見る道具（`npm run dev` → `/hash-lab.html`） |
+| `tools/hash-lab.html` | 基準写真から dHash を作り、しきい値の分離帯を見る道具（`npm run dev` → `/tools/hash-lab.html`） |
+| `tools/rope-probe.html` | 旋回中の胴の継ぎ目を目で見る道具（`npm run dev` → `/tools/rope-probe.html`）。本番の dist には入らない |
 | `docs/` | 仕様書・設計ドキュメント（`specifications.md` 等）。デプロイ手順は `deploy-ec2.md` |
+| `docs/design-reference/stitch/` | デザインの参考資料（Stitch で作った画面案と Retro Pop Cinema のトークン）。ゲームからは参照しない |
 
 ## 調整ポイント
 
@@ -180,7 +182,7 @@ GitHub Actions の `CI / Test and build (Node.js 24.18.0)` は push と pull req
 `src/data.js` の `spot.hashes` が空の間は、**位置だけで解放できる**（撮った写真は問わない）。
 基準写真が用意できたら:
 
-1. `npm run dev` → `/hash-lab.html` にそのスポットの写真をまとめて放り込む
+1. `npm run dev` → `/tools/hash-lab.html` にそのスポットの写真をまとめて放り込む
    （別時間帯・別の人で 10〜20枚。隣の建物など「不正解」も数枚）
 2. 各行を ○ / × に分け、「○同士の最大距離 < しきい値 < ○×間の最小距離」になる値を読む
 3. 出力された `hashes` / `threshold` を `data.js` の該当スポットへ写す
