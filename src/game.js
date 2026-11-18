@@ -199,6 +199,265 @@ function dotTile() {
   return c;
 }
 
+// 水底（#9）。「水没した調布」が、ギミックの無いマップでも伝わるように、
+// 水の底に沈んだ街区・路地・森・草地をうっすら敷く。
+// dotTile と同じく、起動時にそのマップの分だけタイル1枚を作って、draw() では
+// fill(outline) 1回で敷き詰める（描く図形がどれだけ細かくても毎フレームの描画回数は変わらない）。
+// 大きさは 1辺 FLOOR_TILE px（512×512×4 = 1MB）。
+// 引きの絵（zoom 0.34）では 512px が画面 174px まで縮むので、線は太め（ワールド 8px 以上）、
+// 建物や樹冠は 20px 以上にして、にじんで灰色の面にならないようにする。
+// 濃さは線・面とも 0.06〜0.14。上に乗る餌・サメ・ギミックより必ず弱くする。
+const FLOOR_TILE = 512;
+// 水底の2色。暗い方（建物）は場外の色に寄せ、明るい方（道）は PAPER
+const FLOOR_DARK = '#0c2629';
+const FLOOR_LIGHT = '#f4efea';
+// 水面のきらめき。以前の dotTile（4px 角・60px 間隔・.10）を、タイルの中に描き込んで残す。
+// 間隔だけは 512 を割り切れる 64 にする（60 だとタイルの継ぎ目で間隔が乱れる）
+const SPARKLE = { gap: 64, size: 4, color: 'rgba(244,239,234,.10)' };
+
+/** 水底の乱数。シード固定で、開くたびに同じ街が沈んでいる（mulberry32） */
+function floorRand(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * タイルに1層を重ねる。draw は不透明な色で描き、層ごと alpha で薄めて載せる ——
+ * 半透明のまま図形を重ねると、道の交差点や樹冠の重なりだけ濃くなって斑になるため。
+ * draw は上下左右と斜めの9か所にずらして呼ぶので、タイルの端からはみ出した図形は
+ * 反対側の端に続きが描かれ、敷き詰めたときに継ぎ目が出ない。
+ * cut があれば、同じ層から destination-out で抜く（家の上を路地が通らないように、など）
+ */
+function floorLayer(g, scratch, color, alpha, draw, cut) {
+  const s = FLOOR_TILE;
+  const h = scratch.getContext('2d');
+  h.setTransform(1, 0, 0, 1, 0, 0);
+  h.globalCompositeOperation = 'source-over';
+  h.clearRect(0, 0, s, s);
+  const wrap = (fn) => {
+    for (const dx of [-s, 0, s]) {
+      for (const dy of [-s, 0, s]) {
+        h.setTransform(1, 0, 0, 1, dx, dy);
+        fn(h);
+      }
+    }
+    h.setTransform(1, 0, 0, 1, 0, 0);
+  };
+  h.fillStyle = h.strokeStyle = color;
+  h.lineCap = h.lineJoin = 'round';
+  wrap(draw);
+  if (cut) {
+    h.globalCompositeOperation = 'destination-out';
+    h.fillStyle = h.strokeStyle = '#000';
+    wrap(cut);
+    h.globalCompositeOperation = 'source-over';
+  }
+  g.globalAlpha = alpha;
+  g.drawImage(scratch, 0, 0);
+  g.globalAlpha = 1;
+}
+
+/** 折れ線（点の配列）を path に足す */
+function polyPath(h, pts) {
+  h.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) h.lineTo(pts[i][0], pts[i][1]);
+}
+
+// 調布駅・布田: 街区。太い通り＋細い路地の格子と、区画の中の建物。
+// 映画のまちなので、区画の1つにフィルムの帯（縁の穴）を沈めておく
+function floorChofu(g, scratch) {
+  const s = FLOOR_TILE;
+  const rnd = floorRand(0xc40f);
+  // [中心, 幅]。太い通り（30px）が縦横 1本ずつ、残りは路地
+  const vx = [[40, 30], [170, 10], [292, 12], [410, 10]];
+  const hy = [[96, 30], [226, 10], [352, 12], [452, 8]];
+  const roads = (h) => {
+    for (const [x, w] of vx) h.fillRect(x - w / 2, 0, w, s);
+    for (const [y, w] of hy) h.fillRect(0, y - w / 2, s, w);
+  };
+  // 区画（道と道の間）。最後の区画はタイルの端をまたいで次のタイルの最初の道まで
+  const spans = (list) => list.map(([c, w], i) => {
+    const [c2, w2] = list[(i + 1) % list.length];
+    return [c + w / 2, (i + 1 < list.length ? c2 : c2 + s) - w2 / 2];
+  });
+  const blocks = [];
+  for (const [x0, x1] of spans(vx)) for (const [y0, y1] of spans(hy)) blocks.push([x0, y0, x1, y1]);
+  const film = 5;   // フィルムの帯を沈める区画
+  const bld = [];
+  blocks.forEach(([x0, y0, x1, y1], i) => {
+    if (i === film) return;
+    const m = 8, gap = 8;
+    const cols = 1 + Math.floor(rnd() * 3), rows = 1 + Math.floor(rnd() * 2);
+    const cw = (x1 - x0 - m * 2 - gap * (cols - 1)) / cols;
+    const rh = (y1 - y0 - m * 2 - gap * (rows - 1)) / rows;
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        if (rnd() < 0.15) continue;     // 空き地
+        bld.push([x0 + m + c * (cw + gap), y0 + m + r * (rh + gap), cw, rh]);
+      }
+    }
+  });
+  const [fx0, fy0, fx1, fy1] = blocks[film];
+  const fm = 10, fw = fx1 - fx0 - fm * 2, fh = fy1 - fy0 - fm * 2;
+  floorLayer(g, scratch, FLOOR_DARK, 0.13, (h) => {
+    for (const [x, y, w, hh] of bld) h.fillRect(x, y, w, hh);
+    h.fillRect(fx0 + fm, fy0 + fm, fw, fh);
+  }, (h) => {
+    // フィルムの縁の穴（上下2列）と、コマの窓
+    const hw = 9, hh = 7, step = 18;
+    for (let x = fx0 + fm + 6; x + hw < fx1 - fm - 4; x += step) {
+      h.fillRect(x, fy0 + fm + 6, hw, hh);
+      h.fillRect(x, fy1 - fm - 6 - hh, hw, hh);
+    }
+    const iy0 = fy0 + fm + 6 + hh + 8, iy1 = fy1 - fm - 6 - hh - 8;
+    const n = 2, iw = (fw - 12 - 8 * (n - 1)) / n;
+    for (let k = 0; k < n; k++) h.fillRect(fx0 + fm + 6 + k * (iw + 8), iy0, iw, iy1 - iy0);
+  });
+  floorLayer(g, scratch, FLOOR_LIGHT, 0.07, roads);
+}
+
+// つつじヶ丘・仙川: 細い路地が斜めに入り組んだ住宅地。
+// 路地は端と端の高さ（横なら y、縦なら x）を揃えたジグザグにして、タイルの継ぎ目でつながるようにする
+function floorSengawa(g, scratch) {
+  const s = FLOOR_TILE;
+  const rnd = floorRand(0x5e9a);
+  // 横向きの路地: x = 0, 128, 256, 384, 512 での y。最初と最後を同じにする
+  const hz = [[60, 112, 150, 90, 60], [250, 210, 290, 330, 250], [400, 460, 430, 380, 400]];
+  // 縦向きの路地: y = 0, 128, 256, 384, 512 での x
+  const vt = [[120, 170, 130, 80, 120], [330, 300, 370, 420, 330]];
+  const lines = [
+    ...hz.map((ys) => ys.map((y, i) => [i * 128, y])),
+    ...vt.map((xs) => xs.map((x, i) => [x, i * 128])),
+  ];
+  const wide = 1;   // 1本だけ少し広い通り（駅前の商店街）
+  const alleys = (pad) => (h) => {
+    lines.forEach((pts, i) => {
+      h.lineWidth = (i === wide ? 18 : 9) + pad;
+      h.beginPath(); polyPath(h, pts); h.stroke();
+    });
+  };
+  // 家。少し揺らした格子に、少し回した小さな矩形を置く
+  const houses = [];
+  for (let y = 0; y < s; y += 46) {
+    for (let x = 0; x < s; x += 46) {
+      if (rnd() < 0.25) continue;
+      houses.push([x + rnd() * 14, y + rnd() * 14, 20 + rnd() * 14, 18 + rnd() * 12, (rnd() - 0.5) * 0.9]);
+    }
+  }
+  // 水の色（#285868）が暗いので、家は調布駅より少し濃くしないと引きの絵で消える
+  floorLayer(g, scratch, FLOOR_DARK, 0.14, (h) => {
+    for (const [x, y, w, hh, a] of houses) {
+      h.save(); h.translate(x, y); h.rotate(a); h.fillRect(-w / 2, -hh / 2, w, hh); h.restore();
+    }
+  }, alleys(12));
+  floorLayer(g, scratch, FLOOR_LIGHT, 0.07, alleys(0));
+}
+
+// 深大寺: 森。樹冠（丸の重なり）と、その間を抜ける参道。
+// 湧水の石組み（#8）と色がぶつからないよう、緑は暗く沈める
+function floorJindaiji(g, scratch) {
+  const s = FLOOR_TILE;
+  const rnd = floorRand(0x1da1);
+  // 参道。少しだけ曲がりながら縦に抜ける（y = 0 と 512 で x を揃える）
+  const path = [[256, 0], [244, 128], [262, 256], [282, 384], [256, 512]];
+  const pathX = (y) => {
+    const i = Math.min(3, Math.floor(y / 128)), k = (y - i * 128) / 128;
+    return path[i][0] + (path[i + 1][0] - path[i][0]) * k;
+  };
+  const trees = [];
+  for (let n = 0; trees.length < 46 && n < 400; n++) {
+    const x = rnd() * s, y = rnd() * s, r = 24 + rnd() * 22;
+    // 参道の上には木を置かない（タイルの継ぎ目をまたぐ分も見る）
+    let d = Math.abs(x - pathX(y));
+    d = Math.min(d, s - d);
+    if (d < r + 22) continue;
+    trees.push([x, y, r, rnd() * TAU]);
+  }
+  floorLayer(g, scratch, '#0e3a2c', 0.11, (h) => {
+    h.beginPath();
+    for (const [x, y, r, a] of trees) {
+      // 1本の樹冠 = 大きな丸＋ふくらみ2つ
+      h.moveTo(x + r, y); h.arc(x, y, r, 0, TAU);
+      for (const k of [0, 2.3]) {
+        const cx = x + Math.cos(a + k) * r * 0.6, cy = y + Math.sin(a + k) * r * 0.6;
+        h.moveTo(cx + r * 0.6, cy); h.arc(cx, cy, r * 0.6, 0, TAU);
+      }
+    }
+    h.fill('nonzero');
+  });
+  // 参道と、両脇の石灯籠。敷石の目地も描いてみたが、引きの絵で梯子（線路）に見えたのでやめた
+  floorLayer(g, scratch, FLOOR_LIGHT, 0.07, (h) => {
+    h.lineWidth = 30;
+    h.beginPath(); polyPath(h, path); h.stroke();
+    for (let y = 40; y < s; y += 128) {
+      for (const side of [-1, 1]) h.fillRect(pathX(y) + side * 32 - 6, y - 6, 12, 12);
+    }
+  });
+}
+
+// 調布飛行場: 草地と誘導路。滑走路本体は #6 が水底に描くので、ここには入れない
+function floorAirport(g, scratch) {
+  const s = FLOOR_TILE;
+  // 誘導路: 横1本・縦1本・斜め1本（傾き 1 なら 512 進んで 512 ずれるので、タイルの継ぎ目でつながる）
+  const ways = (h) => {
+    h.beginPath();
+    h.moveTo(0, 150); h.lineTo(s, 150);
+    h.moveTo(380, 0); h.lineTo(380, s);
+    h.moveTo(0, 300); h.lineTo(s, 300 + s);
+    h.stroke();
+  };
+  const wayW = 26;
+  const shoulder = (h) => { h.lineWidth = wayW + 14; ways(h); };
+  floorLayer(g, scratch, '#3f8a52', 0.09, (h) => h.fillRect(0, 0, s, s), shoulder);
+  // 草むら。草地の中に、少し濃い不揃いの斑を置く
+  // （刈り込みの縞も描いてみたが、誘導路と合わさって格子柄の布のように見えたのでやめた）
+  const rnd = floorRand(0xa1e0);
+  floorLayer(g, scratch, FLOOR_DARK, 0.06, (h) => {
+    h.beginPath();
+    for (let k = 0; k < 9; k++) {
+      const x = rnd() * s, y = rnd() * s, rx = 40 + rnd() * 30;
+      h.moveTo(x + rx, y);
+      h.ellipse(x, y, rx, 24 + rnd() * 18, 0, 0, TAU);
+    }
+    h.fill();
+  }, shoulder);
+  floorLayer(g, scratch, FLOOR_LIGHT, 0.07, (h) => { h.lineWidth = wayW; ways(h); });
+  // 誘導路の中心線（黄）。引きの絵で消えないよう 6px
+  floorLayer(g, scratch, YELLOW, 0.12, (h) => { h.lineWidth = 6; ways(h); });
+}
+
+// マップ別の水底。ここに無いマップは水底を敷かず、きらめき（dotTile）だけ。
+// 多摩川は #7 が川底（石）を描くので、ここには入れない
+const FLOOR_ART = {
+  chofu: floorChofu,
+  sengawa: floorSengawa,
+  jindaiji: floorJindaiji,
+  airport: floorAirport,
+};
+
+/** そのマップの水底タイル（水面のきらめき込み）。起動時に1回だけ作る */
+function floorTile(id) {
+  const art = FLOOR_ART[id];
+  if (!art) return dotTile();
+  const c = document.createElement('canvas');
+  c.width = c.height = FLOOR_TILE;
+  const scratch = document.createElement('canvas');
+  scratch.width = scratch.height = FLOOR_TILE;
+  const g = c.getContext('2d');
+  art(g, scratch);
+  g.fillStyle = SPARKLE.color;
+  for (let y = 0; y < FLOOR_TILE; y += SPARKLE.gap) {
+    for (let x = 0; x < FLOOR_TILE; x += SPARKLE.gap) g.fillRect(x, y, SPARKLE.size, SPARKLE.size);
+  }
+  return c;
+}
+
 /**
  * attract: タイトル背面のデモ再生。操作を受け付けず、主役が死んでも湧き直す。
  * net: オンライン対戦（src/net.js）。盤面の正はサーバで、ここが持っているのは
@@ -227,7 +486,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   // ギミックの無いエリアでは null なので、以下はまるごと素通りする
   const gim = world.gimmick;
   const stripes = ctx.createPattern(stripeTile(), 'repeat');
-  const dots = ctx.createPattern(dotTile(), 'repeat');
+  // 水底（#9）。そのマップの分だけ、起動時に1枚作る
+  const floor = ctx.createPattern(floorTile(map.id), 'repeat');
 
   const fx = [];
   // 手応え（#4）。hitstop は絵を止めている残り秒数（実時間）。
@@ -1806,9 +2066,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.fillStyle = map.water;
     ctx.fill(outline);
 
-    // 水中のドット（エリアの中だけ）。タイルは world 座標に敷かれるので、
-    // 旧ループと同じく 60 の倍数に並び、カメラと一緒に流れる
-    ctx.fillStyle = dots;
+    // 水底と水面のきらめき（エリアの中だけ、#9）。タイルは world 座標に敷かれるので、
+    // カメラと一緒に流れる。水底の絵がどれだけ細かくても、ここは fill 1回のまま
+    ctx.fillStyle = floor;
     ctx.fill(outline);
 
     ctx.strokeStyle = INK;
