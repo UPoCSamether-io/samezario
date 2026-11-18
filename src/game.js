@@ -24,8 +24,10 @@ const INTRO_SEC = 2.5;
 const INTRO_ZOOM = 1.8;
 const INTRO_ZOOM_SHORT = 1.4;
 const INTRO_SHORT_CH = 500;
-// 「あなた」の目印は開始の無敵の間だけ出し、切れる前のこの秒数でフェードアウトする
-const YOU_FADE = 0.5;
+// 「あなた」の目印は開始の無敵の間だけ出し、切れる前のこの秒数でフェードアウトする。
+// 0.5秒だと薄くなった黄色が水色の海と混ざって、灰緑の四角に見える時間が長かった
+const YOU_FADE = 0.3;
+const YOU_RISE = 12;   // フェードしながら浮かせる高さ（画面 px）。「消えた」ではなく「離れていった」に見せる
 
 const INK = '#2d2d2d';
 const PAPER = '#f4efea';
@@ -626,6 +628,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       ctx.font = `700 ${Math.max(12, hr * 0.75)}px "Space Grotesk", sans-serif`;
       ctx.textAlign = 'center';
       ctx.lineWidth = 5 / cam.zoom; ctx.strokeStyle = INK; ctx.lineJoin = 'round';
+      // 「あなた」の目印が出ている間は自機の名前を隠し、頭上の札を1つにまとめる。
+      // 目印が薄くなるのと入れ替わりに戻す
+      if (s === player) ctx.globalAlpha *= 1 - youAlpha();
       const ny = s.y - hr - 12 / cam.zoom;
       ctx.strokeText(s.name, s.x, ny);
       ctx.fillStyle = s === player ? YELLOW : PAPER;
@@ -1169,9 +1174,14 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
    * 輪にはしない —— 自機に付く輪は盾の輪（ミント）1本だけ、という drawEnvFront の方針と
    * 紛らわしくならないように。色は自機の名前と同じ YELLOW（ミント＝盾・赤＝危険は使わない）
    */
-  function drawYouMarker(t) {
-    if (attract || !youOn || !player.alive || player.body.length < 3) return;
-    const a = clamp(player.iframe / YOU_FADE, 0, 1);
+  /** 目印の濃さ（0〜1）。drawShark の自機の名前はこの裏返しで出す */
+  function youAlpha() {
+    if (attract || !youOn || !player.alive) return 0;
+    return clamp(player.iframe / YOU_FADE, 0, 1);
+  }
+  function drawYouMarker() {
+    if (player.body.length < 3) return;
+    const a = youAlpha();
     if (a <= 0) return;
     if (!youPath) {
       // 原点が ▼ の先。上に角丸の吹き出しを載せた1本の輪郭
@@ -1194,18 +1204,22 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     const hr = player.body[0].r;
     // 名前は drawShark で s.y - hr - 12/zoom に、字の高さ max(12, hr*0.75)（ワールド単位）で描かれる
     const nameTop = player.y - hr - 12 * k - Math.max(12, hr * 0.75);
-    const bob = Math.sin(t * 4) * 4;   // 上下にゆっくり弾ませる（画面 px）
+    // 上下にゆっくり弾ませる（画面 px）。盤面の時計から作るので、ポーズ中は止まる
+    const bob = Math.sin(world.elapsed * 4) * 4;
     ctx.save();
     ctx.translate(player.x, nameTop);
     ctx.scale(k, k);
-    ctx.translate(0, -6 + bob);
+    ctx.translate(0, -6 + bob - (1 - a) * YOU_RISE);
     ctx.globalAlpha = a;
+    // HUD（Retro Pop）と同じ INK のずらし影。塗り → 縁の順にして、縁を狙いの太さで見せる
+    ctx.fillStyle = INK;
+    ctx.translate(3, 3); ctx.fill(youPath); ctx.translate(-3, -3);
     ctx.lineJoin = 'round';
     ctx.lineWidth = 3;
     ctx.strokeStyle = INK;
     ctx.fillStyle = YELLOW;
-    ctx.stroke(youPath);
     ctx.fill(youPath);
+    ctx.stroke(youPath);
     ctx.fillStyle = INK;
     ctx.font = '800 16px "M PLUS Rounded 1c", sans-serif';
     ctx.textAlign = 'center';
@@ -1326,7 +1340,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     }
     ctx.globalAlpha = 1;
     // 「あなた」の目印。パーティクルにも埋もれないよう世界の絵のいちばん上に置く
-    drawYouMarker(t);
+    drawYouMarker();
     ctx.restore();
 
     // タッチ操舵中のフローティング仮想ジョイスティック描画
