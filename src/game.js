@@ -13,6 +13,7 @@ import {
   TRAIN_W, TRAIN_CAR, TRAIN_GAP, TRAIN_CARS, TRAIN_LEN,
   trainRuns, trainNearest, clackVol,
 } from './train.js';
+import { SWAY_SHADOW, SWAY_FADE, SWAY_GUST, swayTufts, gustFront, swayAngle, traceTuft } from './sway.js';
 
 // 地響き。1発ぶんの揺れ（cam.shake の 0.88 減衰）は 0.5秒で消えてしまい、
 // 20秒待った末に何かが起き上がる出来事としては軽すぎた。こちらは秒数を持たせて
@@ -418,6 +419,10 @@ function floorSengawa(g, scratch) {
   floorLayer(g, scratch, FLOOR_LIGHT, 0.07, alleys(0));
 }
 
+// 深大寺の木立（タイルの中の座標）。floorJindaiji が作るたびに置き直し、
+// 水面の草木の影（N8、drawSway）が枝先の房を樹冠の縁に置くのに使う
+let jindaijiGroves = [];
+
 // 深大寺: 森。樹冠（丸の重なり）と、その間を抜ける参道。
 // 湧水の石組み（#8）と色がぶつからないよう、緑は暗く沈める
 function floorJindaiji(g, scratch) {
@@ -459,6 +464,7 @@ function floorJindaiji(g, scratch) {
     }
     groves.push([x, y, r, rx, ry, rot, crowns]);
   }
+  jindaijiGroves = groves;
   floorLayer(g, scratch, '#0e3a2c', 0.11, (h) => {
     h.beginPath();
     for (const [x, y, , rx, ry, rot, crowns] of groves) {
@@ -2103,7 +2109,71 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     if (gim.kind === 'current') drawCurrent(t, view);
     if (gim.kind === 'gust') drawGust(t, view);
     if (gim.kind === 'spring') drawSprings(view);
+    if (map.id === 'jindaiji') drawSway(view);
     ctx.restore();
+  }
+
+  /**
+   * 深大寺の水面に落ちる草木の影（N8）。木立の枝先・湧水の縁の草・外周の岸の草と枝が、
+   * 風でゆっくり揺れ、ときどき強い風の波が盤面を横切る（形・置き場所・揺れ方は sway.js）。
+   * 湧水の判定にも当たりにも関わらない、見た目だけの層。湧水の上、餌とサメの下に敷く。
+   *
+   * GPU の無い端末で重かった前歴（#08 → N3）があるので、
+   *   - 形は初回に1回だけ作り、毎フレームは今の path に点を足すだけ（Path2D・文字列・
+   *     グラデーションを毎フレーム作らない）
+   *   - 画面に入る房だけを足し、全部をまとめて fill 1回で塗る
+   *   - 引きの絵では房を間引き（房ごとの min）、SWAY_FADE[0] より引いたら描かない
+   * 木立の枝先は水底と同じく 512px タイルの繰り返しなので、見えているタイルの分だけ回す。
+   * 時刻は world.envT だけから出す
+   */
+  let sway = null;
+  function drawSway(view) {
+    const z = cam.zoom;
+    if (z <= SWAY_FADE[0]) return;
+    if (!sway) {
+      const s = swayTufts({
+        groves: jindaijiGroves, poly: arena.poly,
+        springs: gim?.kind === 'spring' ? gim.springs : [],
+      });
+      // 風の波が抜ける範囲（盤面を風の向きに見た座標の幅）
+      const c = Math.cos(SWAY_GUST.dir), sn = Math.sin(SWAY_GUST.dir);
+      let lo = Infinity, hi = -Infinity;
+      const { xs, ys, n } = arena.poly;
+      for (let i = 0; i < n; i++) {
+        const p = xs[i] * c + ys[i] * sn;
+        lo = Math.min(lo, p); hi = Math.max(hi, p);
+      }
+      // タイルの房がタイルの外へはみ出す分（見えているタイルの外側を何枚まで見るか）
+      let pad = 0;
+      for (const t of s.tile) {
+        pad = Math.max(pad, t.r - t.x, t.x + t.r - FLOOR_TILE, t.r - t.y, t.y + t.r - FLOOR_TILE);
+      }
+      sway = { ...s, lo, hi, pad };
+    }
+    const env = world.envT;
+    const front = gustFront(env, sway.lo, sway.hi);
+    let any = false;
+    ctx.beginPath();
+    const put = (t, x, y) => {
+      if (z < t.min) return;
+      if (x + t.r < view.x0 || x - t.r > view.x1 || y + t.r < view.y0 || y - t.r > view.y1) return;
+      traceTuft(ctx, t, x, y, swayAngle(t, x, y, env, front));
+      any = true;
+    };
+    for (const t of sway.fixed) put(t, t.x, t.y);
+    const S = FLOOR_TILE, p = sway.pad;
+    const i0 = Math.floor((view.x0 - p) / S), i1 = Math.floor((view.x1 + p) / S);
+    const j0 = Math.floor((view.y0 - p) / S), j1 = Math.floor((view.y1 + p) / S);
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        for (const t of sway.tile) put(t, i * S + t.x, j * S + t.y);
+      }
+    }
+    if (!any) return;
+    ctx.fillStyle = SWAY_SHADOW;
+    ctx.globalAlpha = clamp((z - SWAY_FADE[0]) / (SWAY_FADE[1] - SWAY_FADE[0]), 0, 1);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   /**
