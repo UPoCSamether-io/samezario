@@ -24,7 +24,17 @@ const BASE_SPEED = 172;   // px/s
 // 質量 89 以上は元から半径モデル側が下回っていて、値は変わらない
 const BASE_TURN = 4.5;
 const TURN_RADIUS = 3.2;  // 旋回半径 ≒ 体の半径 × これ
-const BOOST_MULT = 1.85;
+// ダッシュの速さの倍率。以前は全員 1.85 で、大きくなっても曲がりにくくなるだけだった。
+// 今は体の半径で DASH_MULT_MIN（開始サイズ）→ DASH_MULT_MAX（質量 DASH_GROW_MASS 以上）
+// を線形に補間する（dashMultOf）。半径で取るのは、実際の魚の瞬間速度がおおよそ体長に比例し、
+// このゲームの体長は半径に比例するから。cinema での実速度は
+// 質量30: 308→267 / 300: 302→300 / 1000: 294→339 / 3000: 282→396 px/s（N6b、1.85 固定だった頃→今）。
+// N6 では 1.68/2.37（30: 280 / 3000: 361）だったが、差をもっと付けたいという依頼で 1.60/2.60 に広げた。
+// ボスは BOSS_BOOST_MULT（旧来の 1.85）のまま —— ヌシ戦の手触りは変えない
+const DASH_MULT_MIN = 1.60;
+const DASH_MULT_MAX = 2.60;
+const DASH_GROW_MASS = 3000;
+const BOSS_BOOST_MULT = 1.85;
 // ダッシュはサイズではなくスタミナゲージ(0..1)を食う。
 // 満タンから約2.4秒でカラ、空から約4.5秒で全快。息切れ後は DASH_MIN まで戻るまで使えない
 const DASH_DRAIN = 0.42;
@@ -79,6 +89,17 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const pick = (a) => a[(Math.random() * a.length) | 0];
 export const radiusOf = (m) => 9 + Math.sqrt(m) * 0.72;
+
+/**
+ * ダッシュ中の速さの倍率（機種の boostPower を掛ける前）。大きいサメほど速い（N6）。
+ * サーバと予測側が同じこの式を回すので、ここ以外で倍率を組み立てないこと
+ */
+export const dashMultOf = (s) => {
+  if (s.isBoss) return BOSS_BOOST_MULT;
+  const r0 = radiusOf(START_MASS), r1 = radiusOf(DASH_GROW_MASS);
+  const k = clamp((radiusOf(s.mass) - r0) / (r1 - r0), 0, 1);
+  return DASH_MULT_MIN + (DASH_MULT_MAX - DASH_MULT_MIN) * k;
+};
 
 /** スコアぶんを足す前の、機種だけで決まるダッシュ1本の長さ(秒) */
 const baseDashOf = (def) => 1 / (DASH_DRAIN * def.boostCost);
@@ -687,7 +708,9 @@ export function createWorld({ map, authority = true, diffs = false }) {
     if (world.authority && typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) {
       if (s.alive && arena.inside(x, y)) {
         const d = Math.hypot(x - s.x, y - s.y);
-        const maxDist = (BASE_SPEED * s.def.speed * BOOST_MULT * s.def.boostPower * 3.1) * 0.15 + 40;
+        // 倍率は大きさで動く（dashMultOf）が、ここは届いた位置を弾くだけの上限なので
+        // いちばん速い倍率で見積もる。小さく見積もると大物が正しく動いて引き戻される
+        const maxDist = (BASE_SPEED * s.def.speed * Math.max(DASH_MULT_MAX, BOSS_BOOST_MULT) * s.def.boostPower * 3.1) * 0.15 + 40;
         if (d <= maxDist) {
           s.x = x;
           s.y = y;
@@ -1163,7 +1186,7 @@ export function createWorld({ map, authority = true, diffs = false }) {
       s.wasSpring = inSpring;
 
       let sp = BASE_SPEED * s.def.speed * (1 - Math.min(0.26, r / 420));
-      if (canBoost) sp *= BOOST_MULT * s.def.boostPower;
+      if (canBoost) sp *= dashMultOf(s) * s.def.boostPower;
       if (s.rapid > 0) sp *= 3.1;
       if (s.slow > 0) sp *= 0.5;
 

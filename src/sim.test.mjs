@@ -2,7 +2,7 @@
 // サーバとブラウザが同じこのファイルを回すので、ここが壊れると両方が同時に壊れる。
 import assert from 'node:assert/strict';
 import { MAPS, SHARKS } from './data.js';
-import { createWorld, makeArena, makeGimmick, dashBonusOf, dashSecondsOf } from './sim.js';
+import { createWorld, makeArena, makeGimmick, dashBonusOf, dashSecondsOf, dashMultOf } from './sim.js';
 
 const chofu = MAPS.find((m) => m.id === 'chofu');
 
@@ -1342,6 +1342,39 @@ for (const map of playable) {
   client.step(1 / 30);
   assert.ok(client.elapsed > before, 'スナップショットの後に elapsed が進まない');
   server.destroy(); client.destroy();
+}
+
+// 28. ダッシュの倍率は大きさで伸びる（N6）。開始サイズ 1.60 → 質量 3000 以上で 2.60（N6b で広げた）。
+// ボスは旧来の 1.85 のまま。実際に盤面を回して、ダッシュ中の1ティックの移動量にも出ていること
+{
+  const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: ${a} != ${b}`);
+  near(dashMultOf({ mass: 30 }), 1.60, '開始サイズ');
+  near(dashMultOf({ mass: 3000 }), 2.60, '質量 3000');
+  near(dashMultOf({ mass: 9000 }), 2.60, '3000 を超えても上限');
+  near(dashMultOf({ mass: 10 }), 1.60, '開始サイズ未満は下限');
+  near(dashMultOf({ mass: 30, isBoss: true }), 1.85, 'ボス（小）');
+  near(dashMultOf({ mass: 10000, isBoss: true }), 1.85, 'ボス（大）');
+  let prev = 0;
+  for (const m of [30, 100, 300, 1000, 2000, 3000]) {
+    const v = dashMultOf({ mass: m });
+    assert.ok(v > prev, `質量 ${m} で倍率が増えていない`);
+    prev = v;
+  }
+
+  // 盤面での速さ：大きいほうがダッシュで速く進む
+  const distOf = (mass) => {
+    const w = createWorld({ map: chofu });
+    const s = w.addPlayer({ nid: 'me', sharkId: 'cinema', name: 'P' });
+    s.mass = mass; s.iframe = 99; s.boost = true; s.aim = s.angle;
+    w.step(1 / 30);
+    const x0 = s.x, y0 = s.y;
+    w.step(1 / 30);
+    const d = Math.hypot(s.x - x0, s.y - y0);
+    w.destroy();
+    return d;
+  };
+  const small = distOf(30), big = distOf(3000);
+  assert.ok(big > small * 1.2, `質量 3000 のダッシュ(${big.toFixed(2)}px)が開始サイズ(${small.toFixed(2)}px)より十分速くない`);
 }
 
 console.log('sim ok');
