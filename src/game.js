@@ -9,6 +9,10 @@ import { makeSteer } from './steer.js';
 import { sfx, EAT_GAP } from './audio.js';
 import { HAPTIC, buzz, hush } from './haptics.js';
 import { createWorld, radiusOf, dashBonusOf, clamp, rand, pick, TAU } from './sim.js';
+import {
+  TRAIN_W, TRAIN_CAR, TRAIN_GAP, TRAIN_CARS, TRAIN_LEN,
+  trainRun, trainNearest, clackVol, nextClack,
+} from './train.js';
 
 // 地響き。1発ぶんの揺れ（cam.shake の 0.88 減衰）は 0.5秒で消えてしまい、
 // 20秒待った末に何かが起き上がる出来事としては軽すぎた。こちらは秒数を持たせて
@@ -99,20 +103,7 @@ const KEIO_PIER_GAP = 420;
 // 2本の鉄橋のすき間(px)。幅（130px）の 0.6倍。幅の半分より詰めると引きの絵で1本の太い帯に
 // つぶれて見え、幅と同じだけ空けると別々の橋に見える。「並んだ2本」に見える間を取った
 const KEIO_BRIDGE_SPACE = 80;
-// 鉄橋を渡る電車の影（見た目だけ。sim は知らない）。京王の通勤車（1両 20m × 幅 2.8m）を
-// 縦横比そのままで縮めた。幅は鉄橋の影（130px）の4割ほどにして、桁の上に収まって見えるようにする
-const TRAIN_W = 52;                    // 車体の幅(px)
-const TRAIN_CAR = 360;                 // 1両の長さ(px)。20m : 2.8m ≒ 7 : 1
-const TRAIN_GAP = 18;                  // 車両の継ぎ目のすき間(px)。引きの絵でも切れ目が見える最小くらい
-const TRAIN_CARS = 8;                  // 編成の両数。相模原線の8両編成
-const TRAIN_LEN = TRAIN_CARS * TRAIN_CAR + (TRAIN_CARS - 1) * TRAIN_GAP;
-// 速さ(px/s)。画面（PC で横 1300px 前後）を先頭が 2秒ほどで抜け、編成全体は1点を 4〜5秒で
-// 通り過ぎる。サメ（200px/s 前後）よりずっと速く、「横を電車が通った」に見える速さ
-const TRAIN_SPEED = 700;
-// 1本ごとの間隔(秒)。鉄橋の端から端まで（約 9000px）を 13秒ほどで渡るので、
-// 鉄橋の上が空く時間は 17秒ほど、1点で見れば次の電車まで 25秒ほど。上り・下りが交互に来る
-// （2本の鉄橋を同時に走らせると、画面に動く帯が2本並んでうるさいので、1本ずつにする）
-const TRAIN_PERIOD = 30;
+// 鉄橋を渡る電車の影の寸法・速さ・間隔（TRAIN_*）は src/train.js。音（ガタンゴトン）と共有する
 // 川底の石を撒く升の大きさ(px)。升ごとに 1〜2個。水面のドット（60px 間隔の小さな四角）と
 // 見分けが付くよう、間隔も石の大きさも水のドットよりずっと大きく取る
 const STONE_CELL = 240;
@@ -1383,15 +1374,12 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
    * 鉄橋の影の上に同じ色を薄く重ねるだけ（水面の影なので、他の物より派手にしない）
    */
   function drawTrain(br, view) {
-    const env = world.envT;
-    const k = Math.floor(env / TRAIN_PERIOD);
-    const ph = env - k * TRAIN_PERIOD;
-    // 先頭が鉄橋の手前の端（-half）にいる所から、最後尾が向こうの端を抜けるまで
-    const head = -br.half + TRAIN_SPEED * ph;
-    if (head - TRAIN_LEN > br.half) return;
+    // 先頭が鉄橋の手前の端（-half）にいる所から、最後尾が向こうの端を抜けるまで（train.js）
+    const run = trainRun(world.envT, br.half);
+    if (!run) return;
     // 偶数本目は下り（+n 向き＝画面の下、よみうりランド側へ）、奇数本目は上り。
     // 日本の鉄道は左側通行なので、進む向きの左の鉄橋を走る（+n の左は +f＝下流側）
-    const dir = k % 2 ? -1 : 1;
+    const { dir, head } = run;
     const a = dir * (head - TRAIN_LEN / 2);           // 編成の中心の、鉄橋の中心線に沿った位置
     const off = br.track[dir > 0 ? 1 : 0];
     const x = br.cx + br.nx * a + br.fx * off, y = br.cy + br.ny * a + br.fy * off;
@@ -1403,6 +1391,40 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.fillStyle = 'rgba(16,31,35,.2)';   // 鉄橋の影（.28）に重ねて、ひと段だけ濃く
     ctx.fill(trainArt());
     ctx.restore();
+  }
+
+  /**
+   * 電車の「ガタン・ゴトン」（N7）。毎フレーム呼び、次の打音の時刻（envT）が
+   * CLACK_AHEAD 秒先までに入ったら、その1発だけを時刻指定で Web Audio に置く。
+   * 打音どうしは 0.054秒しか空かないので、フレームが来た時に鳴らすと 16ms ずつずれて
+   * 「タタン」が崩れる。少し先を見て、ずれのぶんを delay で渡す。
+   * 音量は聞き手（自機、居なければカメラの中心）と編成のいちばん近い点の距離で決め
+   * （train.js の clackVol）、左右は他の音と同じ spatial() の pan。電車が鉄橋の上に
+   * いないとき・遠くて 0 のときはノードを作らない。
+   * 時刻は envT だけから出すので、同じ部屋の人には同じ拍で鳴る
+   */
+  const CLACK_AHEAD = 0.1;
+  let clackAt = null;   // 次に鳴らす打音 { t, axle }（nextClack の戻り値）
+  function trainSound() {
+    if (attract || paused || dead || gim?.kind !== 'current') return;
+    const env = world.envT;
+    // 時計が飛んだ（タブ復帰・スナップショットでの補正）ら、取りこぼしは鳴らさずに今から数え直す
+    if (!clackAt || clackAt.t < env - CLACK_AHEAD || clackAt.t > env + 1) clackAt = nextClack(env);
+    if (clackAt.t > env + CLACK_AHEAD) return;
+    const br = bridgeArt();
+    const run = trainRun(env, br.half);
+    let v = 0, pan = 0;
+    if (run) {
+      const ear = player.alive ? player : cam;
+      const near = trainNearest(br, run, ear.x, ear.y);
+      v = clackVol(near.d);
+      if (v > 0) pan = spatial(near.x, near.y).pan;
+    }
+    while (clackAt.t <= env + CLACK_AHEAD) {
+      // TRAIN_AXLES の 2・3 が後ろの台車（ガタン）、0・1 が次の車両の前の台車（ゴトン）
+      if (v > 0) sfx.clack(v, pan, clackAt.t - env, clackAt.axle < 2);
+      clackAt = nextClack(clackAt.t);
+    }
   }
 
   /**
@@ -2516,6 +2538,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     if (!paused) {
       for (let left = dt; left > 1e-6; left -= 0.05) step(Math.min(left, 0.05), frozen);
     }
+    trainSound();   // 多摩川の電車の音（ポーズ中・デモ・リザルトでは中で抜ける）
     if (!frozen) draw(t);
 
     // 送るのは自分の操作と現在座標。盤面は onNet が受け取る
