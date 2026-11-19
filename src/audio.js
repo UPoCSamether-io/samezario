@@ -174,7 +174,8 @@ window.__bgm = {
   get vol() { return node ? +(node.g.gain.value * (bgmBus?.gain.value ?? 0)).toFixed(3) : 0; },
   get mix() { return { music: vol.music, sfx: vol.sfx }; },
   get state() { return ac?.state; },
-  // 多摩川の電車の音（N7b）。鳴っているか・いまの音量（効果音バスの手前）・ファイルのどこか
+  // 多摩川の電車の音（N7b / N7c）。鉄橋ごと（lines: [下り, 上り]）に、鳴っているか・何本目か・
+  // いまの音量（効果音バスの手前）・ファイルのどこか
   get train() { return trainPeek(); },
 };
 
@@ -303,6 +304,8 @@ function noise(f0, f1, dur, gain, q = 4, dest = null) {
  * （継ぎ目の無音が問題にならない）うえ、Ogg の鳴らない古い Safari でも鳴るから。
  *   ffmpeg -i 元.mp3 -ac 1 -ar 44100 -c:a libmp3lame -b:a 64k -map_metadata -1 public/audio/電車.mp3
  *
+ * 鉄橋2本（下り・上り）がそれぞれ別に走り、すれ違う間は2本同時に鳴るので（N7c）、
+ * 鳴らす口（BufferSource・GainNode・StereoPanner）は鉄橋ごとに1組ずつ持つ（trainSlots）。
  * 鳴らし方は1本につき BufferSource を1つだけ。音量（距離）と左右は、使い回す GainNode と
  * StereoPanner を毎フレーム setTargetAtTime で動かす（ノードを毎フレーム作らない）。
  * 遠くて音量 0 の間も、渡っている間は 0 のまま回しておく（止めて掛け直すより軽く、
@@ -311,10 +314,14 @@ function noise(f0, f1, dur, gain, q = 4, dest = null) {
  * 途中で聞こえる所へ来ても・途中で多摩川に入っても、同じ部屋なら同じ所が鳴る。
  */
 // 音量の上限。v = 1（編成の真横）でもこれ以上にはならない。録音の大きい区間（1.5〜12秒）は
-// ebur128 で -23.5 LUFS ほどなので、0.8 で約 -25.5 LUFS。BGM（-15 LUFS に揃えて MIX 0.5 で
-// 約 -21 LUFS）より 4〜5dB 下に敷く大きさで、真横を通っても曲と餌の音を食わない。
+// ebur128 で -23.5 LUFS ほどなので、1.2 で約 -22 LUFS。BGM（-15 LUFS に揃えて MIX 0.5 で
+// 約 -21 LUFS）と同じくらいで、真横を通ると「電車が来た」とはっきり分かる（N7c で 0.8 から上げた）。
+// 録音のピークは -2.2 dBFS なので、1.2 倍でも -0.6 dBFS と 0 dBFS を超えない（歪まない）。
+// 下りと上りがすれ違う3秒ほどは2本同時に鳴る（下りの録音の 10〜12.6秒と上りの 0〜2.6秒が
+// 鉄橋の同じ端で重なる）が、両方真横（v = 1）でも足して -2.1 dBFS で、やはり超えない。
+// これより上げるとピークが 0 dBFS を超えるので、上げるなら録音のほうを下げてから。
 // うるさければここを下げる
-const TRAIN_GAIN = 0.8;
+const TRAIN_GAIN = 1.2;
 // 音量と左右の追従の時定数(秒)。毎フレームの距離の変化をこれでならす（ぷつぷつ鳴らさない）
 const TRAIN_EASE = 0.08;
 // 止めるときに落とす長さ(秒)。ぶつ切りだとプツッと鳴る
@@ -325,8 +332,9 @@ const TRAIN_FADE = 0.15;
 const TRAIN_SLIP = 0.3;
 let trainBuf = null;        // デコード済みの録音
 let trainLoad = 0;          // 0 まだ / 1 読み込み中 / 2 済み / -1 失敗（以後は鳴らさない）
-let trainOut = null;        // 使い回す { g, p }（GainNode → StereoPanner → sfxBus）
-let trainNow = null;        // 鳴っている { s, k, t0 }。t0 はファイルの 0 秒に当たる currentTime
+// 鉄橋ごと（0 下り / 1 上り）の鳴らす口。out は使い回す { g, p }（GainNode → StereoPanner → sfxBus）、
+// now は鳴っている { s, k, t0 }（t0 はファイルの 0 秒に当たる currentTime）
+const trainSlots = [{ out: null, now: null }, { out: null, now: null }];
 
 /** 録音を1回だけ取ってくる。失敗したら黙って諦める */
 async function trainFetch() {
@@ -339,14 +347,14 @@ async function trainFetch() {
   } catch { trainLoad = -1; }
 }
 
-/** 鳴っている電車を TRAIN_FADE 秒で落として止める。止まっていれば何もしない */
-function trainStop() {
-  if (!trainNow) return;
-  const { s } = trainNow;
-  trainNow = null;
+/** 鉄橋 slot で鳴っている電車を TRAIN_FADE 秒で落として止める。止まっていれば何もしない */
+function trainStop(slot) {
+  if (!slot.now) return;
+  const { s } = slot.now;
+  slot.now = null;
   const c = ctx();
   const t = c.currentTime;
-  const g = trainOut.g.gain;
+  const g = slot.out.g.gain;
   g.cancelScheduledValues(t);
   g.setValueAtTime(g.value, t);
   g.linearRampToValueAtTime(0, t + TRAIN_FADE);
@@ -355,57 +363,70 @@ function trainStop() {
 }
 
 /**
- * 毎フレームの指示。cue は { k: 何本目か, at: 渡り始めてからの秒数, v: 0〜1, pan: -1〜1 }。
- * null なら止める（多摩川以外・ポーズ・リザルト・渡っていない）
+ * 毎フレームの指示。cues は鉄橋ごとの [下り, 上り] で、それぞれ
+ * { k: 何本目か, at: 渡り始めてからの秒数, v: 0〜1, pan: -1〜1 } か null（その鉄橋は渡っていない）。
+ * cues ごと null なら両方止める（多摩川以外・ポーズ・リザルト）
  */
-function trainCue(cue) {
+function trainCue(cues) {
   // 効果音 0・AudioContext が動いていない（解禁前・裏に回った・割り込み）ときも止める。
   // 解禁前に AudioContext を作りにいかないよう、ac が無ければ何もしない
-  if (!cue || vol.sfx === 0 || !ac || ac.state !== 'running') { if (ac) trainStop(); return; }
+  if (!cues || vol.sfx === 0 || !ac || ac.state !== 'running') {
+    if (ac) trainSlots.forEach(trainStop);
+    return;
+  }
   if (trainLoad === 0) trainFetch();
   if (trainLoad !== 2) return;
+  trainSlots.forEach((slot, i) => trainSlotCue(slot, cues[i]));
+}
+
+/** 鉄橋1本ぶん。cue が null ならその鉄橋だけ止める */
+function trainSlotCue(slot, cue) {
+  if (!cue) { trainStop(slot); return; }
   const c = ctx();
   const t = c.currentTime;
   // 別の1本になった・ずれた（時計が飛んだ）・録音の終わりを過ぎたら、今のを止める
-  if (trainNow) {
-    const pos = t - trainNow.t0;
-    if (trainNow.k !== cue.k || Math.abs(pos - cue.at) > TRAIN_SLIP) trainStop();
+  if (slot.now) {
+    const pos = t - slot.now.t0;
+    if (slot.now.k !== cue.k || Math.abs(pos - cue.at) > TRAIN_SLIP) trainStop(slot);
   }
-  if (cue.at >= trainBuf.duration) { trainStop(); return; }
-  if (!trainOut) {
+  if (cue.at >= trainBuf.duration) { trainStop(slot); return; }
+  if (!slot.out) {
     buses();
     const g = c.createGain();
     const p = c.createStereoPanner();
     g.gain.value = 0;
     g.connect(p).connect(sfxBus);
-    trainOut = { g, p };
+    slot.out = { g, p };
   }
-  const g = trainOut.g.gain;
-  if (!trainNow) {
+  const g = slot.out.g.gain;
+  if (!slot.now) {
     const s = c.createBufferSource();
     s.buffer = trainBuf;
-    s.connect(trainOut.g);
+    s.connect(slot.out.g);
     // 途中から入るときに、録音の大きい所をいきなり出さない（TRAIN_EASE でふわっと上げる）。
     // 止めたばかりの前の音のフェードは、ここで打ち切られる（前の音は直後に stop される）
     g.cancelScheduledValues(t);
     g.setValueAtTime(0, t);
     s.start(t, Math.max(0, cue.at));
     // 最後まで行ったら勝手に止まる。そのとき掴んだままにしない
-    s.onended = () => { if (trainNow?.s === s) trainNow = null; };
-    trainNow = { s, k: cue.k, t0: t - Math.max(0, cue.at) };
+    s.onended = () => { if (slot.now?.s === s) slot.now = null; };
+    slot.now = { s, k: cue.k, t0: t - Math.max(0, cue.at) };
   }
   g.setTargetAtTime(Math.max(0, cue.v) * TRAIN_GAIN, t, TRAIN_EASE);
-  trainOut.p.pan.setTargetAtTime(Math.max(-1, Math.min(1, cue.pan || 0)), t, TRAIN_EASE);
+  slot.out.p.pan.setTargetAtTime(Math.max(-1, Math.min(1, cue.pan || 0)), t, TRAIN_EASE);
 }
 
-/** window.__bgm.train の中身（確かめ用） */
+/** window.__bgm.train の中身（確かめ用）。lines は鉄橋ごとの [下り, 上り] */
 function trainPeek() {
   return {
     load: trainLoad,
-    playing: !!trainNow,
-    gain: trainOut ? +trainOut.g.gain.value.toFixed(3) : 0,
-    pan: trainOut ? +trainOut.p.pan.value.toFixed(2) : 0,
-    at: trainNow ? +(ctx().currentTime - trainNow.t0).toFixed(2) : null,
+    lines: trainSlots.map(({ out, now }) => ({
+      playing: !!now,
+      k: now ? now.k : null,
+      gain: out ? +out.g.gain.value.toFixed(3) : 0,
+      pan: out ? +out.p.pan.value.toFixed(2) : 0,
+      at: now ? +(ctx().currentTime - now.t0).toFixed(2) : null,
+    })),
   };
 }
 
@@ -445,7 +466,8 @@ export const sfx = {
     tone('sawtooth', 420, 55, 0.75, 0.4, 0, o);
     noise(900, 120, 0.5, 0.28, 2, o);
   },
-  // 鉄橋を渡る電車の音。毎フレーム呼ぶ。渡っていない・鳴らさないときは null を渡すと止まる。
+  // 鉄橋を渡る電車の音。毎フレーム呼ぶ。鉄橋ごとの [下り, 上り] を渡し、渡っていない方は null、
+  // 鳴らさないときは丸ごと null で両方止まる。
   // 何本目か・渡り始めてからの秒数・距離と左右は game.js が決めて渡す
   train(cue) { trainCue(cue); },
   // フィルムが回る音。押しているあいだ回り続ける
