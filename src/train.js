@@ -34,8 +34,9 @@ export const TRAIN_LINES = 2;
 export const CLACK_FAR = 2000;
 // 距離に対する落ち方。1 で直線、2 で二乗。近くを通るときだけはっきり聞こえるよう、
 // 他人の死の音（game.js の spatial、0.6乗）よりずっと急に落とす。
-// 1000px で 0.25、画面の縁（650px）で 0.45 くらい
-export const CLACK_CURVE = 2;
+// N7d で 2 → 1.5 にゆるめた（少し離れた所でも小さすぎないように）。
+// 600px で 0.58、1000px で 0.35、1200px で 0.25 くらい
+export const CLACK_CURVE = 1.5;
 
 /**
  * 鉄橋 line（0 が下り、1 が上り）の上をいま走っている編成。half は鉄橋の中心から端までの長さ
