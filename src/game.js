@@ -91,10 +91,28 @@ const FOAM_DX = [0, 1.7], FOAM_DY = [0, -0.8], FOAM_R = [1, 0.7];
 // 詰めたのは、線より物のほうが小さく、同じ間隔だと餌に紛れて川面がまばらに見えるため
 const DRIFT_GAP = 150;
 // 京王相模原線の鉄橋（京王多摩川〜京王よみうりランド）。外接矩形の u（左＝上流が 0）で、
-// 実際の位置ではなく、一本道の中ほど（要調整）。影の幅と橋脚の間隔は px
+// 実際の位置ではなく、一本道の中ほど（要調整）。影の幅と橋脚の間隔は px。
+// 鉄橋は同じ幅のものを2本、流れの向きに並べる（上り線・下り線）。KEIO_BRIDGE_U は2本の真ん中
 const KEIO_BRIDGE_U = 0.5;
 const KEIO_BRIDGE_W = 130;
 const KEIO_PIER_GAP = 420;
+// 2本の鉄橋のすき間(px)。幅（130px）の 0.6倍。幅の半分より詰めると引きの絵で1本の太い帯に
+// つぶれて見え、幅と同じだけ空けると別々の橋に見える。「並んだ2本」に見える間を取った
+const KEIO_BRIDGE_SPACE = 80;
+// 鉄橋を渡る電車の影（見た目だけ。sim は知らない）。京王の通勤車（1両 20m × 幅 2.8m）を
+// 縦横比そのままで縮めた。幅は鉄橋の影（130px）の4割ほどにして、桁の上に収まって見えるようにする
+const TRAIN_W = 52;                    // 車体の幅(px)
+const TRAIN_CAR = 360;                 // 1両の長さ(px)。20m : 2.8m ≒ 7 : 1
+const TRAIN_GAP = 18;                  // 車両の継ぎ目のすき間(px)。引きの絵でも切れ目が見える最小くらい
+const TRAIN_CARS = 8;                  // 編成の両数。相模原線の8両編成
+const TRAIN_LEN = TRAIN_CARS * TRAIN_CAR + (TRAIN_CARS - 1) * TRAIN_GAP;
+// 速さ(px/s)。画面（PC で横 1300px 前後）を先頭が 2秒ほどで抜け、編成全体は1点を 4〜5秒で
+// 通り過ぎる。サメ（200px/s 前後）よりずっと速く、「横を電車が通った」に見える速さ
+const TRAIN_SPEED = 700;
+// 1本ごとの間隔(秒)。鉄橋の端から端まで（約 9000px）を 13秒ほどで渡るので、
+// 鉄橋の上が空く時間は 17秒ほど、1点で見れば次の電車まで 25秒ほど。上り・下りが交互に来る
+// （2本の鉄橋を同時に走らせると、画面に動く帯が2本並んでうるさいので、1本ずつにする）
+const TRAIN_PERIOD = 30;
 // 川底の石を撒く升の大きさ(px)。升ごとに 1〜2個。水面のドット（60px 間隔の小さな四角）と
 // 見分けが付くよう、間隔も石の大きさも水のドットよりずっと大きく取る
 const STONE_CELL = 240;
@@ -1287,9 +1305,11 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   let bridge = null;   // 京王線の鉄橋の影。これも静的なので初回に1回だけ作る
 
   /**
-   * 京王相模原線の鉄橋の影。川を流れに直交して横切る暗い帯1本と、流れに沿って細長い橋脚。
-   * 外接矩形の u（KEIO_BRIDGE_U）を通る、流れに直交する直線の上に置く。
-   * 見えている範囲との当たりを取るため、外接の矩形も一緒に返す
+   * 京王相模原線の鉄橋の影。川を流れに直交して横切る暗い帯2本（上り線・下り線）と、
+   * 流れに沿って細長い橋脚。2本は外接矩形の u（KEIO_BRIDGE_U）を通る、流れに直交する直線を
+   * 真ん中に挟んで、流れの向きに KEIO_BRIDGE_SPACE だけ空けて並ぶ。橋脚の位置は2本でそろえる。
+   * 見えている範囲との当たりを取るため、外接の矩形も一緒に返す。
+   * track[0] が上流側、track[1] が下流側の鉄橋の中心線の、中心線からのずれ（流れの向き）
    */
   function bridgeArt() {
     if (bridge) return bridge;
@@ -1301,9 +1321,12 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     // 縦に近い向きを data.js に書かれても無限に伸びないよう下限を入れる
     const half = (bb.h / 2) / Math.max(Math.abs(ny), 0.2) + 200;
     const w = KEIO_BRIDGE_W / 2;
-    const quad = (along0, along1, across) => {
+    const d = (KEIO_BRIDGE_W + KEIO_BRIDGE_SPACE) / 2;   // 2本の中心線の、真ん中からのずれ
+    const track = [-d, d];
+    // along は流れに直交する向き、c0〜c1 は流れの向きの範囲
+    const quad = (along0, along1, c0, c1) => {
       const p = new Path2D();
-      const pts = [[along0, -across], [along1, -across], [along1, across], [along0, across]];
+      const pts = [[along0, c0], [along1, c0], [along1, c1], [along0, c1]];
       pts.forEach(([a, c], k) => {
         const x = cx + nx * a + fx * c, y = cy + ny * a + fy * c;
         if (k) p.lineTo(x, y); else p.moveTo(x, y);
@@ -1311,15 +1334,75 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
       p.closePath();
       return p;
     };
-    const shadow = quad(-half, half, w);
+    const shadow = new Path2D();
+    for (const c of track) shadow.addPath(quad(-half, half, c - w, c + w));
     // 橋脚は流れに沿って細長い（水を切る形）。桁の影から上下へ少しだけ出して、一定の間隔で並べる。
     // 桁と同じ Path に足して1回で塗る —— 向きの揃った四角どうしなので、重なりは濃くならず
-    // 和になる（橋脚は桁の縁から出た小さな出っ張りとして見える）
+    // 和になる（橋脚は桁の縁から出た小さな出っ張りとして見える）。2本で同じ along に置くので、
+    // 橋脚が流れの向きに一列にそろって、並んだ2本の橋に見える
     for (let a = -half + KEIO_PIER_GAP / 2; a < half; a += KEIO_PIER_GAP) {
-      shadow.addPath(quad(a - 16, a + 16, w + 12));
+      for (const c of track) shadow.addPath(quad(a - 16, a + 16, c - w - 12, c + w + 12));
     }
-    const ex = Math.abs(nx) * half + w + 40, ey = Math.abs(ny) * half + w + 40;
-    return (bridge = { shadow, x0: cx - ex, x1: cx + ex, y0: cy - ey, y1: cy + ey });
+    const ac = d + w + 40;   // 流れの向きの広がり（2本ぶん）
+    const ex = Math.abs(nx) * half + Math.abs(fx) * ac, ey = Math.abs(ny) * half + Math.abs(fy) * ac;
+    return (bridge = { shadow, cx, cy, nx, ny, fx, fy, half, track, x0: cx - ex, x1: cx + ex, y0: cy - ey, y1: cy + ey });
+  }
+
+  /**
+   * 電車の影の Path2D（初回に1回だけ作る）。編成の中心が原点、長手が x。
+   * 両端の先頭車だけ角を落として運転台の顔にする —— 両端とも同じ形なので、
+   * 上り・下りは向きを 180° 回すだけで済む。車両は向きの揃った四角なので、1本の Path に
+   * 足して1回で塗る（すき間はそのまま抜けて、継ぎ目に見える）
+   */
+  let trainPath = null;
+  function trainArt() {
+    if (trainPath) return trainPath;
+    const p = new Path2D();
+    const w = TRAIN_W / 2, nose = TRAIN_W * 0.3;
+    for (let i = 0; i < TRAIN_CARS; i++) {
+      const x0 = -TRAIN_LEN / 2 + i * (TRAIN_CAR + TRAIN_GAP), x1 = x0 + TRAIN_CAR;
+      const n0 = i === 0 ? nose : 0, n1 = i === TRAIN_CARS - 1 ? nose : 0;
+      p.moveTo(x0 + n0, -w);
+      p.lineTo(x1 - n1, -w);
+      p.lineTo(x1, -w + n1);
+      p.lineTo(x1, w - n1);
+      p.lineTo(x1 - n1, w);
+      p.lineTo(x0 + n0, w);
+      p.lineTo(x0, w - n0);
+      p.lineTo(x0, -w + n0);
+      p.closePath();
+    }
+    return (trainPath = p);
+  }
+
+  /**
+   * 鉄橋を渡る電車の影。TRAIN_PERIOD ごとに1本、上り・下りが交互に、鉄橋の端から端まで
+   * 流れに直交して走り抜ける。2本の鉄橋をそれぞれ単線とみなし、下流側を下り、上流側を上りが通る。時刻は world.envT だけから出す（読むだけ）—— envT は
+   * スナップショットで全員にそろうので、同じ部屋なら同じ時に通り、乱数も使わない。
+   * envT は試合の始めが 0 なので、1本目は開始 6〜7秒で鉄橋の真ん中に来る。
+   * 鉄橋の影の上に同じ色を薄く重ねるだけ（水面の影なので、他の物より派手にしない）
+   */
+  function drawTrain(br, view) {
+    const env = world.envT;
+    const k = Math.floor(env / TRAIN_PERIOD);
+    const ph = env - k * TRAIN_PERIOD;
+    // 先頭が鉄橋の手前の端（-half）にいる所から、最後尾が向こうの端を抜けるまで
+    const head = -br.half + TRAIN_SPEED * ph;
+    if (head - TRAIN_LEN > br.half) return;
+    // 偶数本目は下り（+n 向き＝画面の下、よみうりランド側へ）、奇数本目は上り。
+    // 日本の鉄道は左側通行なので、進む向きの左の鉄橋を走る（+n の左は +f＝下流側）
+    const dir = k % 2 ? -1 : 1;
+    const a = dir * (head - TRAIN_LEN / 2);           // 編成の中心の、鉄橋の中心線に沿った位置
+    const off = br.track[dir > 0 ? 1 : 0];
+    const x = br.cx + br.nx * a + br.fx * off, y = br.cy + br.ny * a + br.fy * off;
+    const R = TRAIN_LEN / 2 + TRAIN_W;                // 外接円の半径（ゆとり込み）
+    if (x + R < view.x0 || x - R > view.x1 || y + R < view.y0 || y - R > view.y1) return;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.atan2(br.ny * dir, br.nx * dir));
+    ctx.fillStyle = 'rgba(16,31,35,.2)';   // 鉄橋の影（.28）に重ねて、ひと段だけ濃く
+    ctx.fill(trainArt());
+    ctx.restore();
   }
 
   /**
@@ -1327,9 +1410,9 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
    * 帯の色も漂流物の数・速さも sim.js の流速そのものから出すので、
    * 絵と盤面が食い違うことはない。
    *
-   * 重ね順は 川底の石 → 帯の水色 → 漂流物・白波 → 鉄橋の影。石を水色の下に敷くので、
+   * 重ね順は 川底の石 → 帯の水色 → 漂流物・白波 → 鉄橋の影 → 電車の影。石を水色の下に敷くので、
    * 深い帯ほど水色が濃く（不透明に）なって石が沈んで見える。
-   * 描画命令はいちばん多くても 石1・水色1・葉1・泡と白波1・鉄橋1 の 5回で、
+   * 描画命令はいちばん多くても 石1・水色1・葉1・泡と白波1・鉄橋1・電車1 の 6回で、
    * 帯の数にも、映っている物の数にもよらない。
    */
   function drawCurrent(t, view) {
@@ -1418,6 +1501,8 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     if (br.x1 > vx0 && br.x0 < vx1 && br.y1 > vy0 && br.y0 < vy1) {
       ctx.fillStyle = 'rgba(16,31,35,.28)';
       ctx.fill(br.shadow);
+      // その上を渡る電車の影。鉄橋が画面に入っていないなら電車も入らない
+      drawTrain(br, { x0: vx0, x1: vx1, y0: vy0, y1: vy1 });
     }
   }
 
