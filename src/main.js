@@ -856,13 +856,15 @@ function paintIdle(err = '') {
 
       ${isDemo() ? `
       <div class="mt-4 ink-2 border-ink/30 rounded p-2 font-mono text-[10.5px] text-ink/60 text-center">
-        DEMO MODE — 現在地と照合を飛ばして解放します
+        DEMO MODE — 撮影・現在地・照合を飛ばして解放します
       </div>` : ''}
 
       <div class="mt-5 flex flex-col gap-3">
         <button class="btn primary" id="unlock-go"><div class="cap clapper-stripes"></div>
           <div class="py-2.5 font-display font-extrabold text-base sm:text-lg flex items-center justify-center gap-2 whitespace-nowrap">
-            ${icon('photo_camera', '!text-2xl shrink-0')}<span class="whitespace-nowrap">${done ? rubify('もう｜一度《いちど》｜撮《と》る') : rubify('｜写真《しゃしん》を｜撮《と》る')}</span>
+            ${isDemo()
+              ? `${icon('lock_open', '!text-2xl shrink-0')}<span class="whitespace-nowrap">${rubify('デモで｜解放《かいほう》する')}</span>`
+              : `${icon('photo_camera', '!text-2xl shrink-0')}<span class="whitespace-nowrap">${done ? rubify('もう｜一度《いちど》｜撮《と》る') : rubify('｜写真《しゃしん》を｜撮《と》る')}</span>`}
           </div></button>
         <a class="btn block text-center" href="${gmaps(s)}" target="_blank" rel="noopener">
           <div class="cap clapper-stripes"></div>
