@@ -209,18 +209,23 @@ export async function verifyPhoto(spot, photo, pos) {
  * この関数ごと1回のタップのハンドラから呼ぶこと（docs/07 4.1）。
  */
 export async function runUnlock(spot, onStep = () => {}) {
+  // デモ会場ではスポットの前に立てないので、撮る（選ぶ）手間ごと飛ばしてボタン1回で開ける。
+  // 写真が無いぶん、成功画面のプレビューとシェアの添付は出ない（share.js は photo 無しでも動く）
+  if (isDemo()) {
+    onStep('verify');
+    return { ...await verifyPhoto(spot, null, null), photo: null };
+  }
+
   onStep('capture');
-  const photo = await capturePhoto({ camera: !isDemo() });
+  const photo = await capturePhoto();
   if (!photo) return { ok: false, code: 'CANCELLED' };
 
-  let pos = null;
-  if (!isDemo()) {
-    onStep('locate');
-    try {
-      pos = await locate();
-    } catch (e) {
-      return { ok: false, code: e.code || 'GEO_TIMEOUT', photo };
-    }
+  onStep('locate');
+  let pos;
+  try {
+    pos = await locate();
+  } catch (e) {
+    return { ok: false, code: e.code || 'GEO_TIMEOUT', photo };
   }
 
   onStep('verify');
