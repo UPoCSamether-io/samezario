@@ -16,10 +16,17 @@ export const TRAIN_LEN = TRAIN_CARS * TRAIN_CAR + (TRAIN_CARS - 1) * TRAIN_GAP;
 // 速さ(px/s)。画面（PC で横 1300px 前後）を先頭が 2秒ほどで抜け、編成全体は1点を 4〜5秒で
 // 通り過ぎる。サメ（200px/s 前後）よりずっと速く、「横を電車が通った」に見える速さ
 export const TRAIN_SPEED = 700;
-// 1本ごとの間隔(秒)。鉄橋の端から端まで（約 9000px）を 13秒ほどで渡るので、
-// 鉄橋の上が空く時間は 17秒ほど、1点で見れば次の電車まで 25秒ほど。上り・下りが交互に来る
-// （2本の鉄橋を同時に走らせると、画面に動く帯が2本並んでうるさいので、1本ずつにする）
-export const TRAIN_PERIOD = 30;
+// 1本の鉄橋で見た、電車の間隔(秒)。鉄橋の端から端まで（約 9000px）を 13秒ほどで渡るので、
+// 1本の鉄橋の上には同時に1本だけ（渡り終えてから次が入るまで 7秒ほど空く）。
+// 2本の鉄橋（下流側＝下り、上流側＝上り）がそれぞれこの間隔で走り、位相を TRAIN_SHIFT
+// ずらすので、全体では 10秒ごとに1本、下り・上りが交互に来る（N7c で「10秒ごと」に）。
+// 1本が渡るのに 13秒ほど要るので、下りが渡り終える前の 3秒ほどは上りと2本同時に走る
+// （2本は鉄橋の同じ端ですれ違う）。音も鉄橋ごとに別に鳴らすので、ぶつ切りにはならない
+export const TRAIN_PERIOD = 20;
+// 上り（上流側の鉄橋）の、下りに対する遅れ(秒)。半周期ずらして全体で等間隔にする
+export const TRAIN_SHIFT = TRAIN_PERIOD / 2;
+// 鉄橋の本数（0 が下り＝下流側、1 が上り＝上流側）
+export const TRAIN_LINES = 2;
 
 // ---- 電車の音（N7 / N7b。鳴らすのは audio.js、録音は public/audio/電車.mp3） ----
 // 電車の音が聞こえなくなる距離(px、ワールド座標)。編成のいちばん近い点からこれだけ離れたら 0。
@@ -31,23 +38,35 @@ export const CLACK_FAR = 2000;
 export const CLACK_CURVE = 2;
 
 /**
- * いま鉄橋の上を走っている編成。half は鉄橋の中心から端までの長さ（game.js の bridgeArt）。
+ * 鉄橋 line（0 が下り、1 が上り）の上をいま走っている編成。half は鉄橋の中心から端までの長さ
+ * （game.js の bridgeArt）。鉄橋ごとに TRAIN_PERIOD 秒に1本、上りは TRAIN_SHIFT 秒遅れて走る。
  * 先頭が鉄橋の手前の端（-half）にいる所から、最後尾が向こうの端を抜けるまでだけ返し、
- * それ以外（渡り終えてから次の1本が来るまで）は null。
- *   k    何本目か（偶数が下り、奇数が上り）
+ * それ以外（渡り終えてから次の1本が来るまで）は null。上りの1本目は envT = TRAIN_SHIFT から
+ * （試合の頭で鉄橋の途中に居たりしない）。
+ *   k    全体で何本目か（偶数が下り、奇数が上り。2本の鉄橋を合わせて 10秒ごとに1つ増える）
+ *   line どの鉄橋か（0 下り / 1 上り）
  *   dir  鉄橋の中心線に沿って進む向き（+1 / -1）
  *   ph   渡り始めてからの秒数（先頭が手前の端にいる瞬間が 0）。録音の再生位置にそのまま使う
  *   head 先頭の位置。進む向きに測った、中心線に沿った距離（-half から増えていく）
  *   lo, hi 編成が占める範囲。中心線に沿った座標（dir を掛けた後）で lo < hi
  */
-export function trainRun(env, half) {
-  const k = Math.floor(env / TRAIN_PERIOD);
-  const ph = env - k * TRAIN_PERIOD;
+export function trainRun(env, half, line = 0) {
+  const e = env - line * TRAIN_SHIFT;
+  if (e < 0) return null;
+  const n = Math.floor(e / TRAIN_PERIOD);
+  const ph = e - n * TRAIN_PERIOD;
   const head = -half + TRAIN_SPEED * ph;
   if (head - TRAIN_LEN > half) return null;
-  const dir = k % 2 ? -1 : 1;
+  const dir = line ? -1 : 1;
   const a0 = dir * (head - TRAIN_LEN), a1 = dir * head;
-  return { k, dir, ph, head, lo: Math.min(a0, a1), hi: Math.max(a0, a1) };
+  return { k: n * TRAIN_LINES + line, line, dir, ph, head, lo: Math.min(a0, a1), hi: Math.max(a0, a1) };
+}
+
+/** 2本の鉄橋それぞれの trainRun。[下り, 上り] で、走っていない方は null */
+export function trainRuns(env, half) {
+  const out = [];
+  for (let l = 0; l < TRAIN_LINES; l++) out.push(trainRun(env, half, l));
+  return out;
 }
 
 /**
