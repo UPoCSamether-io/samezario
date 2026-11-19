@@ -9,6 +9,10 @@ import { makeSteer } from './steer.js';
 import { sfx, EAT_GAP } from './audio.js';
 import { HAPTIC, buzz, hush } from './haptics.js';
 import { createWorld, radiusOf, dashBonusOf, clamp, rand, pick, TAU } from './sim.js';
+import {
+  TRAIN_W, TRAIN_CAR, TRAIN_GAP, TRAIN_CARS, TRAIN_LEN,
+  trainRuns, trainNearest, clackVol,
+} from './train.js';
 
 // 地響き。1発ぶんの揺れ（cam.shake の 0.88 減衰）は 0.5秒で消えてしまい、
 // 20秒待った末に何かが起き上がる出来事としては軽すぎた。こちらは秒数を持たせて
@@ -99,20 +103,7 @@ const KEIO_PIER_GAP = 420;
 // 2本の鉄橋のすき間(px)。幅（130px）の 0.6倍。幅の半分より詰めると引きの絵で1本の太い帯に
 // つぶれて見え、幅と同じだけ空けると別々の橋に見える。「並んだ2本」に見える間を取った
 const KEIO_BRIDGE_SPACE = 80;
-// 鉄橋を渡る電車の影（見た目だけ。sim は知らない）。京王の通勤車（1両 20m × 幅 2.8m）を
-// 縦横比そのままで縮めた。幅は鉄橋の影（130px）の4割ほどにして、桁の上に収まって見えるようにする
-const TRAIN_W = 52;                    // 車体の幅(px)
-const TRAIN_CAR = 360;                 // 1両の長さ(px)。20m : 2.8m ≒ 7 : 1
-const TRAIN_GAP = 18;                  // 車両の継ぎ目のすき間(px)。引きの絵でも切れ目が見える最小くらい
-const TRAIN_CARS = 8;                  // 編成の両数。相模原線の8両編成
-const TRAIN_LEN = TRAIN_CARS * TRAIN_CAR + (TRAIN_CARS - 1) * TRAIN_GAP;
-// 速さ(px/s)。画面（PC で横 1300px 前後）を先頭が 2秒ほどで抜け、編成全体は1点を 4〜5秒で
-// 通り過ぎる。サメ（200px/s 前後）よりずっと速く、「横を電車が通った」に見える速さ
-const TRAIN_SPEED = 700;
-// 1本ごとの間隔(秒)。鉄橋の端から端まで（約 9000px）を 13秒ほどで渡るので、
-// 鉄橋の上が空く時間は 17秒ほど、1点で見れば次の電車まで 25秒ほど。上り・下りが交互に来る
-// （2本の鉄橋を同時に走らせると、画面に動く帯が2本並んでうるさいので、1本ずつにする）
-const TRAIN_PERIOD = 30;
+// 鉄橋を渡る電車の影の寸法・速さ・間隔（TRAIN_*）は src/train.js。音（N7b、電車の通過音）と共有する
 // 川底の石を撒く升の大きさ(px)。升ごとに 1〜2個。水面のドット（60px 間隔の小さな四角）と
 // 見分けが付くよう、間隔も石の大きさも水のドットよりずっと大きく取る
 const STONE_CELL = 240;
@@ -1376,33 +1367,57 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   }
 
   /**
-   * 鉄橋を渡る電車の影。TRAIN_PERIOD ごとに1本、上り・下りが交互に、鉄橋の端から端まで
-   * 流れに直交して走り抜ける。2本の鉄橋をそれぞれ単線とみなし、下流側を下り、上流側を上りが通る。時刻は world.envT だけから出す（読むだけ）—— envT は
-   * スナップショットで全員にそろうので、同じ部屋なら同じ時に通り、乱数も使わない。
-   * envT は試合の始めが 0 なので、1本目は開始 6〜7秒で鉄橋の真ん中に来る。
-   * 鉄橋の影の上に同じ色を薄く重ねるだけ（水面の影なので、他の物より派手にしない）
+   * 鉄橋を渡る電車の影。2本の鉄橋をそれぞれ単線とみなし、下流側を下り、上流側を上りが通る。
+   * 鉄橋ごとに TRAIN_PERIOD 秒に1本、上りは半周期遅れて走るので、全体では 10秒ごとに1本、
+   * 鉄橋の端から端まで流れに直交して走り抜ける（すれ違う3秒ほどは2本同時に映る）。
+   * 時刻は world.envT だけから出す（読むだけ）—— envT はスナップショットで全員にそろうので、
+   * 同じ部屋なら同じ時に通り、乱数も使わない。envT は試合の始めが 0 なので、1本目（下り）は
+   * 開始 6〜7秒で鉄橋の真ん中に来る。
+   * 鉄橋の影の上に同じ色を薄く重ねるだけ（水面の影なので、他の物より派手にしない）。
+   * Path2D は1つを使い回し、塗るのは電車1本につき1回
    */
   function drawTrain(br, view) {
-    const env = world.envT;
-    const k = Math.floor(env / TRAIN_PERIOD);
-    const ph = env - k * TRAIN_PERIOD;
-    // 先頭が鉄橋の手前の端（-half）にいる所から、最後尾が向こうの端を抜けるまで
-    const head = -br.half + TRAIN_SPEED * ph;
-    if (head - TRAIN_LEN > br.half) return;
-    // 偶数本目は下り（+n 向き＝画面の下、よみうりランド側へ）、奇数本目は上り。
-    // 日本の鉄道は左側通行なので、進む向きの左の鉄橋を走る（+n の左は +f＝下流側）
-    const dir = k % 2 ? -1 : 1;
-    const a = dir * (head - TRAIN_LEN / 2);           // 編成の中心の、鉄橋の中心線に沿った位置
-    const off = br.track[dir > 0 ? 1 : 0];
-    const x = br.cx + br.nx * a + br.fx * off, y = br.cy + br.ny * a + br.fy * off;
-    const R = TRAIN_LEN / 2 + TRAIN_W;                // 外接円の半径（ゆとり込み）
-    if (x + R < view.x0 || x - R > view.x1 || y + R < view.y0 || y - R > view.y1) return;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(Math.atan2(br.ny * dir, br.nx * dir));
-    ctx.fillStyle = 'rgba(16,31,35,.2)';   // 鉄橋の影（.28）に重ねて、ひと段だけ濃く
-    ctx.fill(trainArt());
-    ctx.restore();
+    // 先頭が鉄橋の手前の端（-half）にいる所から、最後尾が向こうの端を抜けるまで（train.js）
+    for (const run of trainRuns(world.envT, br.half)) {
+      if (!run) continue;
+      // 下りは +n 向き（画面の下、よみうりランド側へ）、上りは -n 向き。
+      // 日本の鉄道は左側通行なので、進む向きの左の鉄橋を走る（+n の左は +f＝下流側）
+      const { dir, head } = run;
+      const a = dir * (head - TRAIN_LEN / 2);           // 編成の中心の、鉄橋の中心線に沿った位置
+      const off = br.track[dir > 0 ? 1 : 0];
+      const x = br.cx + br.nx * a + br.fx * off, y = br.cy + br.ny * a + br.fy * off;
+      const R = TRAIN_LEN / 2 + TRAIN_W;                // 外接円の半径（ゆとり込み）
+      if (x + R < view.x0 || x - R > view.x1 || y + R < view.y0 || y - R > view.y1) continue;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.atan2(br.ny * dir, br.nx * dir));
+      ctx.fillStyle = 'rgba(16,31,35,.2)';   // 鉄橋の影（.28）に重ねて、ひと段だけ濃く
+      ctx.fill(trainArt());
+      ctx.restore();
+    }
+  }
+
+  /**
+   * 電車の音（N7 / N7b / N7c）。毎フレーム呼び、鉄橋ごとに、渡っている間だけ audio.js に
+   * 「何本目か・渡り始めてからの秒数・音量・左右」を渡す（[下り, 上り] の2つ。渡っていない方は null）。
+   * 録音（電車.mp3）の 0 秒が影が鉄橋に入った瞬間（trainRun の ph = 0）に当たり、途中から
+   * 聞こえる所に来ても ph の所から鳴る。時刻は envT だけから出すので、同じ部屋の人には同じ所が鳴る。
+   * 音量は聞き手（自機、居なければカメラの中心）とその編成のいちばん近い点の距離で決め
+   * （train.js の clackVol）、左右は他の音と同じ spatial() の pan。すれ違う間は2本が別々に鳴る。
+   * ポーズ・リザルト・多摩川以外では null を渡して両方止める。
+   * attract（タイトルの裏の盤面）は何も渡さない —— 本編の音を止めにいかないため
+   */
+  function trainSound() {
+    if (attract) return;
+    if (paused || dead || gim?.kind !== 'current') { sfx.train(null); return; }
+    const br = bridgeArt();
+    const ear = player.alive ? player : cam;
+    sfx.train(trainRuns(world.envT, br.half).map((run) => {
+      if (!run) return null;
+      const near = trainNearest(br, run, ear.x, ear.y);
+      const v = clackVol(near.d);
+      return { k: run.k, at: run.ph, v, pan: v > 0 ? spatial(near.x, near.y).pan : 0 };
+    }));
   }
 
   /**
@@ -1412,7 +1427,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
    *
    * 重ね順は 川底の石 → 帯の水色 → 漂流物・白波 → 鉄橋の影 → 電車の影。石を水色の下に敷くので、
    * 深い帯ほど水色が濃く（不透明に）なって石が沈んで見える。
-   * 描画命令はいちばん多くても 石1・水色1・葉1・泡と白波1・鉄橋1・電車1 の 6回で、
+   * 描画命令はいちばん多くても 石1・水色1・葉1・泡と白波1・鉄橋1・電車2（すれ違う間だけ）の 7回で、
    * 帯の数にも、映っている物の数にもよらない。
    */
   function drawCurrent(t, view) {
@@ -2516,6 +2531,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     if (!paused) {
       for (let left = dt; left > 1e-6; left -= 0.05) step(Math.min(left, 0.05), frozen);
     }
+    trainSound();   // 多摩川の電車の音（ポーズ中・デモ・リザルトでは中で抜ける）
     if (!frozen) draw(t);
 
     // 送るのは自分の操作と現在座標。盤面は onNet が受け取る
@@ -2604,6 +2620,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     stop() {
       running = false; dead = true;
       if (!attract) sfx.dash(false);   // 押したまま抜けてもフィルムは止める
+      if (!attract) sfx.train(null);   // 電車の音も盤面と一緒に止める（次の盤面へ持ち越さない）
       hush();                          // 震えたまま盤面を畳まない
       world.destroy();
       dropSpringArt();
