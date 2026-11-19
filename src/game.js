@@ -11,7 +11,7 @@ import { HAPTIC, buzz, hush } from './haptics.js';
 import { createWorld, radiusOf, dashBonusOf, clamp, rand, pick, TAU } from './sim.js';
 import {
   TRAIN_W, TRAIN_CAR, TRAIN_GAP, TRAIN_CARS, TRAIN_LEN,
-  trainRun, trainNearest, clackVol, nextClack,
+  trainRun, trainNearest, clackVol,
 } from './train.js';
 
 // 地響き。1発ぶんの揺れ（cam.shake の 0.88 減衰）は 0.5秒で消えてしまい、
@@ -103,7 +103,7 @@ const KEIO_PIER_GAP = 420;
 // 2本の鉄橋のすき間(px)。幅（130px）の 0.6倍。幅の半分より詰めると引きの絵で1本の太い帯に
 // つぶれて見え、幅と同じだけ空けると別々の橋に見える。「並んだ2本」に見える間を取った
 const KEIO_BRIDGE_SPACE = 80;
-// 鉄橋を渡る電車の影の寸法・速さ・間隔（TRAIN_*）は src/train.js。音（ガタンゴトン）と共有する
+// 鉄橋を渡る電車の影の寸法・速さ・間隔（TRAIN_*）は src/train.js。音（N7b、電車の通過音）と共有する
 // 川底の石を撒く升の大きさ(px)。升ごとに 1〜2個。水面のドット（60px 間隔の小さな四角）と
 // 見分けが付くよう、間隔も石の大きさも水のドットよりずっと大きく取る
 const STONE_CELL = 240;
@@ -1394,37 +1394,25 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
   }
 
   /**
-   * 電車の「ガタン・ゴトン」（N7）。毎フレーム呼び、次の打音の時刻（envT）が
-   * CLACK_AHEAD 秒先までに入ったら、その1発だけを時刻指定で Web Audio に置く。
-   * 打音どうしは 0.054秒しか空かないので、フレームが来た時に鳴らすと 16ms ずつずれて
-   * 「タタン」が崩れる。少し先を見て、ずれのぶんを delay で渡す。
+   * 電車の音（N7 / N7b）。毎フレーム呼び、鉄橋を渡っている間だけ audio.js に
+   * 「何本目か・渡り始めてからの秒数・音量・左右」を渡す。録音（電車.mp3）の 0 秒が
+   * 影が鉄橋に入った瞬間（trainRun の ph = 0）に当たり、途中から聞こえる所に来ても
+   * ph の所から鳴る。時刻は envT だけから出すので、同じ部屋の人には同じ所が鳴る。
    * 音量は聞き手（自機、居なければカメラの中心）と編成のいちばん近い点の距離で決め
-   * （train.js の clackVol）、左右は他の音と同じ spatial() の pan。電車が鉄橋の上に
-   * いないとき・遠くて 0 のときはノードを作らない。
-   * 時刻は envT だけから出すので、同じ部屋の人には同じ拍で鳴る
+   * （train.js の clackVol）、左右は他の音と同じ spatial() の pan。
+   * 渡っていない・ポーズ・リザルト・多摩川以外では null を渡して止める。
+   * attract（タイトルの裏の盤面）は何も渡さない —— 本編の音を止めにいかないため
    */
-  const CLACK_AHEAD = 0.1;
-  let clackAt = null;   // 次に鳴らす打音 { t, axle }（nextClack の戻り値）
   function trainSound() {
-    if (attract || paused || dead || gim?.kind !== 'current') return;
-    const env = world.envT;
-    // 時計が飛んだ（タブ復帰・スナップショットでの補正）ら、取りこぼしは鳴らさずに今から数え直す
-    if (!clackAt || clackAt.t < env - CLACK_AHEAD || clackAt.t > env + 1) clackAt = nextClack(env);
-    if (clackAt.t > env + CLACK_AHEAD) return;
+    if (attract) return;
+    if (paused || dead || gim?.kind !== 'current') { sfx.train(null); return; }
     const br = bridgeArt();
-    const run = trainRun(env, br.half);
-    let v = 0, pan = 0;
-    if (run) {
-      const ear = player.alive ? player : cam;
-      const near = trainNearest(br, run, ear.x, ear.y);
-      v = clackVol(near.d);
-      if (v > 0) pan = spatial(near.x, near.y).pan;
-    }
-    while (clackAt.t <= env + CLACK_AHEAD) {
-      // TRAIN_AXLES の 2・3 が後ろの台車（ガタン）、0・1 が次の車両の前の台車（ゴトン）
-      if (v > 0) sfx.clack(v, pan, clackAt.t - env, clackAt.axle < 2);
-      clackAt = nextClack(clackAt.t);
-    }
+    const run = trainRun(world.envT, br.half);
+    if (!run) { sfx.train(null); return; }
+    const ear = player.alive ? player : cam;
+    const near = trainNearest(br, run, ear.x, ear.y);
+    const v = clackVol(near.d);
+    sfx.train({ k: run.k, at: run.ph, v, pan: v > 0 ? spatial(near.x, near.y).pan : 0 });
   }
 
   /**
@@ -2627,6 +2615,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     stop() {
       running = false; dead = true;
       if (!attract) sfx.dash(false);   // 押したまま抜けてもフィルムは止める
+      if (!attract) sfx.train(null);   // 電車の音も盤面と一緒に止める（次の盤面へ持ち越さない）
       hush();                          // 震えたまま盤面を畳まない
       world.destroy();
       dropSpringArt();

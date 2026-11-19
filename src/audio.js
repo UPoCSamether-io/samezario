@@ -174,7 +174,8 @@ window.__bgm = {
   get vol() { return node ? +(node.g.gain.value * (bgmBus?.gain.value ?? 0)).toFixed(3) : 0; },
   get mix() { return { music: vol.music, sfx: vol.sfx }; },
   get state() { return ac?.state; },
-  get clacks() { return clackCount; },   // Web Audio に置いた電車の打音の数（N7）
+  // 多摩川の電車の音（N7b）。鳴っているか・いまの音量（効果音バスの手前）・ファイルのどこか
+  get train() { return trainPeek(); },
 };
 
 /**
@@ -292,63 +293,121 @@ function noise(f0, f1, dur, gain, q = 4, dest = null) {
 }
 
 /**
- * 鉄橋のレールの継ぎ目を車輪が踏む1発（多摩川の電車、N7）。
- * こもった低い打音（ノイズを低めのバンドパスに通す）に、鉄橋の金属の響きを高いバンドパスで
- * 少しだけ混ぜる。1両ぶんで4発鳴るので、ノイズは1回だけ作って使い回す（毎回乱数で埋めない）。
- * v は距離で落とした音量（0〜1）、pan は左右、delay は今から何秒後に鳴らすか
- * （打音どうしは 0.054秒しか空かないので、フレームの粒度で鳴らすと「タタン」が崩れる。
- * game.js が少し先まで見て、時刻を指定して置いておく）。low は「ゴトン」側（少し低く鳴らす）
+ * 多摩川の鉄橋を渡る電車の音（N7b）。電車が通り過ぎる録音（public/audio/電車.mp3）を、
+ * 電車の影が鉄橋に入った瞬間をファイルの 0 秒に合わせて、渡っている間だけ鳴らす。
+ * 録音は 17.6秒（0〜1.5秒で近づき、12秒過ぎから遠ざかる）で、鉄橋を渡り切るのは 13秒ほど
+ * なので、渡り終えたところで短く落として止める（末尾の遠ざかりはほとんど使わない）。
+ *
+ * 元の素材（48kHz ステレオ 320kbps、約700KB）は、左右を下の StereoPanner で付けるので
+ * モノラル 64kbps の mp3 に落として置いた（約140KB）。mp3 なのは BGM と違ってループしない
+ * （継ぎ目の無音が問題にならない）うえ、Ogg の鳴らない古い Safari でも鳴るから。
+ *   ffmpeg -i 元.mp3 -ac 1 -ar 44100 -c:a libmp3lame -b:a 64k -map_metadata -1 public/audio/電車.mp3
+ *
+ * 鳴らし方は1本につき BufferSource を1つだけ。音量（距離）と左右は、使い回す GainNode と
+ * StereoPanner を毎フレーム setTargetAtTime で動かす（ノードを毎フレーム作らない）。
+ * 遠くて音量 0 の間も、渡っている間は 0 のまま回しておく（止めて掛け直すより軽く、
+ * 近づいたときに途中から入り直す手間も無い）。
+ * 時刻は game.js が envT から出した「渡り始めてからの秒数」をそのまま offset にするので、
+ * 途中で聞こえる所へ来ても・途中で多摩川に入っても、同じ部屋なら同じ所が鳴る。
  */
-// 打音1発の音量の上限。v = 1（編成の真横）でもこれ以上にはならない。BGM（MIX 0.5）と
-// 餌の音（0.42）の下に控えめに敷く大きさ。うるさければここを下げる
-const CLACK_GAIN = 0.2;
-// 金属の響きの混ぜ具合（こもった打音に対する比）。上げるほど「カン」に寄る
-const CLACK_METAL = 0.18;
-const CLACK_DUR = 0.09;          // 1発の長さ(秒)。次の打音（0.054秒後）と少し重なるくらい
-const CLACK_BODY = [520, 170];   // こもった打音のバンドパスの掃き(Hz)。スマホのスピーカーでも出る高さから下げる
-const CLACK_RING = 2600;         // 金属の響きのバンドパス(Hz)
-let clackBuf = null;
+// 音量の上限。v = 1（編成の真横）でもこれ以上にはならない。録音の大きい区間（1.5〜12秒）は
+// ebur128 で -23.5 LUFS ほどなので、0.8 で約 -25.5 LUFS。BGM（-15 LUFS に揃えて MIX 0.5 で
+// 約 -21 LUFS）より 4〜5dB 下に敷く大きさで、真横を通っても曲と餌の音を食わない。
+// うるさければここを下げる
+const TRAIN_GAIN = 0.8;
+// 音量と左右の追従の時定数(秒)。毎フレームの距離の変化をこれでならす（ぷつぷつ鳴らさない）
+const TRAIN_EASE = 0.08;
+// 止めるときに落とす長さ(秒)。ぶつ切りだとプツッと鳴る
+const TRAIN_FADE = 0.15;
+// 鳴っている位置と、envT から出した位置がこれ以上ずれたら掛け直す(秒)。
+// タブ復帰（AudioContext の時計は止まっていた）やスナップショットでの envT の補正で飛んだとき用。
+// 小さすぎると補正のたびに頭出しし直して途切れる
+const TRAIN_SLIP = 0.3;
+let trainBuf = null;        // デコード済みの録音
+let trainLoad = 0;          // 0 まだ / 1 読み込み中 / 2 済み / -1 失敗（以後は鳴らさない）
+let trainOut = null;        // 使い回す { g, p }（GainNode → StereoPanner → sfxBus）
+let trainNow = null;        // 鳴っている { s, k, t0 }。t0 はファイルの 0 秒に当たる currentTime
 
-function clack(v, pan, delay, low) {
-  // 効果音を 0 にしているならノードを作らない
-  if (!(v > 0) || vol.sfx === 0) return;
-  // AudioContext が止まっている間（解禁前・裏に回った・iOS の着信などの割り込み）は置かない。
-  // 置くと時計の止まった currentTime に打音が溜まり、再開した瞬間に一斉に鳴る。
-  // 作るのも BGM 側に任せる（ここで作ると、解禁前に suspended の文脈ができるだけ）
-  if (!ac || ac.state !== 'running') return;
-  const c = ctx();
-  if (!clackBuf) {
-    clackBuf = c.createBuffer(1, Math.ceil(c.sampleRate * CLACK_DUR), c.sampleRate);
-    const d = clackBuf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  }
-  const o = out(v * CLACK_GAIN, pan);
-  const t = c.currentTime + Math.max(0, delay);
-  const k = low ? 0.82 : 1;      // ゴトンはガタンより少し低い
-  const n = c.createBufferSource();
-  n.buffer = clackBuf;
-  const body = c.createBiquadFilter();
-  body.type = 'bandpass';
-  body.Q.value = 1.3;
-  body.frequency.setValueAtTime(CLACK_BODY[0] * k, t);
-  body.frequency.exponentialRampToValueAtTime(CLACK_BODY[1] * k, t + CLACK_DUR);
-  const g = c.createGain();
-  g.gain.setValueAtTime(1, t);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + CLACK_DUR);
-  const ring = c.createBiquadFilter();
-  ring.type = 'bandpass';
-  ring.Q.value = 9;
-  ring.frequency.value = CLACK_RING * k;
-  const rg = c.createGain();
-  rg.gain.setValueAtTime(CLACK_METAL, t);
-  rg.gain.exponentialRampToValueAtTime(0.0001, t + CLACK_DUR * 0.6);
-  n.connect(body).connect(g).connect(o);
-  n.connect(ring).connect(rg).connect(o);
-  n.start(t);
-  n.stop(t + CLACK_DUR);
-  clackCount++;
+/** 録音を1回だけ取ってくる。失敗したら黙って諦める */
+async function trainFetch() {
+  trainLoad = 1;
+  try {
+    const res = await fetch(url('電車', 'mp3'));
+    if (!res.ok) throw new Error(res.status);
+    trainBuf = await ctx().decodeAudioData(await res.arrayBuffer());
+    trainLoad = 2;
+  } catch { trainLoad = -1; }
 }
-let clackCount = 0;   // Web Audio に置いた打音の数（上の window.__bgm から見る。確かめ用）
+
+/** 鳴っている電車を TRAIN_FADE 秒で落として止める。止まっていれば何もしない */
+function trainStop() {
+  if (!trainNow) return;
+  const { s } = trainNow;
+  trainNow = null;
+  const c = ctx();
+  const t = c.currentTime;
+  const g = trainOut.g.gain;
+  g.cancelScheduledValues(t);
+  g.setValueAtTime(g.value, t);
+  g.linearRampToValueAtTime(0, t + TRAIN_FADE);
+  // 時計の止まった AudioContext では、この stop も再開まで持ち越されるだけ（再開した瞬間に止まる）
+  try { s.stop(t + TRAIN_FADE + 0.02); } catch { /* もう止まっている */ }
+}
+
+/**
+ * 毎フレームの指示。cue は { k: 何本目か, at: 渡り始めてからの秒数, v: 0〜1, pan: -1〜1 }。
+ * null なら止める（多摩川以外・ポーズ・リザルト・渡っていない）
+ */
+function trainCue(cue) {
+  // 効果音 0・AudioContext が動いていない（解禁前・裏に回った・割り込み）ときも止める。
+  // 解禁前に AudioContext を作りにいかないよう、ac が無ければ何もしない
+  if (!cue || vol.sfx === 0 || !ac || ac.state !== 'running') { if (ac) trainStop(); return; }
+  if (trainLoad === 0) trainFetch();
+  if (trainLoad !== 2) return;
+  const c = ctx();
+  const t = c.currentTime;
+  // 別の1本になった・ずれた（時計が飛んだ）・録音の終わりを過ぎたら、今のを止める
+  if (trainNow) {
+    const pos = t - trainNow.t0;
+    if (trainNow.k !== cue.k || Math.abs(pos - cue.at) > TRAIN_SLIP) trainStop();
+  }
+  if (cue.at >= trainBuf.duration) { trainStop(); return; }
+  if (!trainOut) {
+    buses();
+    const g = c.createGain();
+    const p = c.createStereoPanner();
+    g.gain.value = 0;
+    g.connect(p).connect(sfxBus);
+    trainOut = { g, p };
+  }
+  const g = trainOut.g.gain;
+  if (!trainNow) {
+    const s = c.createBufferSource();
+    s.buffer = trainBuf;
+    s.connect(trainOut.g);
+    // 途中から入るときに、録音の大きい所をいきなり出さない（TRAIN_EASE でふわっと上げる）。
+    // 止めたばかりの前の音のフェードは、ここで打ち切られる（前の音は直後に stop される）
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(0, t);
+    s.start(t, Math.max(0, cue.at));
+    // 最後まで行ったら勝手に止まる。そのとき掴んだままにしない
+    s.onended = () => { if (trainNow?.s === s) trainNow = null; };
+    trainNow = { s, k: cue.k, t0: t - Math.max(0, cue.at) };
+  }
+  g.setTargetAtTime(Math.max(0, cue.v) * TRAIN_GAIN, t, TRAIN_EASE);
+  trainOut.p.pan.setTargetAtTime(Math.max(-1, Math.min(1, cue.pan || 0)), t, TRAIN_EASE);
+}
+
+/** window.__bgm.train の中身（確かめ用） */
+function trainPeek() {
+  return {
+    load: trainLoad,
+    playing: !!trainNow,
+    gain: trainOut ? +trainOut.g.gain.value.toFixed(3) : 0,
+    pan: trainOut ? +trainOut.p.pan.value.toFixed(2) : 0,
+    at: trainNow ? +(ctx().currentTime - trainNow.t0).toFixed(2) : null,
+  };
+}
 
 // カチンコだけは合成では出ない打撃音なので外部ファイル。連打されるので頭出しで鳴らす
 const clapEl = new Audio(url('時代劇演出3', 'mp3'));
@@ -386,8 +445,9 @@ export const sfx = {
     tone('sawtooth', 420, 55, 0.75, 0.4, 0, o);
     noise(900, 120, 0.5, 0.28, 2, o);
   },
-  // 鉄橋を渡る電車の「ガタン・ゴトン」の1発。距離と左右は game.js が決めて渡す
-  clack(v, pan = 0, delay = 0, low = false) { clack(v, pan, delay, low); },
+  // 鉄橋を渡る電車の音。毎フレーム呼ぶ。渡っていない・鳴らさないときは null を渡すと止まる。
+  // 何本目か・渡り始めてからの秒数・距離と左右は game.js が決めて渡す
+  train(cue) { trainCue(cue); },
   // フィルムが回る音。押しているあいだ回り続ける
   dash(on) { if (on) reelStart(); else reelStop(); },
   // 立ち上がる3音。発動が一番派手に聞こえていい
