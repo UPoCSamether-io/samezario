@@ -174,7 +174,7 @@ window.__bgm = {
   get vol() { return node ? +(node.g.gain.value * (bgmBus?.gain.value ?? 0)).toFixed(3) : 0; },
   get mix() { return { music: vol.music, sfx: vol.sfx }; },
   get state() { return ac?.state; },
-  get clacks() { return clackCount; },   // 鳴らした電車の打音の数（N7）
+  get clacks() { return clackCount; },   // Web Audio に置いた電車の打音の数（N7）
 };
 
 /**
@@ -310,7 +310,12 @@ const CLACK_RING = 2600;         // 金属の響きのバンドパス(Hz)
 let clackBuf = null;
 
 function clack(v, pan, delay, low) {
-  if (!(v > 0)) return;
+  // 効果音を 0 にしているならノードを作らない
+  if (!(v > 0) || vol.sfx === 0) return;
+  // AudioContext が止まっている間（解禁前・裏に回った・iOS の着信などの割り込み）は置かない。
+  // 置くと時計の止まった currentTime に打音が溜まり、再開した瞬間に一斉に鳴る。
+  // 作るのも BGM 側に任せる（ここで作ると、解禁前に suspended の文脈ができるだけ）
+  if (!ac || ac.state !== 'running') return;
   const c = ctx();
   if (!clackBuf) {
     clackBuf = c.createBuffer(1, Math.ceil(c.sampleRate * CLACK_DUR), c.sampleRate);
@@ -343,7 +348,7 @@ function clack(v, pan, delay, low) {
   n.stop(t + CLACK_DUR);
   clackCount++;
 }
-let clackCount = 0;   // 鳴らした打音の数（下の window.__bgm から見る。確かめ用）
+let clackCount = 0;   // Web Audio に置いた打音の数（上の window.__bgm から見る。確かめ用）
 
 // カチンコだけは合成では出ない打撃音なので外部ファイル。連打されるので頭出しで鳴らす
 const clapEl = new Audio(url('時代劇演出3', 'mp3'));
