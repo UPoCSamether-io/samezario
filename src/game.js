@@ -13,7 +13,7 @@ import {
   TRAIN_W, TRAIN_CAR, TRAIN_GAP, TRAIN_CARS, TRAIN_LEN,
   trainRuns, trainNearest, clackVol,
 } from './train.js';
-import { SWAY_SHADOW, SWAY_FADE, SWAY_GUST, swayTufts, gustFront, swayAngle, traceTuft } from './sway.js';
+import { SWAY_SHADOW, SWAY_FADE, SWAY_GUST, SWAY_GROVE_ZOOM, swayTufts, gustFront, swayAngle, traceTuft } from './sway.js';
 
 // 地響き。1発ぶんの揺れ（cam.shake の 0.88 減衰）は 0.5秒で消えてしまい、
 // 20秒待った末に何かが起き上がる出来事としては軽すぎた。こちらは秒数を持たせて
@@ -2154,19 +2154,26 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     const front = gustFront(env, sway.lo, sway.hi);
     let any = false;
     ctx.beginPath();
+    // view には draw() の揺れ（cam.shake の translate）が入っていないので、そのぶん広げる
+    // （drawSprings と同じ）。ぴったりだと揺れている間、画面端で房が出たり消えたりする
+    const pad = (cam.shake + 2) / z;
     const put = (t, x, y) => {
       if (z < t.min) return;
-      if (x + t.r < view.x0 || x - t.r > view.x1 || y + t.r < view.y0 || y - t.r > view.y1) return;
+      const r = t.r + pad;
+      if (x + r < view.x0 || x - r > view.x1 || y + r < view.y0 || y - r > view.y1) return;
       traceTuft(ctx, t, x, y, swayAngle(t, x, y, env, front));
       any = true;
     };
     for (const t of sway.fixed) put(t, t.x, t.y);
-    const S = FLOOR_TILE, p = sway.pad;
-    const i0 = Math.floor((view.x0 - p) / S), i1 = Math.floor((view.x1 + p) / S);
-    const j0 = Math.floor((view.y0 - p) / S), j1 = Math.floor((view.y1 + p) / S);
-    for (let j = j0; j <= j1; j++) {
-      for (let i = i0; i <= i1; i++) {
-        for (const t of sway.tile) put(t, i * S + t.x, j * S + t.y);
+    // 木立の枝先（タイルの繰り返し）は、引きの絵ではタイルのループごと飛ばす
+    const S = FLOOR_TILE, p = sway.pad + pad;
+    if (z >= SWAY_GROVE_ZOOM) {
+      const i0 = Math.floor((view.x0 - p) / S), i1 = Math.floor((view.x1 + p) / S);
+      const j0 = Math.floor((view.y0 - p) / S), j1 = Math.floor((view.y1 + p) / S);
+      for (let j = j0; j <= j1; j++) {
+        for (let i = i0; i <= i1; i++) {
+          for (const t of sway.tile) put(t, i * S + t.x, j * S + t.y);
+        }
       }
     }
     if (!any) return;
@@ -2174,6 +2181,7 @@ export function startGame({ canvas, mini, sharkId, map, onEnd, onHud, attract = 
     ctx.globalAlpha = clamp((z - SWAY_FADE[0]) / (SWAY_FADE[1] - SWAY_FADE[0]), 0, 1);
     ctx.fill();
     ctx.globalAlpha = 1;
+    ctx.beginPath();   // 草木の path を後の描画に残さない
   }
 
   /**

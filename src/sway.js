@@ -45,6 +45,11 @@ export const SWAY_SPRING_N = 6;
 export const SWAY_GROVE_EVERY = 6;
 // 木立の枝先を描く zoom の下限。枝先はタイルの数だけ増えるので、引きの絵では岸と湧水の草だけにする
 export const SWAY_GROVE_ZOOM = 0.6;
+// 房の伸びる向き。画面で見て縦（根元が下、先が上）。横や斜めに生えた草は画面の上で
+// 不自然に見えたので（人間の判断、N8 往復1回目）、どこに置いた房もこの向きにそろえ、揺れはここから左右へ
+export const SWAY_UP = -Math.PI / 2;
+// 外周の岸の房の根元を、壁の線から内側へ寄せる距離(px)
+export const SWAY_EDGE_INSET = 24;
 
 // 草木の影の形。原点が根元（枝なら付け根）で、+x へ伸びる。
 // 命令は 0 = moveTo(x, y)、1 = lineTo(x, y)、2 = quadraticCurveTo(cx, cy, x, y)、3 = closePath。
@@ -148,7 +153,7 @@ export function swayTufts({ groves = [], poly = null, springs = [] }) {
     };
   };
 
-  // 木立：樹冠の縁から外へ張り出す枝先を1つ。SWAY_GROVE_EVERY 個に1つの木立にだけ置く
+  // 木立：樹冠の縁に枝先を1つ。SWAY_GROVE_EVERY 個に1つの木立にだけ置く
   const tile = [];
   groves.forEach(([gx, gy, , rx, ry, rot], g) => {
     if (g % SWAY_GROVE_EVERY) return;
@@ -156,12 +161,13 @@ export function swayTufts({ groves = [], poly = null, springs = [] }) {
     const ex = Math.cos(a) * rx * 0.88, ey = Math.sin(a) * ry * 0.88;
     const x = gx + ex * Math.cos(rot) - ey * Math.sin(rot);
     const y = gy + ex * Math.sin(rot) + ey * Math.cos(rot);
-    const out = Math.atan2(y - gy, x - gx) + (hash01(g, 23) - 0.5) * 0.6;
-    tile.push(tuft(x, y, out, 'spray', 0.95 + 0.35 * hash01(g, 25), SWAY_GROVE_ZOOM));
+    tile.push(tuft(x, y, SWAY_UP, 'spray', 0.95 + 0.35 * hash01(g, 25), SWAY_GROVE_ZOOM));
   });
 
   const fixed = [];
-  // 外周の岸：周に沿って SWAY_EDGE_GAP おきに、内向きに。草と枝を交互に
+  // 外周の岸：周に沿って SWAY_EDGE_GAP おきに。草と枝を交互に。
+  // 房は上へ伸びるので、根元を内側へ SWAY_EDGE_INSET 寄せ、さらに上の岸（水が下にある辺）では
+  // 房の長さぶん下げる —— そのままだと房が岸の外（陸）へ伸びて、clip で消えてしまう
   if (poly) {
     const { xs, ys, n: m } = poly;
     let area = 0;
@@ -171,25 +177,25 @@ export function swayTufts({ groves = [], poly = null, springs = [] }) {
     for (let i = 0; i < m; i++) {
       const j = (i + 1) % m;
       const dx = xs[j] - xs[i], dy = ys[j] - ys[i], len = Math.hypot(dx, dy);
-      const inA = Math.atan2(sg * dx, -sg * dy);   // 内向きの法線 sg * (-dy, dx) の角度
+      const nx = (-sg * dy) / len, ny = (sg * dx) / len;   // 内向きの法線 sg * (-dy, dx)
       let d = next;
       for (; d < len; d += SWAY_EDGE_GAP, k++) {
-        const x = xs[i] + (dx * d) / len, y = ys[i] + (dy * d) / len;
-        const rot = inA + (hash01(k, 31) - 0.5) * 0.9;
         const kind = k % 3 === 2 ? 'spray' : 'grass';
-        fixed.push(tuft(x, y, rot, kind, 1 + 0.4 * hash01(k, 32), k % 2 ? 0.55 : 0.3));
+        const t = tuft(0, 0, SWAY_UP, kind, 1 + 0.4 * hash01(k, 32), k % 2 ? 0.55 : 0.3);
+        t.x = xs[i] + (dx * d) / len + nx * SWAY_EDGE_INSET;
+        t.y = ys[i] + (dy * d) / len + ny * SWAY_EDGE_INSET + Math.max(0, ny) * t.shape.len * t.s;
+        fixed.push(t);
       }
       next = d - len;
     }
   }
-  // 湧水の縁：石組みのすぐ外から、中心へ向けて草をかぶせる
+  // 湧水の縁：石組みのすぐ外に草。下側の草は石組みにかぶさって湧水へ、上側の草は奥の岸に立つ
   springs.forEach((z, si) => {
     for (let k = 0; k < SWAY_SPRING_N; k++) {
       const a = ((k + hash01(si * 17 + k, 41) * 0.5) / SWAY_SPRING_N) * TAU + si;
       const rr = z.r + 40;
       const x = z.x + Math.cos(a) * rr, y = z.y + Math.sin(a) * rr;
-      const rot = a + Math.PI + (hash01(si * 17 + k, 42) - 0.5) * 0.7;
-      fixed.push(tuft(x, y, rot, 'grass', 0.9 + 0.3 * hash01(si * 17 + k, 43), k % 2 ? 0.55 : 0.3));
+      fixed.push(tuft(x, y, SWAY_UP, 'grass', 0.9 + 0.3 * hash01(si * 17 + k, 43), k % 2 ? 0.55 : 0.3));
     }
   });
   return { tile, fixed };
@@ -216,8 +222,8 @@ export function swayAngle(t, x, y, env, front) {
   if (front !== null) {
     const d = (x * Math.cos(dir) + y * Math.sin(dir) - front) / width;
     const g = Math.exp(-d * d);
-    // 風の向きへなびく。伸びる向きと風の向きが直交している房ほど大きく曲がる
-    // （風下へ伸びた草は曲がりようがない）。通っている間は揺れも少し速く大きく
+    // 風の向きへなびく。房はみな縦（上向き）なので、sin(dir - rot) = cos(dir) ——
+    // 波の進む向きの横成分の側（いまの dir なら右）へ倒れる。通っている間は揺れも少し大きく
     a = a * (1 + g) + lean * g * Math.sin(dir - t.rot);
   }
   return a;
