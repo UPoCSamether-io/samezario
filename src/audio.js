@@ -174,6 +174,7 @@ window.__bgm = {
   get vol() { return node ? +(node.g.gain.value * (bgmBus?.gain.value ?? 0)).toFixed(3) : 0; },
   get mix() { return { music: vol.music, sfx: vol.sfx }; },
   get state() { return ac?.state; },
+  get clacks() { return clackCount; },   // Web Audio に置いた電車の打音の数（N7）
 };
 
 /**
@@ -290,6 +291,65 @@ function noise(f0, f1, dur, gain, q = 4, dest = null) {
   n.stop(t + dur);
 }
 
+/**
+ * 鉄橋のレールの継ぎ目を車輪が踏む1発（多摩川の電車、N7）。
+ * こもった低い打音（ノイズを低めのバンドパスに通す）に、鉄橋の金属の響きを高いバンドパスで
+ * 少しだけ混ぜる。1両ぶんで4発鳴るので、ノイズは1回だけ作って使い回す（毎回乱数で埋めない）。
+ * v は距離で落とした音量（0〜1）、pan は左右、delay は今から何秒後に鳴らすか
+ * （打音どうしは 0.054秒しか空かないので、フレームの粒度で鳴らすと「タタン」が崩れる。
+ * game.js が少し先まで見て、時刻を指定して置いておく）。low は「ゴトン」側（少し低く鳴らす）
+ */
+// 打音1発の音量の上限。v = 1（編成の真横）でもこれ以上にはならない。BGM（MIX 0.5）と
+// 餌の音（0.42）の下に控えめに敷く大きさ。うるさければここを下げる
+const CLACK_GAIN = 0.2;
+// 金属の響きの混ぜ具合（こもった打音に対する比）。上げるほど「カン」に寄る
+const CLACK_METAL = 0.18;
+const CLACK_DUR = 0.09;          // 1発の長さ(秒)。次の打音（0.054秒後）と少し重なるくらい
+const CLACK_BODY = [520, 170];   // こもった打音のバンドパスの掃き(Hz)。スマホのスピーカーでも出る高さから下げる
+const CLACK_RING = 2600;         // 金属の響きのバンドパス(Hz)
+let clackBuf = null;
+
+function clack(v, pan, delay, low) {
+  // 効果音を 0 にしているならノードを作らない
+  if (!(v > 0) || vol.sfx === 0) return;
+  // AudioContext が止まっている間（解禁前・裏に回った・iOS の着信などの割り込み）は置かない。
+  // 置くと時計の止まった currentTime に打音が溜まり、再開した瞬間に一斉に鳴る。
+  // 作るのも BGM 側に任せる（ここで作ると、解禁前に suspended の文脈ができるだけ）
+  if (!ac || ac.state !== 'running') return;
+  const c = ctx();
+  if (!clackBuf) {
+    clackBuf = c.createBuffer(1, Math.ceil(c.sampleRate * CLACK_DUR), c.sampleRate);
+    const d = clackBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const o = out(v * CLACK_GAIN, pan);
+  const t = c.currentTime + Math.max(0, delay);
+  const k = low ? 0.82 : 1;      // ゴトンはガタンより少し低い
+  const n = c.createBufferSource();
+  n.buffer = clackBuf;
+  const body = c.createBiquadFilter();
+  body.type = 'bandpass';
+  body.Q.value = 1.3;
+  body.frequency.setValueAtTime(CLACK_BODY[0] * k, t);
+  body.frequency.exponentialRampToValueAtTime(CLACK_BODY[1] * k, t + CLACK_DUR);
+  const g = c.createGain();
+  g.gain.setValueAtTime(1, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + CLACK_DUR);
+  const ring = c.createBiquadFilter();
+  ring.type = 'bandpass';
+  ring.Q.value = 9;
+  ring.frequency.value = CLACK_RING * k;
+  const rg = c.createGain();
+  rg.gain.setValueAtTime(CLACK_METAL, t);
+  rg.gain.exponentialRampToValueAtTime(0.0001, t + CLACK_DUR * 0.6);
+  n.connect(body).connect(g).connect(o);
+  n.connect(ring).connect(rg).connect(o);
+  n.start(t);
+  n.stop(t + CLACK_DUR);
+  clackCount++;
+}
+let clackCount = 0;   // Web Audio に置いた打音の数（上の window.__bgm から見る。確かめ用）
+
 // カチンコだけは合成では出ない打撃音なので外部ファイル。連打されるので頭出しで鳴らす
 const clapEl = new Audio(url('時代劇演出3', 'mp3'));
 clapEl.volume = 0.5;
@@ -326,6 +386,8 @@ export const sfx = {
     tone('sawtooth', 420, 55, 0.75, 0.4, 0, o);
     noise(900, 120, 0.5, 0.28, 2, o);
   },
+  // 鉄橋を渡る電車の「ガタン・ゴトン」の1発。距離と左右は game.js が決めて渡す
+  clack(v, pan = 0, delay = 0, low = false) { clack(v, pan, delay, low); },
   // フィルムが回る音。押しているあいだ回り続ける
   dash(on) { if (on) reelStart(); else reelStop(); },
   // 立ち上がる3音。発動が一番派手に聞こえていい
