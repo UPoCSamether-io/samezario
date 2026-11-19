@@ -649,9 +649,15 @@ function selectMap(m) {
   $('#map-next-label').innerHTML = open
     ? `<span class="long">${rubify('このロケ｜地《ち》で｜撮影《さつえい》する →')}</span>`
       + `<span class="short">${rubify('｜撮影《さつえい》する →')}</span>`
-    : `${icon('photo_camera', '!text-xl shrink-0')}`
-      + `<span class="long">${rubify('｜現地《げんち》で｜写真《しゃしん》を｜撮《と》って｜解放《かいほう》')}</span>`
-      + `<span class="short">${rubify('｜写真《しゃしん》で｜解放《かいほう》')}</span>`;
+    : isDemo()
+      // デモでは現地に行かずに開けられる（verify.js の runUnlock）。「現地で撮って」のままだと
+      // 会場で試す人が押さずに引き返す
+      ? `${icon('lock_open', '!text-xl shrink-0')}`
+        + `<span class="long">${rubify('デモでこのエリアを｜解放《かいほう》')}</span>`
+        + `<span class="short">${rubify('デモで｜解放《かいほう》')}</span>`
+      : `${icon('photo_camera', '!text-xl shrink-0')}`
+        + `<span class="long">${rubify('｜現地《げんち》で｜写真《しゃしん》を｜撮《と》って｜解放《かいほう》')}</span>`
+        + `<span class="short">${rubify('｜写真《しゃしん》で｜解放《かいほう》')}</span>`;
   // 右上の文字リンクは解放済みのときだけ。未解放で「サメ選びへ」と書くと嘘になる
   // 未解放のときは「いま遊べる場所」へ選び直す道を添える。主ボタンは解放（現地へ行く）
   // なので、今すぐ遊びたい人がそこで行き止まらないように。置き場は2か所:
@@ -730,7 +736,7 @@ function spotCard(m) {
   const rec = save.spots[s.id];
   const head = open
     ? (done ? rubify('｜撮影《さつえい》ずみのスポット') : rubify('｜現地《げんち》スポット（ボーナス）'))
-    : rubify('｜現地写真《げんちしゃしん》で｜解放《かいほう》');
+    : isDemo() ? rubify('デモで｜解放《かいほう》できます') : rubify('｜現地写真《げんちしゃしん》で｜解放《かいほう》');
   // 未解放のときのボタンは出さない（主ボタン #map-next が解放の入口を兼ねる）
   const label = done ? rubify('もう｜一度《いちど》｜撮《と》る') : rubify(`｜写真《しゃしん》を｜撮《と》る +${s.points}pt`);
   return `
@@ -753,7 +759,9 @@ function spotCard(m) {
                      flex items-center justify-center gap-1.5 transition-transform hover:-translate-y-0.5 active:translate-y-0.5 whitespace-nowrap">
         ${icon('photo_camera', '!text-lg shrink-0')}<span class="whitespace-nowrap">${label}</span>
       </button>` : ''}
-      <p class="mt-1.5 font-mono text-[10px] text-paper/45">${rubify(`｜現地《げんち》（｜半径《はんけい》${s.radius}m）で｜撮影《さつえい》してください`)}</p>
+      <p class="mt-1.5 font-mono text-[10px] text-paper/45">${isDemo()
+        ? rubify('DEMO MODE — ｜現地《げんち》に｜行《い》かずに｜解放《かいほう》できます')
+        : rubify(`｜現地《げんち》（｜半径《はんけい》${s.radius}m）で｜撮影《さつえい》してください`)}</p>
     </div>`;
 }
 
