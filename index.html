@@ -340,10 +340,20 @@
 
           <!-- 名前。同じロケ地の部屋へ自動で入り、空いた席はボットが埋める -->
           <div class="name-pane bg-navy text-paper ink-3 hard rounded-lg p-3 shrink-0">
+            <!-- 「NAME」の英字と、値が入った白い枠だけだと固定の表示に見えて、名前を変えられると
+                 気づかれなかった。日本語の見出し・鉛筆・点線の枠で「書きかえられる欄」と分かるようにする -->
             <label class="block">
-              <span class="font-mono text-[10px] tracking-[0.25em] text-mint">NAME</span>
-              <input id="player-name" maxlength="10" placeholder="PLAYER"
-                     class="mt-1 w-full bg-paper text-ink ink-2 rounded px-2 py-1.5 font-display font-bold text-sm outline-none focus:bg-yellow">
+              <span class="name-label flex items-center gap-1 text-[12px] font-bold text-mint">
+                <span class="material-symbols-rounded !text-base" aria-hidden="true">edit</span>
+                あなたの<ruby>名前<rp>(</rp><rt>なまえ</rt><rp>)</rp></ruby>
+                <span class="name-hint font-normal text-paper/60 text-[10px]">（タップで<ruby>変更<rp>(</rp><rt>へんこう</rt><rp>)</rp></ruby>・10<ruby>文字<rp>(</rp><rt>もじ</rt><rp>)</rp></ruby>まで）</span>
+              </span>
+              <span class="name-field relative block mt-1">
+                <input id="player-name" maxlength="10" placeholder="名前を入力" autocomplete="off" enterkeyhint="done"
+                       class="w-full bg-paper text-ink border-2 border-dashed border-ink rounded pl-2 pr-8 py-1.5 font-display font-bold text-sm outline-none cursor-text
+                              placeholder:text-ink/40 placeholder:font-normal focus:bg-yellow focus:border-solid">
+                <span class="material-symbols-rounded !text-lg absolute right-2 top-1/2 -translate-y-1/2 text-ink/60 pointer-events-none" aria-hidden="true">edit</span>
+              </span>
             </label>
             <p class="mt-2 text-[11px] leading-snug text-paper/70"><ruby>同<rp>(</rp><rt>おな</rt><rp>)</rp></ruby>じロケ<ruby>地<rp>(</rp><rt>ち</rt><rp>)</rp></ruby>の<ruby>部屋<rp>(</rp><rt>へや</rt><rp>)</rp></ruby>へ<ruby>入<rp>(</rp><rt>はい</rt><rp>)</rp></ruby>ります（<ruby>最大<rp>(</rp><rt>さいだい</rt><rp>)</rp></ruby>14<ruby>人<rp>(</rp><rt>にん</rt><rp>)</rp></ruby>）。<ruby>空<rp>(</rp><rt>あ</rt><rp>)</rp></ruby>いた<ruby>席<rp>(</rp><rt>せき</rt><rp>)</rp></ruby>はボットが<ruby>埋<rp>(</rp><rt>う</rt><rp>)</rp></ruby>めます。</p>
           </div>

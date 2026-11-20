@@ -1285,7 +1285,9 @@ function statBars(d) {
 
 // ---------- 名前 ----------
 const nameInput = $('#player-name');
-nameInput.value = save.name;
+// 名前を付けなかった人は 'PLAYER' で保存されている。値として入れると固定の文字に見えて
+// 書きかえられると気づかないので、空欄にして「名前を入力」の案内を見せる（空なら playerName が 'PLAYER' に戻す）
+nameInput.value = save.name === 'PLAYER' ? '' : save.name;
 const playerName = () => nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 10) || 'PLAYER';
 
 const startBtn = $('#start-btn');
